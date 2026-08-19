@@ -1,10 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
-import { EstadoProducto } from '../entities/estado-producto.entity';
-import { Impuesto } from '../entities/impuesto.entity';
 import { Producto } from '../entities/producto.entity';
 
+const IVA_RATE = 0.13;
 const ESTADO_HABILITADO = 'Habilitado';
 const ESTADO_DESHABILITADO = 'Deshabilitado';
 const MAX_PRODUCTOS_DESTACADOS = 3;
@@ -14,10 +13,6 @@ export class ProductosService {
   constructor(
     @InjectRepository(Producto)
     private readonly repo: Repository<Producto>,
-    @InjectRepository(EstadoProducto)
-    private readonly estadosRepo: Repository<EstadoProducto>,
-    @InjectRepository(Impuesto)
-    private readonly impuestosRepo: Repository<Impuesto>,
     private readonly dataSource: DataSource,
   ) {}
 
@@ -53,9 +48,9 @@ export class ProductosService {
       Descripcion: request.Descripcion.trim(),
       Imagen: request.Imagen.trim(),
       PrecioNormal: request.PrecioNormal.toFixed(2),
+      PrecioConIVA: this.calcularPrecioConIVA(request.PrecioNormal).toFixed(2),
       Stock: request.Stock,
-      estadoRelacion: await this.obtenerEstadoProducto(estado),
-      impuestoRelacion: await this.obtenerImpuestoIva(),
+      Estado: estado,
       Peso: request.Peso.trim(),
       EsDestacado: request.EsDestacado,
     });
@@ -89,6 +84,11 @@ export class ProductosService {
         throw new Error('El precio normal no puede ser negativo.');
       }
       actual.PrecioNormal = cambios.PrecioNormal.toFixed(2);
+      actual.PrecioConIVA = this.calcularPrecioConIVA(cambios.PrecioNormal).toFixed(
+        2,
+      );
+    } else if (cambios.PrecioConIVA != null) {
+      actual.PrecioConIVA = cambios.PrecioConIVA.toFixed(2);
     }
 
     if (cambios.Stock != null) {
@@ -111,7 +111,6 @@ export class ProductosService {
           'Quita el producto de destacados antes de deshabilitarlo.',
         );
       }
-      actual.estadoRelacion = await this.obtenerEstadoProducto(nuevoEstado);
       actual.Estado = nuevoEstado;
     }
 
@@ -177,20 +176,8 @@ export class ProductosService {
     }
   }
 
-  private async obtenerEstadoProducto(codigo: string): Promise<EstadoProducto> {
-    const estado = await this.estadosRepo.findOne({ where: { codigo } });
-    if (!estado) {
-      throw new Error(`No existe el estado de producto "${codigo}".`);
-    }
-    return estado;
-  }
-
-  private async obtenerImpuestoIva(): Promise<Impuesto> {
-    const impuesto = await this.impuestosRepo.findOne({ where: { codigo: 'IVA' } });
-    if (!impuesto) {
-      throw new Error('No está configurado el impuesto IVA.');
-    }
-    return impuesto;
+  private calcularPrecioConIVA(precioNormal: number): number {
+    return Math.round(precioNormal * (1 + IVA_RATE));
   }
 
   private async validarLimiteDestacados(excluirId: string | null): Promise<void> {

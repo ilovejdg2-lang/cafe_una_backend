@@ -1,14 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository, SelectQueryBuilder } from 'typeorm';
-import { EstadoUsuario } from '../entities/estado-usuario.entity';
-import { Rol } from '../entities/rol.entity';
+import { Repository } from 'typeorm';
 import { Usuario } from '../entities/usuario.entity';
 import { UsuarioValidacion, copiarUsuario } from '../common/usuario-validacion';
-import {
-  asegurarHashContrasena,
-  verificarContrasena,
-} from '../common/password.util';
 
 export interface UsuarioPerfilResponse {
   Id: number;
@@ -30,16 +24,10 @@ export class UsuariosService {
   constructor(
     @InjectRepository(Usuario)
     private readonly repo: Repository<Usuario>,
-    @InjectRepository(EstadoUsuario)
-    private readonly estadosRepo: Repository<EstadoUsuario>,
-    @InjectRepository(Rol)
-    private readonly rolesRepo: Repository<Rol>,
   ) {}
 
   async obtenerTodos(): Promise<Usuario[]> {
-    const usuarios = await this.conRelaciones()
-      .orderBy('u.Id', 'ASC')
-      .getMany();
+    const usuarios = await this.repo.find({ order: { Id: 'ASC' } });
     return usuarios.map((u) => copiarUsuario(u));
   }
 
@@ -49,15 +37,14 @@ export class UsuariosService {
   }
 
   async obtenerPorId(id: number): Promise<Usuario | null> {
-    const usuario = await this.conRelaciones()
-      .where('u.Id = :id', { id })
-      .getOne();
+    const usuario = await this.repo.findOne({ where: { Id: id } });
     return usuario ? copiarUsuario(usuario) : null;
   }
 
   async obtenerPorCorreo(correo: string): Promise<Usuario | null> {
     const normalized = correo.trim().toLowerCase();
-    const usuario = await this.conRelaciones()
+    const usuario = await this.repo
+      .createQueryBuilder('u')
       .where('LOWER(u.Correo) = :correo', { correo: normalized })
       .getOne();
     return usuario ? copiarUsuario(usuario) : null;
@@ -65,10 +52,9 @@ export class UsuariosService {
 
   async obtenerPorNombreOCorreo(identifier: string): Promise<Usuario | null> {
     const normalized = identifier.trim().toLowerCase();
-    const usuario = await this.conRelaciones()
-      .where('LOWER(u.Correo) = :id OR LOWER(u.Nombre) = :id', {
-        id: normalized,
-      })
+    const usuario = await this.repo
+      .createQueryBuilder('u')
+      .where('LOWER(u.Correo) = :id OR LOWER(u.Nombre) = :id', { id: normalized })
       .getOne();
     return usuario ? copiarUsuario(usuario) : null;
   }
@@ -87,22 +73,18 @@ export class UsuariosService {
   }
 
   async crear(nuevoUsuario: Partial<Usuario>): Promise<Usuario> {
-    const estado = await this.obtenerEstadoPorCodigo(this.estadoActivo);
-    const roles = await this.obtenerRolesPorCodigos(
-      !nuevoUsuario.Roles || nuevoUsuario.Roles.length === 0
-        ? ['Usuario']
-        : nuevoUsuario.Roles,
-    );
-
     const usuario = this.repo.create({
       Nombre: nuevoUsuario.Nombre!.trim(),
       Correo: nuevoUsuario.Correo!.trim().toLowerCase(),
-      PasswordHash: await asegurarHashContrasena(nuevoUsuario.PasswordHash!),
-      estadoRelacion: estado,
-      rolesRelacion: roles,
+      PasswordHash: nuevoUsuario.PasswordHash!,
+      Estado: this.estadoActivo,
+      Roles:
+        !nuevoUsuario.Roles || nuevoUsuario.Roles.length === 0
+          ? ['Usuario']
+          : [...nuevoUsuario.Roles],
     });
     const saved = await this.repo.save(usuario);
-    return copiarUsuario(await this.obtenerPorId(saved.Id) ?? saved);
+    return copiarUsuario(saved);
   }
 
   async actualizarConActor(
@@ -112,7 +94,7 @@ export class UsuariosService {
     actorRoles?: string[] | null,
     passwordActual?: string | null,
   ): Promise<Usuario | null> {
-    const actual = await this.conRelaciones().where('u.Id = :id', { id }).getOne();
+    const actual = await this.repo.findOne({ where: { Id: id } });
     if (!actual) return null;
 
     const puedeCambiarPassword = actorId != null && actorId === id;
@@ -139,26 +121,24 @@ export class UsuariosService {
       if (!puedeCambiarPassword) {
         throw new Error('Solo puede cambiar su propia contraseña.');
       }
-      await this.validarPasswordActual(actual.PasswordHash, passwordActual);
+      this.validarPasswordActualLocal(actual.PasswordHash, passwordActual);
       UsuarioValidacion.validarPassword(cambios.PasswordHash);
-      actual.PasswordHash = await asegurarHashContrasena(cambios.PasswordHash);
+      actual.PasswordHash = cambios.PasswordHash;
     }
 
     if (actorEsSuperAdmin && cambios.Estado?.trim()) {
-      actual.estadoRelacion = await this.obtenerEstadoPorCodigo(
-        this.normalizarEstado(cambios.Estado) ?? this.estadoActivo,
-      );
+      actual.Estado = cambios.Estado;
     }
     if (actorEsSuperAdmin && cambios.Roles && cambios.Roles.length > 0) {
-      actual.rolesRelacion = await this.obtenerRolesPorCodigos(cambios.Roles);
+      actual.Roles = [...cambios.Roles];
     }
 
     const saved = await this.repo.save(actual);
-    return copiarUsuario(await this.obtenerPorId(saved.Id) ?? saved);
+    return copiarUsuario(saved);
   }
 
   async obtenerPerfil(id: number): Promise<UsuarioPerfilResponse | null> {
-    const usuario = await this.obtenerPorId(id);
+    const usuario = await this.repo.findOne({ where: { Id: id } });
     return usuario ? this.toPerfilResponse(usuario) : null;
   }
 
@@ -172,7 +152,7 @@ export class UsuariosService {
       FotoBannerPosicion?: string | null;
     },
   ): Promise<UsuarioPerfilResponse | null> {
-    const actual = await this.conRelaciones().where('u.Id = :id', { id }).getOne();
+    const actual = await this.repo.findOne({ where: { Id: id } });
     if (!actual) return null;
 
     const nombre = request.Nombre?.trim() ? request.Nombre.trim() : actual.Nombre;
@@ -202,8 +182,7 @@ export class UsuariosService {
     );
 
     const saved = await this.repo.save(actual);
-    const recargado = await this.obtenerPorId(saved.Id);
-    return recargado ? this.toPerfilResponse(recargado) : null;
+    return this.toPerfilResponse(saved);
   }
 
   async cambiarPassword(
@@ -215,8 +194,8 @@ export class UsuariosService {
     const actual = await this.repo.findOne({ where: { Id: id } });
     if (!actual) return false;
 
-    await this.validarPasswordActual(actual.PasswordHash, passwordActual);
-    actual.PasswordHash = await asegurarHashContrasena(passwordNueva);
+    this.validarPasswordActualLocal(actual.PasswordHash, passwordActual);
+    actual.PasswordHash = passwordNueva;
     await this.repo.save(actual);
     return true;
   }
@@ -227,7 +206,7 @@ export class UsuariosService {
     actorId?: number | null,
     actorRoles?: string[] | null,
   ): Promise<Usuario | null> {
-    const actual = await this.conRelaciones().where('u.Id = :id', { id }).getOne();
+    const actual = await this.repo.findOne({ where: { Id: id } });
     if (!actual) return null;
 
     const esSuperAdmin = actorRoles?.some(
@@ -249,9 +228,9 @@ export class UsuariosService {
       return copiarUsuario(actual);
     }
 
-    actual.estadoRelacion = await this.obtenerEstadoPorCodigo(nuevoEstado);
+    actual.Estado = nuevoEstado;
     const saved = await this.repo.save(actual);
-    return copiarUsuario(await this.obtenerPorId(saved.Id) ?? saved);
+    return copiarUsuario(saved);
   }
 
   async actualizarPasswordPorCorreo(
@@ -265,34 +244,9 @@ export class UsuariosService {
       .getOne();
     if (!actual) return null;
 
-    actual.PasswordHash = await asegurarHashContrasena(nuevaPassword);
+    actual.PasswordHash = nuevaPassword;
     const saved = await this.repo.save(actual);
-    return this.obtenerPorId(saved.Id);
-  }
-
-  private conRelaciones(): SelectQueryBuilder<Usuario> {
-    return this.repo
-      .createQueryBuilder('u')
-      .leftJoinAndSelect('u.estadoRelacion', 'estado')
-      .leftJoinAndSelect('u.rolesRelacion', 'rol');
-  }
-
-  private async obtenerEstadoPorCodigo(codigo: string): Promise<EstadoUsuario> {
-    const estado = await this.estadosRepo.findOne({ where: { codigo } });
-    if (!estado) {
-      throw new Error(`No existe el estado de usuario "${codigo}".`);
-    }
-    return estado;
-  }
-
-  private async obtenerRolesPorCodigos(codigos: string[]): Promise<Rol[]> {
-    const roles = await this.rolesRepo.find({
-      where: { codigo: In(codigos) },
-    });
-    if (roles.length === 0) {
-      throw new Error('Debe asignar al menos un rol válido.');
-    }
-    return roles;
+    return copiarUsuario(saved);
   }
 
   private toPerfilResponse(usuario: Usuario): UsuarioPerfilResponse {
@@ -301,7 +255,7 @@ export class UsuariosService {
       Nombre: usuario.Nombre,
       Correo: usuario.Correo,
       Estado: usuario.Estado,
-      Roles: [...(usuario.Roles ?? [])],
+      Roles: [...usuario.Roles],
       FotoPerfilUrl: usuario.FotoPerfilUrl,
       FotoBannerUrl: usuario.FotoBannerUrl,
       FotoPerfilPosicion: usuario.FotoPerfilPosicion,
@@ -322,15 +276,14 @@ export class UsuariosService {
     return `${Math.round(cx)}% ${Math.round(cy)}%`;
   }
 
-  private async validarPasswordActual(
+  private validarPasswordActualLocal(
     passwordGuardada: string,
     passwordActual?: string | null,
-  ): Promise<void> {
+  ): void {
     if (!passwordActual?.trim()) {
       throw new Error('Debe ingresar su contraseña actual.');
     }
-    const coincide = await verificarContrasena(passwordActual, passwordGuardada);
-    if (!coincide) {
+    if (passwordGuardada !== passwordActual) {
       throw new Error('La contraseña anterior no es correcta.');
     }
   }
