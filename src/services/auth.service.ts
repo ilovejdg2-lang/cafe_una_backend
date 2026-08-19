@@ -1,19 +1,20 @@
 import { Injectable } from '@nestjs/common';
-import { randomUUID } from 'crypto';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailService } from '../common/email.service';
+import {
+  TOKEN_LIFETIME_MS,
+  generarCodigoNumerico,
+  generarCodigoRecuperacion,
+  mensajeEsperaCorreo,
+  mensajeEsperaCorreoPorMinutos,
+} from '../common/verificacion-correo.util';
 import { UsuarioValidacion } from '../common/usuario-validacion';
 import { PasswordResetEntry } from '../entities/password-reset-entry.entity';
 import { RegistroPendiente } from '../entities/registro-pendiente.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { verificarContrasena } from '../common/password.util';
 import { UsuariosService } from './usuarios.service';
-
-const TOKEN_LIFETIME_MS = 30 * 60 * 1000;
-const EMAIL_COOLDOWN_MS = 3 * 60 * 1000;
-const MENSAJE_ESPERA_CORREO =
-  'No se puede mandar un correo seguido. Espera 3 minutos.';
 
 @Injectable()
 export class AuthService {
@@ -77,7 +78,7 @@ export class AuthService {
       if (pendienteActivo.Nombre.toLowerCase() !== nombre.toLowerCase()) {
         throw new Error('Ese correo ya tiene un registro en proceso.');
       }
-      const mensajeEspera = this.obtenerMensajeEsperaCorreo(pendienteActivo.ExpiraEnUtc);
+      const mensajeEspera = mensajeEsperaCorreo(pendienteActivo.ExpiraEnUtc);
       if (mensajeEspera) {
         return { EmailEnviado: false, MensajeError: mensajeEspera };
       }
@@ -92,7 +93,7 @@ export class AuthService {
       )
       .execute();
 
-    const token = this.generarCodigoGuid();
+    const token = generarCodigoRecuperacion();
     await this.registrosRepo.save(
       this.registrosRepo.create({
         Token: token,
@@ -190,7 +191,7 @@ export class AuthService {
       .getOne();
 
     if (recuperacionActiva) {
-      const mensajeEspera = this.obtenerMensajeEsperaCorreo(
+      const mensajeEspera = mensajeEsperaCorreo(
         recuperacionActiva.ExpiraEnUtc,
       );
       if (mensajeEspera) {
@@ -211,7 +212,7 @@ export class AuthService {
       )
       .execute();
 
-    const token = this.generarCodigoGuid();
+    const token = generarCodigoRecuperacion();
     await this.passwordResetRepo.save(
       this.passwordResetRepo.create({
         Token: token,
@@ -258,15 +259,5 @@ export class AuthService {
     entry.Usado = true;
     await this.passwordResetRepo.save(entry);
     return true;
-  }
-
-  private generarCodigoGuid(): string {
-    return randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
-  }
-
-  private obtenerMensajeEsperaCorreo(expiraEnUtc: Date): string | null {
-    const enviadoEn = new Date(expiraEnUtc.getTime() - TOKEN_LIFETIME_MS);
-    const transcurrido = Date.now() - enviadoEn.getTime();
-    return transcurrido >= EMAIL_COOLDOWN_MS ? null : MENSAJE_ESPERA_CORREO;
   }
 }

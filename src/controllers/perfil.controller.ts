@@ -11,11 +11,13 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { PermisosGuard } from '../guards/permisos.guard';
+import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { PerfilService } from '../services/perfil.service';
 import { UsuariosService } from '../services/usuarios.service';
 
 @Controller('perfil')
-@UseGuards(JwtAuthGuard)
+@UseGuards(JwtAuthGuard, PermisosGuard)
 export class PerfilController {
   constructor(
     private readonly usuariosService: UsuariosService,
@@ -23,6 +25,7 @@ export class PerfilController {
   ) {}
 
   @Get()
+  @RequierePermiso('ver_perfil_propio')
   async obtenerPerfil(@Req() req: Request & { user: { userId: number } }) {
     const perfil = await this.usuariosService.obtenerPerfil(req.user.userId);
     if (!perfil) throw new NotFoundException();
@@ -30,6 +33,7 @@ export class PerfilController {
   }
 
   @Put()
+  @RequierePermiso('actualizar_perfil_propio')
   async actualizarPerfil(
     @Req() req: Request & { user: { userId: number } },
     @Body()
@@ -57,6 +61,7 @@ export class PerfilController {
   }
 
   @Post('solicitar-cambio-correo')
+  @RequierePermiso('actualizar_perfil_propio')
   async solicitarCambioCorreo(
     @Req() req: Request & { user: { userId: number } },
     @Body() request: { NuevoCorreo: string; PasswordActual: string },
@@ -86,6 +91,7 @@ export class PerfilController {
   }
 
   @Put('confirmar-cambio-correo')
+  @RequierePermiso('actualizar_perfil_propio')
   async confirmarCambioCorreo(
     @Req() req: Request & { user: { userId: number } },
     @Body() request: { NuevoCorreo: string; Token: string },
@@ -104,6 +110,7 @@ export class PerfilController {
   }
 
   @Put('password')
+  @RequierePermiso('cambiar_contrasena_propia')
   async cambiarPassword(
     @Req() req: Request & { user: { userId: number } },
     @Body() request: { PasswordActual: string; PasswordNueva: string },

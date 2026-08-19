@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { tienePermiso } from '../common/permisos';
 import { Usuario } from '../entities/usuario.entity';
+import { verificarContrasena } from '../common/password.util';
 import { UsuarioValidacion, copiarUsuario } from '../common/usuario-validacion';
 
 export interface UsuarioPerfilResponse {
@@ -97,10 +99,15 @@ export class UsuariosService {
     const actual = await this.repo.findOne({ where: { Id: id } });
     if (!actual) return null;
 
-    const puedeCambiarPassword = actorId != null && actorId === id;
-    const actorEsSuperAdmin = actorRoles?.some(
-      (r) => r.trim().toLowerCase() === 'superadmin',
-    );
+    const puedeEditarOtros = tienePermiso(actorRoles, 'editar_usuarios');
+    const puedeAsignarRoles = tienePermiso(actorRoles, 'asignar_roles');
+    const puedeInactivar = tienePermiso(actorRoles, 'inactivar_usuarios');
+    const esMismoUsuario = actorId != null && actorId === id;
+    if (!esMismoUsuario && !puedeEditarOtros) {
+      throw new Error('No tiene permiso para editar a este usuario.');
+    }
+
+    const puedeCambiarPassword = esMismoUsuario;
     const correoSolicitado = cambios.Correo?.trim()
       ? cambios.Correo.trim().toLowerCase()
       : actual.Correo;
@@ -121,15 +128,15 @@ export class UsuariosService {
       if (!puedeCambiarPassword) {
         throw new Error('Solo puede cambiar su propia contraseña.');
       }
-      this.validarPasswordActualLocal(actual.PasswordHash, passwordActual);
+      await this.validarPasswordActualLocal(actual.PasswordHash, passwordActual);
       UsuarioValidacion.validarPassword(cambios.PasswordHash);
       actual.PasswordHash = cambios.PasswordHash;
     }
 
-    if (actorEsSuperAdmin && cambios.Estado?.trim()) {
+    if (puedeInactivar && cambios.Estado?.trim()) {
       actual.Estado = cambios.Estado;
     }
-    if (actorEsSuperAdmin && cambios.Roles && cambios.Roles.length > 0) {
+    if (puedeAsignarRoles && cambios.Roles && cambios.Roles.length > 0) {
       actual.Roles = [...cambios.Roles];
     }
 
@@ -194,7 +201,7 @@ export class UsuariosService {
     const actual = await this.repo.findOne({ where: { Id: id } });
     if (!actual) return false;
 
-    this.validarPasswordActualLocal(actual.PasswordHash, passwordActual);
+    await this.validarPasswordActualLocal(actual.PasswordHash, passwordActual);
     actual.PasswordHash = passwordNueva;
     await this.repo.save(actual);
     return true;
@@ -209,11 +216,8 @@ export class UsuariosService {
     const actual = await this.repo.findOne({ where: { Id: id } });
     if (!actual) return null;
 
-    const esSuperAdmin = actorRoles?.some(
-      (r) => r.trim().toLowerCase() === 'superadmin',
-    );
-    if (!esSuperAdmin) {
-      throw new Error('Solo un SuperAdmin puede inactivar o activar usuarios.');
+    if (!tienePermiso(actorRoles, 'inactivar_usuarios')) {
+      throw new Error('No tiene permiso para inactivar o activar usuarios.');
     }
     if (actorId != null && actorId === id) {
       throw new Error('No puedes cambiar tu propio estado.');
@@ -276,14 +280,15 @@ export class UsuariosService {
     return `${Math.round(cx)}% ${Math.round(cy)}%`;
   }
 
-  private validarPasswordActualLocal(
+  private async validarPasswordActualLocal(
     passwordGuardada: string,
     passwordActual?: string | null,
-  ): void {
+  ): Promise<void> {
     if (!passwordActual?.trim()) {
       throw new Error('Debe ingresar su contraseña actual.');
     }
-    if (passwordGuardada !== passwordActual) {
+    const coincide = await verificarContrasena(passwordActual, passwordGuardada);
+    if (!coincide) {
       throw new Error('La contraseña anterior no es correcta.');
     }
   }

@@ -8,8 +8,11 @@ import {
   Param,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
-import { esSuperAdmin } from '../common/usuario-validacion';
+import { RequierePermiso } from '../common/requiere-permiso.decorator';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { PermisosGuard } from '../guards/permisos.guard';
 import { ProductosService } from '../services/productos.service';
 
 @Controller('productos')
@@ -22,6 +25,8 @@ export class ProductosController {
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('crear_productos')
   async crearProducto(
     @Body()
     request: {
@@ -45,6 +50,12 @@ export class ProductosController {
   }
 
   @Put(':id')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso(
+    'actualizar_productos',
+    'actualizar_stock_productos',
+    'inactivar_productos',
+  )
   async actualizarProducto(
     @Param('id') id: string,
     @Body()
@@ -73,6 +84,8 @@ export class ProductosController {
   }
 
   @Post('ajustar-stock')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('comprar_productos', 'actualizar_stock_productos')
   async ajustarStock(
     @Body() items: { Id: number | string; Units: number }[],
   ) {
@@ -86,15 +99,9 @@ export class ProductosController {
   }
 
   @Delete(':id')
-  async eliminarProducto(
-    @Param('id') id: string,
-    @Body() request?: { ActorRoles?: string[] },
-  ) {
-    if (!esSuperAdmin(request?.ActorRoles)) {
-      throw new BadRequestException({
-        message: 'Solo SuperAdmin puede eliminar productos.',
-      });
-    }
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('inactivar_productos')
+  async eliminarProducto(@Param('id') id: string) {
     const deleted = await this.productosService.eliminar(id);
     if (!deleted) throw new NotFoundException();
   }

@@ -2,15 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailService } from '../common/email.service';
+import {
+  TOKEN_LIFETIME_MS,
+  generarCodigoNumerico,
+  mensajeEsperaCorreoPorMinutos,
+} from '../common/verificacion-correo.util';
 import { UsuarioValidacion } from '../common/usuario-validacion';
 import { CambioCorreoPendiente } from '../entities/cambio-correo-pendiente.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { UsuariosService, UsuarioPerfilResponse } from './usuarios.service';
-
-const TOKEN_LIFETIME_MS = 30 * 60 * 1000;
-const EMAIL_COOLDOWN_MINUTES = 3;
-const MENSAJE_ESPERA_CORREO =
-  'No se puede mandar un correo seguido. Espera 3 minutos.';
 
 @Injectable()
 export class PerfilService {
@@ -34,7 +34,7 @@ export class PerfilService {
     const usuario = await this.usuariosRepo.findOne({ where: { Id: usuarioId } });
     if (!usuario) throw new Error('Usuario no encontrado.');
 
-    UsuarioValidacion.validarPasswordActual(usuario.PasswordHash, passwordActual);
+    await UsuarioValidacion.validarPasswordActual(usuario.PasswordHash, passwordActual);
 
     if (usuario.Correo.toLowerCase() === correo) {
       throw new Error('Ese ya es su correo actual.');
@@ -54,7 +54,7 @@ export class PerfilService {
       .getOne();
 
     if (pendienteActivo) {
-      const mensajeEspera = this.obtenerMensajeEsperaCorreo(pendienteActivo.ExpiraEnUtc);
+      const mensajeEspera = mensajeEsperaCorreoPorMinutos(pendienteActivo.ExpiraEnUtc);
       if (mensajeEspera) {
         return { EmailEnviado: false, MensajeError: mensajeEspera };
       }
@@ -69,7 +69,7 @@ export class PerfilService {
       )
       .execute();
 
-    const token = this.generarCodigo();
+    const token = generarCodigoNumerico();
     await this.cambiosRepo.save(
       this.cambiosRepo.create({
         UsuarioId: usuarioId,
@@ -125,19 +125,5 @@ export class PerfilService {
     const perfil = await this.usuariosService.obtenerPerfil(usuarioId);
     if (!perfil) throw new Error('No se pudo actualizar el perfil.');
     return perfil;
-  }
-
-  private generarCodigo(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  private obtenerMensajeEsperaCorreo(expiraEnUtc: Date): string | null {
-    const segundosRestantes = Math.ceil(
-      (expiraEnUtc.getTime() - Date.now()) / 1000,
-    );
-    if (segundosRestantes <= 0) return null;
-    const minutosRestantes = Math.ceil(segundosRestantes / 60);
-    if (minutosRestantes >= EMAIL_COOLDOWN_MINUTES) return null;
-    return `${MENSAJE_ESPERA_CORREO} Faltan ${minutosRestantes} min.`;
   }
 }

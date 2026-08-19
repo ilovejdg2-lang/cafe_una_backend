@@ -1,11 +1,15 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuditoriaContextInterceptor } from './common/auditoria-context.interceptor';
 import { construirConfigMysql } from './config/mysql.config';
 import { HealthController } from './controllers/health.controller';
 import { AuthModule } from './modules/auth.module';
+import { AuditoriaModule } from './modules/auditoria.module';
 import { CedulaModule } from './modules/cedula.module';
 import { DatabaseModule } from './modules/database.module';
+import { EmailModule } from './modules/email.module';
 import { InformacionModule } from './modules/informacion.module';
 import { PerfilModule } from './modules/perfil.module';
 import { ProductosModule } from './modules/productos.module';
@@ -20,6 +24,7 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
       inject: [ConfigService],
       useFactory: (config: ConfigService) => construirConfigMysql(config),
     }),
+    EmailModule,
     DatabaseModule,
     UsuariosModule,
     forwardRef(() => PerfilModule),
@@ -28,7 +33,14 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     InformacionModule,
     VoluntariadoModule,
     CedulaModule,
+    AuditoriaModule,
   ],
   controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditoriaContextInterceptor,
+    },
+  ],
 })
 export class AppModule {}
