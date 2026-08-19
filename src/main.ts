@@ -3,6 +3,8 @@ import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { CamelCaseInterceptor } from './common/camel-case.interceptor';
+import { HttpExceptionFilter } from './common/http-exception.filter';
+import { PascalBodyInterceptor } from './common/pascal-body.interceptor';
 
 function origenesPermitidos(): string[] {
   const desdeEnv = process.env.CORS_ORIGINS?.split(',')
@@ -29,7 +31,11 @@ async function bootstrap() {
     allowedHeaders: ['Content-Type', 'Authorization'],
   });
 
-  app.useGlobalInterceptors(new CamelCaseInterceptor());
+  app.useGlobalInterceptors(
+    new PascalBodyInterceptor(),
+    new CamelCaseInterceptor(),
+  );
+  app.useGlobalFilters(new HttpExceptionFilter());
   app.useGlobalPipes(
     new ValidationPipe({
       transform: true,

@@ -36,7 +36,6 @@ function toCamelCaseDeep(value: unknown): unknown {
   return value;
 }
 
-/** Igual que ASP.NET Core: respuestas JSON en camelCase para el frontend React. */
 @Injectable()
 export class CamelCaseInterceptor implements NestInterceptor {
   intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {

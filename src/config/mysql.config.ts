@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
 import { TypeOrmModuleOptions } from '@nestjs/typeorm';
+import { AuditoriaSubscriber } from '../common/auditoria.subscriber';
 import { entities } from '../entities';
 
 export function construirConfigMysql(
@@ -23,10 +24,12 @@ export function construirConfigMysql(
     password,
     database: config.get<string>('MYSQL_DB') ?? 'cafe_una',
     entities,
-    synchronize: config.get<string>('MYSQL_SYNCHRONIZE') === 'true',
+    subscribers: [AuditoriaSubscriber],
+    synchronize: false,
     charset: 'utf8mb4',
     timezone: 'Z',
     extra: {
+      charset: 'UTF8MB4_UNICODE_CI',
       connectionLimit: 10,
       connectTimeout: 10_000,
     },

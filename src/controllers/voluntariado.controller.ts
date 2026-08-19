@@ -8,8 +8,11 @@ import {
   Param,
   Post,
   Put,
+  UseGuards,
 } from '@nestjs/common';
-import { esSuperAdmin } from '../common/usuario-validacion';
+import { RequierePermiso } from '../common/requiere-permiso.decorator';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { PermisosGuard } from '../guards/permisos.guard';
 import { VoluntariadoService } from '../services/voluntariado.service';
 
 @Controller('voluntariado/solicitudes')
@@ -17,16 +20,22 @@ export class VoluntariadoController {
   constructor(private readonly voluntariadoService: VoluntariadoService) {}
 
   @Get()
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ver_solicitudes_voluntariado')
   obtenerSolicitudes() {
     return this.voluntariadoService.obtenerSolicitudes();
   }
 
   @Get('usuario/:userId')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ingresar_solicitud_voluntariado', 'ver_solicitudes_voluntariado')
   obtenerSolicitudesDeUsuario(@Param('userId') userId: string) {
     return this.voluntariadoService.obtenerSolicitudesDeUsuario(userId);
   }
 
   @Post()
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ingresar_solicitud_voluntariado')
   async crearSolicitud(@Body() request: Record<string, unknown>) {
     try {
       return await this.voluntariadoService.crear(request as never);
@@ -38,6 +47,11 @@ export class VoluntariadoController {
   }
 
   @Put(':id')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso(
+    'administrar_solicitudes_voluntariado',
+    'actualizar_solicitud_voluntariado',
+  )
   async actualizarSolicitud(
     @Param('id') id: string,
     @Body() cambios: Record<string, unknown>,
@@ -48,15 +62,9 @@ export class VoluntariadoController {
   }
 
   @Delete(':id')
-  async eliminarSolicitud(
-    @Param('id') id: string,
-    @Body() request?: { ActorRoles?: string[] },
-  ) {
-    if (!esSuperAdmin(request?.ActorRoles)) {
-      throw new BadRequestException({
-        message: 'Solo SuperAdmin puede eliminar solicitudes de voluntariado.',
-      });
-    }
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('inactivar_voluntariado')
+  async eliminarSolicitud(@Param('id') id: string) {
     const deleted = await this.voluntariadoService.eliminar(id);
     if (!deleted) throw new NotFoundException();
   }

@@ -1,5 +1,8 @@
+import { Usuario } from '../entities/usuario.entity';
+import { verificarContrasena } from './password.util';
+
 export const MAX_NOMBRE_LENGTH = 20;
-export const MAX_PASSWORD_LENGTH = 15;
+export const MAX_PASSWORD_LENGTH = 64;
 export const MIN_PASSWORD_LENGTH = 6;
 
 export class UsuarioValidacion {
@@ -33,28 +36,19 @@ export class UsuarioValidacion {
     }
   }
 
-  static validarPasswordActual(
+  static async validarPasswordActual(
     passwordGuardada: string,
     passwordActual?: string | null,
-  ): void {
+  ): Promise<void> {
     if (!passwordActual?.trim()) {
       throw new Error('Debe ingresar la contraseña de la cuenta.');
     }
-    if (passwordGuardada !== passwordActual) {
+    const coincide = await verificarContrasena(passwordActual, passwordGuardada);
+    if (!coincide) {
       throw new Error('La contraseña no es correcta.');
     }
   }
 }
-
-export function esSuperAdmin(roles?: string[] | null): boolean {
-  return (
-    roles?.some(
-      (r) => (r ?? '').trim().toLowerCase() === 'superadmin',
-    ) ?? false
-  );
-}
-
-import { Usuario } from '../entities/usuario.entity';
 
 export function copiarUsuario(usuario: Usuario): Usuario {
   return {

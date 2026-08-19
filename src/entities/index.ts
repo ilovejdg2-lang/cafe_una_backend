@@ -1,3 +1,4 @@
+import { Auditoria } from './auditoria.entity';
 import { CambioCorreoPendiente } from './cambio-correo-pendiente.entity';
 import { EnlaceSitio } from './enlace-sitio.entity';
 import { GaleriaInstitucionalItem } from './galeria-institucional-item.entity';
@@ -28,6 +29,7 @@ export const entities = [
   RegistroPendiente,
   CambioCorreoPendiente,
   UsuarioCreacionPendiente,
+  Auditoria,
 ];
 
 export * from './usuario.entity';
@@ -44,3 +46,4 @@ export * from './password-reset-entry.entity';
 export * from './registro-pendiente.entity';
 export * from './cambio-correo-pendiente.entity';
 export * from './usuario-creacion-pendiente.entity';
+export * from './auditoria.entity';

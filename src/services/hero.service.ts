@@ -34,7 +34,6 @@ export class HeroService {
     let hero = await this.repo.findOne({ where: { Id: this.singletonId } });
     if (!hero) {
       hero = this.repo.create({ Id: this.singletonId });
-      this.repo.merge(hero, {});
     }
 
     if (cambios.Eyebrow != null) hero.Eyebrow = cambios.Eyebrow.trim();

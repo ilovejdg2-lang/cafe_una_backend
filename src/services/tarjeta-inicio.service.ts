@@ -39,7 +39,6 @@ export class TarjetaInicioService {
       let actual = await this.repo.findOne({ where: { Clave: clave } });
       if (!actual) {
         actual = this.repo.create({ Clave: clave, Orden: ORDEN_POR_CLAVE[clave] });
-        this.repo.merge(actual, {});
       }
 
       if (item.Etiqueta?.trim()) actual.Etiqueta = item.Etiqueta.trim();

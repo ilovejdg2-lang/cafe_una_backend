@@ -15,6 +15,7 @@ import { InformacionFooterService } from '../services/informacion-footer.service
 import { InformacionNavbarService } from '../services/informacion-navbar.service';
 import { TarjetaInicioService } from '../services/tarjeta-inicio.service';
 import { TextoInstitucionalService } from '../services/texto-institucional.service';
+import { AuthModule } from './auth.module';
 
 @Module({
   imports: [
@@ -27,6 +28,7 @@ import { TextoInstitucionalService } from '../services/texto-institucional.servi
       EnlaceSitio,
       TarjetaInicio,
     ]),
+    AuthModule,
   ],
   controllers: [InformacionController],
   providers: [

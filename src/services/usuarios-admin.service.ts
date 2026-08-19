@@ -2,15 +2,15 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailService } from '../common/email.service';
+import {
+  TOKEN_LIFETIME_MS,
+  generarCodigoNumerico,
+  mensajeEsperaCorreoPorMinutos,
+} from '../common/verificacion-correo.util';
 import { UsuarioValidacion } from '../common/usuario-validacion';
 import { UsuarioCreacionPendiente } from '../entities/usuario-creacion-pendiente.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { UsuariosService } from './usuarios.service';
-
-const TOKEN_LIFETIME_MS = 30 * 60 * 1000;
-const EMAIL_COOLDOWN_MINUTES = 3;
-const MENSAJE_ESPERA_CORREO =
-  'No se puede mandar un correo seguido. Espera 3 minutos.';
 
 @Injectable()
 export class UsuariosAdminService {
@@ -62,7 +62,7 @@ export class UsuariosAdminService {
       if (pendienteActivo.Nombre.toLowerCase() !== nombre.toLowerCase()) {
         throw new Error('Ese correo ya tiene una creación en proceso.');
       }
-      const mensajeEspera = this.obtenerMensajeEsperaCorreo(pendienteActivo.ExpiraEnUtc);
+      const mensajeEspera = mensajeEsperaCorreoPorMinutos(pendienteActivo.ExpiraEnUtc);
       if (mensajeEspera) {
         return { EmailEnviado: false, MensajeError: mensajeEspera };
       }
@@ -77,7 +77,7 @@ export class UsuariosAdminService {
       )
       .execute();
 
-    const token = this.generarCodigo();
+    const token = generarCodigoNumerico();
     await this.pendientesRepo.save(
       this.pendientesRepo.create({
         Token: token,
@@ -135,19 +135,5 @@ export class UsuariosAdminService {
       PasswordHash: entry.PasswordHash,
       Roles: entry.Roles,
     });
-  }
-
-  private generarCodigo(): string {
-    return Math.floor(100000 + Math.random() * 900000).toString();
-  }
-
-  private obtenerMensajeEsperaCorreo(expiraEnUtc: Date): string | null {
-    const segundosRestantes = Math.ceil(
-      (expiraEnUtc.getTime() - Date.now()) / 1000,
-    );
-    if (segundosRestantes <= 0) return null;
-    const minutosRestantes = Math.ceil(segundosRestantes / 60);
-    if (minutosRestantes >= EMAIL_COOLDOWN_MINUTES) return null;
-    return `${MENSAJE_ESPERA_CORREO} Faltan ${minutosRestantes} min.`;
   }
 }
