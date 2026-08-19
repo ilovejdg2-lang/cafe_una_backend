@@ -10,6 +10,9 @@
 .env.local
 .env.*.local
 
+# contraseñas del seed local (no subir)
+src/services/usuarios-seed.local.ts
+
 # logs
 logs
 *.log

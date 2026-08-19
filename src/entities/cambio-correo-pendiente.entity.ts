@@ -14,7 +14,7 @@ export class CambioCorreoPendiente {
   @Column({ name: 'Token', length: 20 })
   Token: string;
 
-  @Column({ name: 'ExpiraEnUtc', type: 'timestamptz' })
+  @Column({ name: 'ExpiraEnUtc', type: 'datetime' })
   ExpiraEnUtc: Date;
 
   @Column({ name: 'Usado', default: false })

@@ -17,13 +17,13 @@ export class Usuario {
   @Column({ name: 'Estado', length: 20, default: 'activo' })
   Estado: string;
 
-  @Column('text', { name: 'Roles', array: true })
+  @Column({ name: 'Roles', type: 'simple-json' })
   Roles: string[];
 
-  @Column({ name: 'FotoPerfilUrl', type: 'varchar', length: 1000, nullable: true })
+  @Column({ name: 'FotoPerfilUrl', type: 'varchar', length: 2000, nullable: true })
   FotoPerfilUrl: string | null;
 
-  @Column({ name: 'FotoBannerUrl', type: 'varchar', length: 1000, nullable: true })
+  @Column({ name: 'FotoBannerUrl', type: 'varchar', length: 2000, nullable: true })
   FotoBannerUrl: string | null;
 
   @Column({ name: 'FotoPerfilPosicion', type: 'varchar', length: 30, nullable: true })

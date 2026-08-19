@@ -10,16 +10,6 @@ export function pickString(body: BodyRecord, camel: string, pascal?: string): st
   return typeof value === 'string' ? value : '';
 }
 
-export function pickOptionalString(
-  body: BodyRecord,
-  camel: string,
-  pascal?: string,
-): string | undefined {
-  const value = pickString(body, camel, pascal);
-  return value || undefined;
-}
-
-/** Acepta camelCase del frontend React o PascalCase del backend .NET. */
 export function normalizeAuthBody(body: BodyRecord) {
   return {
     identifier: pickString(body, 'identifier', 'Identifier'),

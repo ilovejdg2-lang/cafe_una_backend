@@ -17,7 +17,7 @@ export class RegistroPendiente {
   @Column({ name: 'PasswordHash', length: 500 })
   PasswordHash: string;
 
-  @Column({ name: 'ExpiraEnUtc', type: 'timestamptz' })
+  @Column({ name: 'ExpiraEnUtc', type: 'datetime' })
   ExpiraEnUtc: Date;
 
   @Column({ name: 'Usado', default: false })
