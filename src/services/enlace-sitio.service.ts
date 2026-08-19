@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { seccionFrontADb } from '../common/cms-claves';
 import { EnlaceSitio } from '../entities/enlace-sitio.entity';
 
 @Injectable()
@@ -15,7 +14,7 @@ export class EnlaceSitioService {
     const qb = this.repo.createQueryBuilder('e');
     if (seccion?.trim()) {
       qb.where('LOWER(e.Seccion) = LOWER(:seccion)', {
-        seccion: seccionFrontADb(seccion.trim()),
+        seccion: seccion.trim(),
       });
     }
     return qb.orderBy('e.Orden', 'ASC').addOrderBy('e.Id', 'ASC').getMany();

@@ -1,12 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import {
-  claveTextoADb,
-  claveTextoAFront,
-  esClaveTextoValida,
-} from '../common/cms-claves';
 import { TextoInstitucional } from '../entities/texto-institucional.entity';
+
+const CLAVES_VALIDAS = new Set([
+  'historia',
+  'mission',
+  'vision',
+  'homeSpotlight',
+  'homeFeatured',
+  'homeIniciativas',
+  'homeLocation',
+]);
 
 @Injectable()
 export class TextoInstitucionalService {
@@ -16,16 +21,15 @@ export class TextoInstitucionalService {
   ) {}
 
   esClaveValida(clave: string): boolean {
-    return esClaveTextoValida(clave);
+    return CLAVES_VALIDAS.has(clave);
   }
 
   async obtener(clave: string): Promise<TextoInstitucional | null> {
     if (!this.esClaveValida(clave)) return null;
     const texto = await this.repo.findOne({
-      where: { Clave: claveTextoADb(clave) },
+      where: { Clave: clave.toLowerCase() },
     });
-    if (!texto) return null;
-    return { ...texto, Clave: claveTextoAFront(texto.Clave) };
+    return texto ? { ...texto } : null;
   }
 
   async actualizar(
@@ -41,10 +45,10 @@ export class TextoInstitucionalService {
   ): Promise<TextoInstitucional | null> {
     if (!this.esClaveValida(clave)) return null;
 
-    const claveDb = claveTextoADb(clave);
-    let actual = await this.repo.findOne({ where: { Clave: claveDb } });
+    const claveNormalizada = clave.toLowerCase();
+    let actual = await this.repo.findOne({ where: { Clave: claveNormalizada } });
     if (!actual) {
-      actual = this.repo.create({ Clave: claveDb, Description: '' });
+      actual = this.repo.create({ Clave: claveNormalizada });
     }
 
     if (cambios.Title?.trim()) actual.Title = cambios.Title.trim();
@@ -63,6 +67,6 @@ export class TextoInstitucionalService {
     }
 
     const saved = await this.repo.save(actual);
-    return { ...saved, Clave: claveTextoAFront(saved.Clave) };
+    return { ...saved };
   }
 }
