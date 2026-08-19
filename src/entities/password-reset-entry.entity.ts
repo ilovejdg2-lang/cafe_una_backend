@@ -11,7 +11,7 @@ export class PasswordResetEntry {
   @Column({ name: 'Correo', length: 200 })
   Correo: string;
 
-  @Column({ name: 'ExpiraEnUtc', type: 'timestamptz' })
+  @Column({ name: 'ExpiraEnUtc', type: 'datetime' })
   ExpiraEnUtc: Date;
 
   @Column({ name: 'Usado', default: false })

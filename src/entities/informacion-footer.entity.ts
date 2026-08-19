@@ -26,7 +26,7 @@ export class InformacionFooter {
   @Column({ name: 'InstagramUrl', length: 500, default: '' })
   InstagramUrl: string;
 
-  @Column({ name: 'MapsUrl', length: 500, default: '' })
+  @Column({ name: 'MapsUrl', length: 2000, default: '' })
   MapsUrl: string;
 
   @Column({ name: 'TextoCopyright', length: 500, default: '' })

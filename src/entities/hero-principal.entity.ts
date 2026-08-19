@@ -26,6 +26,6 @@ export class HeroPrincipal {
   @Column({ name: 'ButtonUrl', length: 500, default: '' })
   ButtonUrl: string;
 
-  @Column({ name: 'BackgroundImage', length: 1000, default: '' })
+  @Column({ name: 'BackgroundImage', length: 2000, default: '' })
   BackgroundImage: string;
 }

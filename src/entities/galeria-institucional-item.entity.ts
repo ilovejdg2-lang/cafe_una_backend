@@ -8,7 +8,7 @@ export class GaleriaInstitucionalItem {
   @Column({ name: 'Title', length: 500 })
   Title: string;
 
-  @Column({ name: 'Image', length: 1000 })
+  @Column({ name: 'Image', length: 2000 })
   Image: string;
 
   @Column({ name: 'Orden', type: 'int' })

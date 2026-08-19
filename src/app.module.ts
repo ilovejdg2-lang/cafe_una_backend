@@ -1,35 +1,46 @@
-import { Module, forwardRef } from '@nestjs/common';
-import { ConfigModule, ConfigService } from '@nestjs/config';
-import { TypeOrmModule } from '@nestjs/typeorm';
-import { AuthModule } from './auth/auth.module';
-import { buildSupabaseTypeOrmConfig } from './config/supabase.config';
-import { CedulaModule } from './cedula/cedula.module';
-import { DatabaseModule } from './database/database.module';
-import { HealthController } from './health.controller';
-import { InformacionModule } from './informacion/informacion.module';
-import { PerfilModule } from './perfil/perfil.module';
-import { ProductosModule } from './productos/productos.module';
-import { UsuariosModule } from './usuarios/usuarios.module';
-import { VoluntariadoModule } from './voluntariado/voluntariado.module';
-
-@Module({
-  imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
-    TypeOrmModule.forRootAsync({
-      imports: [ConfigModule],
-      inject: [ConfigService],
-      useFactory: (config: ConfigService) => buildSupabaseTypeOrmConfig(config),
-    }),
-    DatabaseModule,
-    UsuariosModule,
-    forwardRef(() => PerfilModule),
-    AuthModule,
-    ProductosModule,
-    InformacionModule,
-    VoluntariadoModule,
-    CedulaModule,
-  ],
-  controllers: [HealthController],
-})
-export class AppModule {}
-
+import { Module, forwardRef } from '@nestjs/common';
+import { APP_INTERCEPTOR } from '@nestjs/core';
+import { ConfigModule, ConfigService } from '@nestjs/config';
+import { TypeOrmModule } from '@nestjs/typeorm';
+import { AuditoriaContextInterceptor } from './common/auditoria-context.interceptor';
+import { construirConfigMysql } from './config/mysql.config';
+import { HealthController } from './controllers/health.controller';
+import { AuthModule } from './modules/auth.module';
+import { AuditoriaModule } from './modules/auditoria.module';
+import { CedulaModule } from './modules/cedula.module';
+import { DatabaseModule } from './modules/database.module';
+import { EmailModule } from './modules/email.module';
+import { InformacionModule } from './modules/informacion.module';
+import { PerfilModule } from './modules/perfil.module';
+import { ProductosModule } from './modules/productos.module';
+import { UsuariosModule } from './modules/usuarios.module';
+import { VoluntariadoModule } from './modules/voluntariado.module';
+
+@Module({
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    TypeOrmModule.forRootAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => construirConfigMysql(config),
+    }),
+    EmailModule,
+    DatabaseModule,
+    UsuariosModule,
+    forwardRef(() => PerfilModule),
+    AuthModule,
+    ProductosModule,
+    InformacionModule,
+    VoluntariadoModule,
+    CedulaModule,
+    AuditoriaModule,
+  ],
+  controllers: [HealthController],
+  providers: [
+    {
+      provide: APP_INTERCEPTOR,
+      useClass: AuditoriaContextInterceptor,
+    },
+  ],
+})
+export class AppModule {}

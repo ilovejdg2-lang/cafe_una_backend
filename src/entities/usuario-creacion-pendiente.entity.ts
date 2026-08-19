@@ -17,10 +17,10 @@ export class UsuarioCreacionPendiente {
   @Column({ name: 'PasswordHash', length: 500 })
   PasswordHash: string;
 
-  @Column('text', { name: 'Roles', array: true })
+  @Column({ name: 'Roles', type: 'simple-json' })
   Roles: string[];
 
-  @Column({ name: 'ExpiraEnUtc', type: 'timestamptz' })
+  @Column({ name: 'ExpiraEnUtc', type: 'datetime' })
   ExpiraEnUtc: Date;
 
   @Column({ name: 'Usado', default: false })
