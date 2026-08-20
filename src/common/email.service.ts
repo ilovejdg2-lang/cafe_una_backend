@@ -85,7 +85,7 @@ export class EmailService {
     const port = Number(this.config.get<string>('SMTP_PORT') ?? 587);
     const user = this.config.get<string>('SMTP_USER');
     const pass = this.config.get<string>('SMTP_PASS');
-    const fromName = this.config.get<string>('SMTP_FROM_NAME') ?? 'Cafe UNA';
+    const fromName = this.config.get<string>('SMTP_FROM_NAME') ?? 'Café UNA';
 
     try {
       const transporter = nodemailer.createTransport({

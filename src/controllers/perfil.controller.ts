@@ -13,6 +13,7 @@ import { Request } from 'express';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
+import { MENSAJE_CORREO_NO_ENVIADO } from '../common/respuesta-verificacion';
 import { PerfilService } from '../services/perfil.service';
 import { UsuariosService } from '../services/usuarios.service';
 
@@ -78,7 +79,7 @@ export class PerfilController {
       return {
         message: result.EmailEnviado
           ? 'Se envió un código de verificación al nuevo correo. Revise también la carpeta de spam.'
-          : 'Se generó el código, pero no se pudo enviar el correo. Intente de nuevo en unos minutos.',
+          : MENSAJE_CORREO_NO_ENVIADO,
         emailSent: result.EmailEnviado,
         requiresVerification: true,
       };
