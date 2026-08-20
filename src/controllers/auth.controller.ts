@@ -11,6 +11,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import { Request } from 'express';
 import { normalizeAuthBody } from '../common/body-fields';
+import { MENSAJE_CORREO_NO_ENVIADO } from '../common/respuesta-verificacion';
 import { generateToken } from '../common/token-generator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { AuthService } from '../services/auth.service';
@@ -80,7 +81,7 @@ export class AuthController {
       return {
         message: result.EmailEnviado
           ? 'Se envió el código de verificación al correo indicado. Revise también la carpeta de spam.'
-          : 'Se generó el código, pero no se pudo enviar el correo. Espere 3 minutos y use reenviar código, o contacte al administrador.',
+          : MENSAJE_CORREO_NO_ENVIADO,
         emailSent: result.EmailEnviado,
         requiresVerification: true,
       };
@@ -101,7 +102,7 @@ export class AuthController {
         Token: token,
       });
       return {
-        message: 'Cuenta creada correctamente. Ya puede iniciar sesion.',
+        message: 'Cuenta creada correctamente. Ya puede iniciar sesión.',
         id: usuario.Id,
         nombre: usuario.Nombre,
         correo: usuario.Correo,
@@ -135,8 +136,8 @@ export class AuthController {
       return {
         found: true,
         message: result.EmailEnviado
-          ? 'Se envio el codigo de recuperacion al correo registrado.'
-          : 'Se genero el codigo de recuperacion.',
+          ? 'Se envió el código de recuperación al correo registrado.'
+          : MENSAJE_CORREO_NO_ENVIADO,
         emailSent: result.EmailEnviado,
       };
     } catch (error) {
