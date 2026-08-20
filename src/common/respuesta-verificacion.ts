@@ -1,5 +1,8 @@
 import { BadRequestException } from '@nestjs/common';
 
+export const MENSAJE_CORREO_NO_ENVIADO =
+  'No se pudo enviar el correo. Revise que lo escribiera bien o trate de contactar a Café UNA.';
+
 export function respuestaVerificacion(
   emailEnviado: boolean,
   mensajeError?: string,
@@ -10,7 +13,7 @@ export function respuestaVerificacion(
   return {
     message: emailEnviado
       ? 'Se envió un código de verificación al correo indicado. Revise también la carpeta de spam.'
-      : 'Se generó el código, pero no se pudo enviar el correo. Intente de nuevo en unos minutos.',
+      : MENSAJE_CORREO_NO_ENVIADO,
     emailSent: emailEnviado,
     requiresVerification: true,
   };
