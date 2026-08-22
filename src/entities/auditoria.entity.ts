@@ -18,7 +18,7 @@ export class Auditoria {
   @Column({ name: 'Detalle', type: 'varchar', length: 500, default: '' })
   Detalle: string;
 
-  @Column({ name: 'Fecha', type: 'datetime' })
+  @Column({ name: 'Fecha', type: 'timestamptz' })
   Fecha: Date;
 
   @Column({ name: 'IdUsuario', type: 'int', nullable: true })

@@ -2,7 +2,7 @@ import { Controller, Get } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { InjectDataSource } from '@nestjs/typeorm';
 import { DataSource } from 'typeorm';
-import { resumenMysql } from '../config/mysql.config';
+import { resumenPostgres } from '../config/postgres.config';
 
 @Controller()
 export class HealthController {
@@ -13,24 +13,24 @@ export class HealthController {
 
   @Get('health')
   async health() {
-    const mysql = resumenMysql(this.config);
+    const postgres = resumenPostgres(this.config);
 
     try {
       await this.dataSource.query('SELECT 1');
       return {
         status: 'ok',
-        database: 'mysql',
+        database: 'postgres',
         connected: true,
-        host: mysql.host,
-        db: mysql.database,
+        host: postgres.host,
+        db: postgres.database,
       };
     } catch {
       return {
         status: 'degraded',
-        database: 'mysql',
+        database: 'postgres',
         connected: false,
-        host: mysql.host,
-        db: mysql.database,
+        host: postgres.host,
+        db: postgres.database,
       };
     }
   }
