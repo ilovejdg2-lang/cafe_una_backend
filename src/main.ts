@@ -6,12 +6,26 @@ import { CamelCaseInterceptor } from './common/camel-case.interceptor';
 import { HttpExceptionFilter } from './common/http-exception.filter';
 import { PascalBodyInterceptor } from './common/pascal-body.interceptor';
 
-function origenesPermitidos(): string[] {
-  const desdeEnv = process.env.CORS_ORIGINS?.split(',')
-    .map((origen) => origen.trim())
-    .filter(Boolean);
-  if (desdeEnv && desdeEnv.length > 0) return desdeEnv;
-  return ['http://localhost:5173', 'http://127.0.0.1:5173'];
+function origenPermitido(origen?: string): boolean {
+  if (!origen) return true;
+
+  const extra =
+    process.env.CORS_ORIGINS?.split(',')
+      .map((item) => item.trim())
+      .filter(Boolean) ?? [];
+  const fijos = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    ...extra,
+  ];
+  if (fijos.includes(origen)) return true;
+
+  try {
+    const host = new URL(origen).hostname;
+    return host === 'netlify.app' || host.endsWith('.netlify.app');
+  } catch {
+    return false;
+  }
 }
 
 async function bootstrap() {
@@ -25,7 +39,9 @@ async function bootstrap() {
     }),
   );
   app.enableCors({
-    origin: origenesPermitidos(),
+    origin: (origen, callback) => {
+      callback(null, origenPermitido(origen));
+    },
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
