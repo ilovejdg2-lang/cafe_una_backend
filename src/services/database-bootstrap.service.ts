@@ -1,7 +1,7 @@
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
-import { resumenMysql } from '../config/mysql.config';
+import { resumenPostgres } from '../config/postgres.config';
 
 @Injectable()
 export class DatabaseBootstrapService implements OnModuleInit {
@@ -13,16 +13,16 @@ export class DatabaseBootstrapService implements OnModuleInit {
   ) {}
 
   async onModuleInit(): Promise<void> {
-    const mysql = resumenMysql(this.config);
+    const postgres = resumenPostgres(this.config);
 
     try {
       await this.dataSource.query('SELECT 1');
       this.logger.log(
-        `Conexión a MySQL establecida (${mysql.host}/${mysql.database} como ${mysql.user}).`,
+        `Conexión a PostgreSQL establecida (${postgres.host}/${postgres.database} como ${postgres.user}).`,
       );
     } catch (error) {
       this.logger.error(
-        'No se pudo conectar a MySQL. Revise MYSQL_HOST, MYSQL_PORT y credenciales.',
+        'No se pudo conectar a Supabase. Revise SUPABASE_HOST, SUPABASE_PORT y credenciales.',
         error instanceof Error ? error.stack : String(error),
       );
     }
