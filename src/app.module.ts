@@ -3,7 +3,7 @@ import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditoriaContextInterceptor } from './common/auditoria-context.interceptor';
-import { construirConfigMysql } from './config/mysql.config';
+import { construirConfigPostgres } from './config/postgres.config';
 import { HealthController } from './controllers/health.controller';
 import { AuthModule } from './modules/auth.module';
 import { AuditoriaModule } from './modules/auditoria.module';
@@ -22,7 +22,7 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (config: ConfigService) => construirConfigMysql(config),
+      useFactory: (config: ConfigService) => construirConfigPostgres(config),
     }),
     EmailModule,
     DatabaseModule,

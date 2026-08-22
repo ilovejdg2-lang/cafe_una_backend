@@ -27,7 +27,10 @@ export class AuditoriaSubscriber implements EntitySubscriberInterface {
     const queryRunner = event.queryRunner;
     if (!queryRunner) return Promise.resolve();
     return queryRunner
-      .query('SET @auditoria_usuario_id = ?', [getAuditoriaUserId()])
+      .query('SELECT set_config($1, $2, true)', [
+        'app.auditoria_usuario_id',
+        String(getAuditoriaUserId() ?? ''),
+      ])
       .then(() => undefined);
   }
 }
