@@ -58,4 +58,12 @@ export class SolicitudVoluntariado {
 
   @Column({ name: 'Motivacion', type: 'varchar', length: 2000, nullable: true })
   Motivacion: string | null;
+
+  @Column({
+    name: 'ObservacionesAdmin',
+    type: 'varchar',
+    length: 2000,
+    nullable: true,
+  })
+  ObservacionesAdmin: string | null;
 }

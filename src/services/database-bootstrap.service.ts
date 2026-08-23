@@ -17,6 +17,10 @@ export class DatabaseBootstrapService implements OnModuleInit {
 
     try {
       await this.dataSource.query('SELECT 1');
+      await this.dataSource.query(`
+        ALTER TABLE solicitudes_voluntariado
+        ADD COLUMN IF NOT EXISTS "ObservacionesAdmin" varchar(2000) NULL;
+      `);
       this.logger.log(
         `Conexión a PostgreSQL establecida (${postgres.host}/${postgres.database} como ${postgres.user}).`,
       );

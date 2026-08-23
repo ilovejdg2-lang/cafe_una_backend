@@ -11,6 +11,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   Req,
   UseGuards,
 } from '@nestjs/common';
@@ -39,8 +40,18 @@ export class VoluntariadoController {
   @Get()
   @UseGuards(JwtAuthGuard, PermisosGuard)
   @RequierePermiso('ver_solicitudes_voluntariado')
-  obtenerSolicitudes() {
-    return this.voluntariadoService.obtenerSolicitudes();
+  obtenerSolicitudes(
+    @Query('nombre') nombre?: string,
+    @Query('tipo') tipo?: string,
+    @Query('estado') estado?: string,
+    @Query('fecha') fecha?: string,
+  ) {
+    return this.voluntariadoService.obtenerSolicitudes({
+      nombre,
+      tipo,
+      estado,
+      fecha,
+    });
   }
 
   /**
@@ -123,7 +134,17 @@ export class VoluntariadoController {
        * completar/modificar información adicional de la solicitud,
        * esos campos sí vienen desde el formulario.
        */
-      const nombre = String(req.user.unique_name ?? '').trim();
+      const nombreJwt = String(req.user.unique_name ?? '').trim();
+      const nombreFormulario = [
+        body.Nombre,
+        body.PrimerApellido,
+        body.SegundoApellido,
+      ]
+        .map((parte) => String(parte ?? '').trim())
+        .filter(Boolean)
+        .join(' ')
+        .trim();
+      const nombre = nombreFormulario || nombreJwt;
 
       const solicitud = await this.voluntariadoService.crear({
         UserId: userId,
@@ -257,6 +278,14 @@ export class VoluntariadoController {
     @Param('id') id: string,
     @Body() cambios: Record<string, unknown>,
   ) {
+    const existente = await this.voluntariadoService.obtenerPorId(id);
+    if (!existente) {
+      throw new NotFoundException(
+        'No se encontró la solicitud de voluntariado.',
+      );
+    }
+
+    const estadoAnterior = String(existente.Estado ?? '').trim();
     const actualizada = await this.voluntariadoService.actualizar(
       id,
       cambios as never,
@@ -266,6 +295,32 @@ export class VoluntariadoController {
       throw new NotFoundException(
         'No se encontró la solicitud de voluntariado.',
       );
+    }
+
+    const estadoNuevo = String(actualizada.Estado ?? '').trim();
+    const email = String(actualizada.Email ?? '').trim().toLowerCase();
+
+    if (estadoNuevo && estadoAnterior !== estadoNuevo && email) {
+      const hoy = new Date();
+      const fechaActualizacion = `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth() + 1).padStart(2, '0')}-${String(hoy.getUTCDate()).padStart(2, '0')}`;
+
+      try {
+        await this.emailService.enviarActualizacionEstadoVoluntariado(email, {
+          nombre: actualizada.Nombre || 'Voluntario/a',
+          tipoVoluntariado: actualizada.TipoVoluntariado || 'No indicado',
+          periodo: actualizada.Dias || 'No indicado',
+          estado: estadoNuevo,
+          fechaActualizacion,
+          motivoRechazo:
+            estadoNuevo.toLowerCase() === 'rechazado'
+              ? actualizada.ObservacionesAdmin
+              : null,
+        });
+      } catch (emailError) {
+        this.logger.warn(
+          `No se pudo enviar correo de actualización a ${email}: ${emailError}`,
+        );
+      }
     }
 
     return actualizada;
