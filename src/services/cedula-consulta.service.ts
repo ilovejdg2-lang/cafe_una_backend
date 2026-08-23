@@ -7,6 +7,13 @@ export interface CedulaConsultaResponse {
   Nombre: string;
 }
 
+export interface CedulaConsultaDetalladaResponse {
+  Cedula: string;
+  Nombre: string;
+  PrimerApellido: string;
+  SegundoApellido: string;
+}
+
 @Injectable()
 export class CedulaConsultaService {
   private readonly logger = new Logger(CedulaConsultaService.name);
@@ -28,6 +35,27 @@ export class CedulaConsultaService {
       case '':
         throw new Error(
           'La consulta de cédula no está configurada. Agregue CedulaConsulta en appsettings.',
+        );
+      default:
+        throw new Error(`Proveedor de cédula desconocido: ${provider}.`);
+    }
+  }
+
+  async consultarDetallado(numero: string): Promise<CedulaConsultaDetalladaResponse | null> {
+    const cedula = this.normalizarCedula(numero);
+    if (!cedula) {
+      throw new Error('Ingrese una cédula válida de 9 dígitos.');
+    }
+
+    const provider = (this.config.get<string>('CEDULA_PROVIDER') ?? 'GoMeta').trim();
+
+    switch (provider.toLowerCase()) {
+      case 'gometa':
+        return this.consultarGoMetaDetallado(cedula);
+      case 'none':
+      case '':
+        throw new Error(
+          'La consulta de cédula no está configurada.',
         );
       default:
         throw new Error(`Proveedor de cédula desconocido: ${provider}.`);
@@ -178,5 +206,115 @@ export class CedulaConsultaService {
       .trim()
       .toLowerCase()
       .replace(/\b\w/g, (c) => c.toUpperCase());
+  }
+
+  private async consultarGoMetaDetallado(cedula: string): Promise<CedulaConsultaDetalladaResponse | null> {
+    const baseUrl = (
+      this.config.get<string>('CEDULA_GOMETA_URL') ??
+      'https://apis.gometa.org/cedulas'
+    ).replace(/\/$/, '');
+
+    const url = `${baseUrl}/${encodeURIComponent(cedula)}`;
+
+    try {
+      const response = await axios.get(url, {
+        headers: { Accept: 'application/json' },
+        validateStatus: () => true,
+      });
+
+      if (response.status === 429) {
+        throw new Error(
+          'Demasiadas consultas de cédula. Espere unos minutos e intente de nuevo.',
+        );
+      }
+      if (response.status === 404) return null;
+      if (response.status < 200 || response.status >= 300) {
+        this.logger.warn(`GoMeta respondió ${response.status}: ${JSON.stringify(response.data)}`);
+        throw new Error('No se pudo consultar la cédula en este momento.');
+      }
+
+      return this.mapearRespuestaGoMetaDetallada(response.data, cedula);
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('Demasiadas consultas')) {
+        throw error;
+      }
+      if (axios.isAxiosError(error)) {
+        throw new Error('No se pudo consultar la cédula en este momento.');
+      }
+      throw error;
+    }
+  }
+
+  private mapearRespuestaGoMetaDetallada(
+    root: Record<string, unknown>,
+    cedula: string,
+  ): CedulaConsultaDetalladaResponse | null {
+    const resultcount = root['resultcount'];
+    if (typeof resultcount === 'number' && resultcount === 0) return null;
+
+    const results = root['results'];
+    if (!Array.isArray(results) || results.length === 0) {
+      const nombreRaiz = this.obtenerTexto(root, 'nombre');
+      if (!nombreRaiz) return null;
+      const partes = nombreRaiz.trim().split(/\s+/);
+      if (partes.length <= 2) {
+        return {
+          Cedula: this.obtenerTexto(root, 'cedula') ?? cedula,
+          Nombre: this.formatearNombre(partes[0] ?? ''),
+          PrimerApellido: partes[1] ? this.formatearNombre(partes[1]) : '',
+          SegundoApellido: '',
+        };
+      }
+      // GoMeta root "nombre" format: "APELLIDO1 APELLIDO2 NOMBRE(S)"
+      const apellidos = partes.slice(0, 2);
+      const nombres = partes.slice(2);
+      return {
+        Cedula: this.obtenerTexto(root, 'cedula') ?? cedula,
+        Nombre: this.formatearNombre(nombres.join(' ')),
+        PrimerApellido: this.formatearNombre(apellidos[0]),
+        SegundoApellido: this.formatearNombre(apellidos[1]),
+      };
+    }
+
+    const persona = this.seleccionarPersonaFisicaGoMeta(results, cedula);
+    if (!persona) return null;
+
+    const firstname =
+      this.obtenerTexto(persona, 'firstname') ??
+      this.obtenerTexto(persona, 'firstname1');
+    const lastname1 = this.obtenerTexto(persona, 'lastname1');
+    const lastname2 = this.obtenerTexto(persona, 'lastname2');
+
+    if (firstname || lastname1 || lastname2) {
+      return {
+        Cedula: this.obtenerTexto(persona, 'cedula') ?? this.obtenerTexto(root, 'cedula') ?? cedula,
+        Nombre: firstname ? this.formatearNombre(firstname) : '',
+        PrimerApellido: lastname1 ? this.formatearNombre(lastname1) : '',
+        SegundoApellido: lastname2 ? this.formatearNombre(lastname2) : '',
+      };
+    }
+
+    // Fallback: fullname
+    const nombreCompleto =
+      this.obtenerTexto(persona, 'fullname') ?? this.obtenerTexto(root, 'nombre');
+    if (!nombreCompleto) return null;
+
+    const partes = nombreCompleto.trim().split(/\s+/);
+    if (partes.length <= 2) {
+      return {
+        Cedula: this.obtenerTexto(persona, 'cedula') ?? cedula,
+        Nombre: this.formatearNombre(partes[0] ?? ''),
+        PrimerApellido: partes[1] ? this.formatearNombre(partes[1]) : '',
+        SegundoApellido: '',
+      };
+    }
+    const apellidos = partes.slice(0, 2);
+    const nombres = partes.slice(2);
+    return {
+      Cedula: this.obtenerTexto(persona, 'cedula') ?? this.obtenerTexto(root, 'cedula') ?? cedula,
+      Nombre: this.formatearNombre(nombres.join(' ')),
+      PrimerApellido: this.formatearNombre(apellidos[0]),
+      SegundoApellido: this.formatearNombre(apellidos[1]),
+    };
   }
 }
