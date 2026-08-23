@@ -3,6 +3,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SolicitudVoluntariado } from '../entities/solicitud-voluntariado.entity';
 
+export type FiltrosSolicitudesVoluntariado = {
+  nombre?: string;
+  tipo?: string;
+  estado?: string;
+  fecha?: string;
+};
+
 @Injectable()
 export class VoluntariadoService {
   constructor(
@@ -10,8 +17,40 @@ export class VoluntariadoService {
     private readonly repo: Repository<SolicitudVoluntariado>,
   ) {}
 
-  async obtenerSolicitudes(): Promise<SolicitudVoluntariado[]> {
-    return this.repo.find({ order: { Id: 'ASC' } });
+  async obtenerSolicitudes(
+    filtros: FiltrosSolicitudesVoluntariado = {},
+  ): Promise<SolicitudVoluntariado[]> {
+    const qb = this.repo.createQueryBuilder('solicitud');
+
+    if (filtros.nombre?.trim()) {
+      qb.andWhere('LOWER(solicitud.Nombre) LIKE :nombre', {
+        nombre: `%${filtros.nombre.trim().toLowerCase()}%`,
+      });
+    }
+
+    if (filtros.tipo?.trim()) {
+      qb.andWhere('solicitud.TipoVoluntariado = :tipo', {
+        tipo: filtros.tipo.trim(),
+      });
+    }
+
+    if (filtros.estado?.trim()) {
+      qb.andWhere('solicitud.Estado = :estado', {
+        estado: filtros.estado.trim(),
+      });
+    }
+
+    if (filtros.fecha?.trim()) {
+      qb.andWhere('solicitud.FechaSolicitud = :fecha', {
+        fecha: filtros.fecha.trim(),
+      });
+    }
+
+    return qb.orderBy('solicitud.Id', 'ASC').getMany();
+  }
+
+  async obtenerPorId(id: string): Promise<SolicitudVoluntariado | null> {
+    return this.repo.findOne({ where: { Id: id } });
   }
 
   async obtenerSolicitudesDeUsuario(userId: string): Promise<SolicitudVoluntariado[]> {
@@ -104,6 +143,9 @@ export class VoluntariadoService {
     if (cambios.Area !== undefined) actual.Area = cambios.Area;
     if (cambios.Descripcion !== undefined) actual.Descripcion = cambios.Descripcion;
     if (cambios.Motivacion !== undefined) actual.Motivacion = cambios.Motivacion;
+    if (cambios.ObservacionesAdmin !== undefined) {
+      actual.ObservacionesAdmin = cambios.ObservacionesAdmin;
+    }
 
     return this.repo.save(actual);
   }
