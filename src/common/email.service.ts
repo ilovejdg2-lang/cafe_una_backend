@@ -19,6 +19,12 @@ export class EmailService {
     'Email',
     'confirmacion-voluntariado.html',
   );
+  private readonly actualizacionVoluntariadoTemplatePath = path.join(
+    process.cwd(),
+    'Templates',
+    'Email',
+    'actualizacion-voluntariado.html',
+  );
 
   constructor(private readonly config: ConfigService) {}
 
@@ -84,6 +90,24 @@ export class EmailService {
       destinatario,
       'Solicitud de voluntariado recibida - Café UNA',
       await this.buildVoluntariadoEmail(nombre),
+    );
+  }
+
+  async enviarActualizacionEstadoVoluntariado(
+    destinatario: string,
+    datos: {
+      nombre: string;
+      tipoVoluntariado: string;
+      periodo: string;
+      estado: string;
+      fechaActualizacion: string;
+      motivoRechazo?: string | null;
+    },
+  ): Promise<boolean> {
+    return this.enviar(
+      destinatario,
+      'Actualización de su solicitud de voluntariado - Café UNA',
+      await this.buildActualizacionVoluntariadoEmail(datos),
     );
   }
 
@@ -182,6 +206,85 @@ export class EmailService {
     <p style="color: #6b7280; font-size: 14px; margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #e5e7eb;">
       Este es un correo automático de Café UNA. No es necesario responderlo.
     </p>
+  </div>
+</body>
+</html>`;
+    }
+  }
+
+  private async buildActualizacionVoluntariadoEmail(datos: {
+    nombre: string;
+    tipoVoluntariado: string;
+    periodo: string;
+    estado: string;
+    fechaActualizacion: string;
+    motivoRechazo?: string | null;
+  }): Promise<string> {
+    const saludo = datos.nombre?.trim()
+      ? `Hola, ${this.escapeHtml(datos.nombre)}`
+      : 'Hola';
+    const estadoNormalizado = datos.estado.trim().toLowerCase();
+    const motivo = datos.motivoRechazo?.trim();
+
+    const bloqueMotivoRechazo =
+      estadoNormalizado === 'rechazado' && motivo
+        ? `<div style="margin: 16px 0; padding: 16px; background: #fef2f2; border-radius: 8px; border-left: 3px solid #dc2626;">
+            <p style="margin: 0; font-size: 14px; color: #991b1b; line-height: 1.6;">
+              <strong>Motivo del rechazo:</strong><br>${this.escapeHtml(motivo)}
+            </p>
+          </div>`
+        : '';
+
+    const bloqueInstruccionesAprobacion =
+      estadoNormalizado === 'aprobado'
+        ? `<div style="margin: 16px 0; padding: 16px; background: #f0fdf4; border-radius: 8px; border-left: 3px solid #286f54;">
+            <p style="margin: 0; font-size: 14px; color: #166534; line-height: 1.6;">
+              <strong>Próximos pasos</strong><br>
+              Su solicitud fue aprobada. Por favor comuníquese con el equipo de Café UNA para coordinar los detalles de inicio de su voluntariado.
+            </p>
+          </div>`
+        : '';
+
+    try {
+      const template = await fs.readFile(
+        this.actualizacionVoluntariadoTemplatePath,
+        'utf8',
+      );
+      return template
+        .replaceAll('{{saludo}}', saludo)
+        .replaceAll(
+          '{{tipoVoluntariado}}',
+          this.escapeHtml(datos.tipoVoluntariado || 'No indicado'),
+        )
+        .replaceAll(
+          '{{periodo}}',
+          this.escapeHtml(datos.periodo || 'No indicado'),
+        )
+        .replaceAll('{{estado}}', this.escapeHtml(datos.estado))
+        .replaceAll(
+          '{{fechaActualizacion}}',
+          this.escapeHtml(datos.fechaActualizacion),
+        )
+        .replaceAll('{{bloqueMotivoRechazo}}', bloqueMotivoRechazo)
+        .replaceAll(
+          '{{bloqueInstruccionesAprobacion}}',
+          bloqueInstruccionesAprobacion,
+        );
+    } catch {
+      return `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"></head>
+<body style="font-family: sans-serif; background: #f9fafb; padding: 40px 20px;">
+  <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px;">
+    <h2 style="color: #286f54;">${saludo}</h2>
+    <p style="color: #374151; line-height: 1.7;">Su solicitud de voluntariado ha sido actualizada.</p>
+    <p style="color: #374151; line-height: 1.7;"><strong>Tipo:</strong> ${this.escapeHtml(datos.tipoVoluntariado || 'No indicado')}</p>
+    <p style="color: #374151; line-height: 1.7;"><strong>Período:</strong> ${this.escapeHtml(datos.periodo || 'No indicado')}</p>
+    <p style="color: #374151; line-height: 1.7;"><strong>Estado:</strong> ${this.escapeHtml(datos.estado)}</p>
+    <p style="color: #374151; line-height: 1.7;"><strong>Fecha:</strong> ${this.escapeHtml(datos.fechaActualizacion)}</p>
+    ${bloqueMotivoRechazo}
+    ${bloqueInstruccionesAprobacion}
   </div>
 </body>
 </html>`;
