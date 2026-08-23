@@ -13,6 +13,12 @@ export class EmailService {
     'Email',
     'codigo-verificacion.html',
   );
+  private readonly voluntariadoTemplatePath = path.join(
+    process.cwd(),
+    'Templates',
+    'Email',
+    'confirmacion-voluntariado.html',
+  );
 
   constructor(private readonly config: ConfigService) {}
 
@@ -67,6 +73,17 @@ export class EmailService {
         codigo,
         'El código vence en 30 minutos. Si no solicitaste este cambio, ignorá este correo.',
       ),
+    );
+  }
+
+  async enviarConfirmacionVoluntariado(
+    destinatario: string,
+    nombre: string,
+  ): Promise<boolean> {
+    return this.enviar(
+      destinatario,
+      'Solicitud de voluntariado recibida - Café UNA',
+      await this.buildVoluntariadoEmail(nombre),
     );
   }
 
@@ -137,5 +154,37 @@ export class EmailService {
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;')
       .replaceAll("'", '&#39;');
+  }
+
+  private async buildVoluntariadoEmail(nombre: string): Promise<string> {
+    const saludo = nombre?.trim()
+      ? `Hola, ${this.escapeHtml(nombre)}`
+      : 'Hola';
+
+    try {
+      const template = await fs.readFile(this.voluntariadoTemplatePath, 'utf8');
+      return template.replaceAll('{{saludo}}', saludo);
+    } catch {
+      // Fallback inline template if file doesn't exist
+      return `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; padding: 40px 20px;">
+  <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 40px 32px; box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
+    <h2 style="color: #286f54; margin: 0 0 16px; font-size: 22px;">${saludo}</h2>
+    <p style="color: #374151; line-height: 1.7; margin: 0 0 16px;">
+      Su solicitud de voluntariado fue <strong>recibida correctamente</strong> y está siendo revisada por el equipo de Café UNA.
+    </p>
+    <p style="color: #374151; line-height: 1.7; margin: 0 0 16px;">
+      Recibirá información sobre el resultado de su solicitud en su correo electrónico.
+    </p>
+    <p style="color: #6b7280; font-size: 14px; margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #e5e7eb;">
+      Este es un correo automático de Café UNA. No es necesario responderlo.
+    </p>
+  </div>
+</body>
+</html>`;
+    }
   }
 }
