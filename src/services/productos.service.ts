@@ -135,8 +135,9 @@ export class ProductosService {
     locationCode: string;
     stock: number;
   } | null> {
-    const parsedStock = Number(stock);
+    const parsedStock = stock;
     if (
+      typeof parsedStock !== 'number' ||
       !Number.isInteger(parsedStock) ||
       parsedStock < 0 ||
       parsedStock > 2147483647

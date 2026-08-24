@@ -7,7 +7,7 @@ describe('resolveTestDatabaseUrl', () => {
     ['a blank value', '   '],
   ])('rejects %s', (_description, value) => {
     expect(() => resolveTestDatabaseUrl({ TEST_DATABASE_URL: value })).toThrow(
-      'TEST_DATABASE_URL is required',
+      'TEST_DATABASE_URL is required for integration tests',
     );
   });
 

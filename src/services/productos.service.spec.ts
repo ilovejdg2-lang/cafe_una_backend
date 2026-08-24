@@ -13,7 +13,7 @@ describe('ProductosService central stock', () => {
     service = new ProductosService(repo as never, {} as never);
   });
 
-  it.each([-1, 1.5, 2147483648, 'not-a-number'])(
+  it.each([-1, 1.5, 2147483648, '4', '', null, true, 'not-a-number'])(
     'rejects an invalid central stock value: %s',
     async (stock) => {
       await expect(service.actualizarStockCentral('1', stock)).rejects.toThrow(
