@@ -83,12 +83,36 @@ export class ProductosController {
     }
   }
 
+  @Put(':id/stock-central')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('actualizar_stock_productos')
+  async actualizarStockCentral(
+    @Param('id') id: string,
+    @Body() request: { stock?: unknown; Stock?: unknown },
+  ) {
+    try {
+      const stock =
+        request && Object.prototype.hasOwnProperty.call(request, 'stock')
+          ? request.stock
+          : request?.Stock;
+      const actualizado = await this.productosService.actualizarStockCentral(
+        id,
+        stock,
+      );
+      if (!actualizado) throw new NotFoundException();
+      return actualizado;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new BadRequestException({
+        message: error instanceof Error ? error.message : 'Error.',
+      });
+    }
+  }
+
   @Post('ajustar-stock')
   @UseGuards(JwtAuthGuard, PermisosGuard)
   @RequierePermiso('comprar_productos', 'actualizar_stock_productos')
-  async ajustarStock(
-    @Body() items: { Id: number | string; Units: number }[],
-  ) {
+  async ajustarStock(@Body() items: { Id: number | string; Units: number }[]) {
     try {
       return await this.productosService.ajustarStock(items);
     } catch (error) {
