@@ -1,4 +1,5 @@
 import { NestFactory } from '@nestjs/core';
+import type { CustomOrigin } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { ValidationPipe } from '@nestjs/common';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
@@ -13,11 +14,7 @@ function origenPermitido(origen?: string): boolean {
     process.env.CORS_ORIGINS?.split(',')
       .map((item) => item.trim())
       .filter(Boolean) ?? [];
-  const fijos = [
-    'http://localhost:5173',
-    'http://127.0.0.1:5173',
-    ...extra,
-  ];
+  const fijos = ['http://localhost:5173', 'http://127.0.0.1:5173', ...extra];
   if (fijos.includes(origen)) return true;
 
   try {
@@ -27,6 +24,10 @@ function origenPermitido(origen?: string): boolean {
     return false;
   }
 }
+
+const validarOrigen: CustomOrigin = (origen, callback) => {
+  callback(null, origenPermitido(origen));
+};
 
 async function bootstrap() {
   const app = await NestFactory.create(AppModule);
@@ -39,9 +40,7 @@ async function bootstrap() {
     }),
   );
   app.enableCors({
-    origin: (origen, callback) => {
-      callback(null, origenPermitido(origen));
-    },
+    origin: validarOrigen,
     credentials: true,
     methods: ['GET', 'HEAD', 'PUT', 'PATCH', 'POST', 'DELETE', 'OPTIONS'],
     allowedHeaders: ['Content-Type', 'Authorization'],
