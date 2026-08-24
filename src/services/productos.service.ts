@@ -135,12 +135,12 @@ export class ProductosService {
     locationCode: string;
     stock: number;
   } | null> {
-    const parsedStock = stock;
+    const validatedStock = stock;
     if (
-      typeof parsedStock !== 'number' ||
-      !Number.isInteger(parsedStock) ||
-      parsedStock < 0 ||
-      parsedStock > 2147483647
+      typeof validatedStock !== 'number' ||
+      !Number.isInteger(validatedStock) ||
+      validatedStock < 0 ||
+      validatedStock > 2147483647
     ) {
       throw new Error(
         'La cantidad de stock central debe ser un entero entre 0 y 2147483647.',
@@ -150,7 +150,7 @@ export class ProductosService {
     const actual = await this.repo.findOne({ where: { Id: id } });
     if (!actual) return null;
 
-    actual.Stock = parsedStock;
+    actual.Stock = validatedStock;
     if (actual.Stock === 0) actual.EsDestacado = false;
 
     const actualizado = await this.repo.save(actual);
