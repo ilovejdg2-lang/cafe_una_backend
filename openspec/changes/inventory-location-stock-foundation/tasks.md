@@ -76,7 +76,16 @@ For Feature Branch Chain: PR1 branch `feature/inventory-f06-location-stock-found
 
 ## Phase 4: Isolated Verification (PR4)
 
-- [ ] 4.1 Extend `test/inventory-location-stock.integration.spec.ts` with concurrent central updates and final mirror equality.
+- [x] 4.1 Extend `test/inventory-location-stock.integration.spec.ts` with concurrent central updates and final mirror equality.
 - [ ] 4.2 Run all integration tests only with `TEST_DATABASE_URL`, `synchronize: false`, and never shared Supabase.
-- [ ] 4.3 Run `npm test -- --runInBand`, `npm exec -- tsc --noEmit`, `npm run build`, and `git diff --check`.
+- [x] 4.3 Run `npm test -- --runInBand`, `npm exec -- tsc --noEmit`, `npm run build`, and `git diff --check`.
+
+### PR4 Work Unit Evidence
+
+| Evidence          | Result                                                                                                                                                                      |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Concurrency test  | Added two QueryRunners that lock product and central balance in deterministic order, commit 7 then 9, and assert both representations finish at 9.                        |
+| Regression/build  | `npm test -- --runInBand` — 4 suites, 27 tests passed; `npm exec -- tsc --noEmit`, `npm run build`, focused ESLint and `git diff --check` passed.                         |
+| Integration gate  | `npm run test:integration -- --runInBand` executed with 4 migration tests skipped because `TEST_DATABASE_URL` is not configured. The test must run against disposable PostgreSQL before merge. |
+| Safety boundary   | Docker Engine was unavailable and shared Supabase was not used; no integration test was pointed at shared credentials.                                                     |
 
