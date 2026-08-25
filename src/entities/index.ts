@@ -5,6 +5,8 @@ import { GaleriaInstitucionalItem } from './galeria-institucional-item.entity';
 import { HeroPrincipal } from './hero-principal.entity';
 import { InformacionFooter } from './informacion-footer.entity';
 import { InformacionNavbar } from './informacion-navbar.entity';
+import { InventarioStockUbicacion } from './inventario-stock-ubicacion.entity';
+import { InventarioUbicacion } from './inventario-ubicacion.entity';
 import { PasswordResetEntry } from './password-reset-entry.entity';
 import { Producto } from './producto.entity';
 import { RegistroPendiente } from './registro-pendiente.entity';
@@ -30,6 +32,8 @@ export const entities = [
   CambioCorreoPendiente,
   UsuarioCreacionPendiente,
   Auditoria,
+  InventarioUbicacion,
+  InventarioStockUbicacion,
 ];
 
 export * from './usuario.entity';
@@ -47,3 +51,5 @@ export * from './registro-pendiente.entity';
 export * from './cambio-correo-pendiente.entity';
 export * from './usuario-creacion-pendiente.entity';
 export * from './auditoria.entity';
+export * from './inventario-ubicacion.entity';
+export * from './inventario-stock-ubicacion.entity';

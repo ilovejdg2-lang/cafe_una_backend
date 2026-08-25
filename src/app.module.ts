@@ -5,6 +5,7 @@ import { TypeOrmModule } from '@nestjs/typeorm';
 import { AuditoriaContextInterceptor } from './common/auditoria-context.interceptor';
 import { construirConfigPostgres } from './config/postgres.config';
 import { HealthController } from './controllers/health.controller';
+import { InventarioModule } from './modules/inventario.module';
 import { AuthModule } from './modules/auth.module';
 import { AuditoriaModule } from './modules/auditoria.module';
 import { CedulaModule } from './modules/cedula.module';
@@ -30,6 +31,7 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     forwardRef(() => PerfilModule),
     AuthModule,
     ProductosModule,
+    InventarioModule,
     InformacionModule,
     VoluntariadoModule,
     CedulaModule,
