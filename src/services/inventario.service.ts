@@ -167,6 +167,46 @@ export class InventarioService {
     };
   }
 
+  async obtenerStockPorUbicacion(
+    locationCode: unknown,
+  ): Promise<InventoryLocationStockResponse[]> {
+    const canonicalCode = this.validarCodigoUbicacion(locationCode);
+    const location = await this.locationsRepository.findOne({
+      where: { Codigo: canonicalCode },
+    });
+    if (!location) {
+      throw new NotFoundException(
+        'La ubicación de inventario no está inicializada.',
+      );
+    }
+
+    const products = await this.productsRepository.find({
+      order: { Id: 'ASC' },
+    });
+    if (products.length === 0) return [];
+
+    const balances = await this.stockRepository.find({
+      where: { UbicacionId: location.Id },
+    });
+    const balancesByProduct = new Map(
+      balances
+        .filter(
+          (balance) => String(balance.UbicacionId) === String(location.Id),
+        )
+        .map((balance) => [String(balance.ProductoId), balance]),
+    );
+
+    return products.map((product) => {
+      const balance = balancesByProduct.get(String(product.Id));
+      return {
+        productId: String(product.Id),
+        locationCode: canonicalCode,
+        stock: balance?.Stock ?? 0,
+        provisioned: Boolean(balance),
+      };
+    });
+  }
+
   private validarCodigoUbicacion(locationCode: unknown): LocationCode {
     if (
       typeof locationCode !== 'string' ||

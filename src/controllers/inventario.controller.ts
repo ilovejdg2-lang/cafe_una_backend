@@ -22,6 +22,11 @@ export class InventarioController {
     return this.inventarioService.obtenerUbicaciones();
   }
 
+  @Get('stock')
+  obtenerStockPorUbicacion(@Query('locationCode') locationCode?: string) {
+    return this.inventarioService.obtenerStockPorUbicacion(locationCode);
+  }
+
   @Get('productos/:id/stock')
   async obtenerStockProducto(
     @Param('id') id: string,

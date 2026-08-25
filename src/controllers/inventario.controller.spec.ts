@@ -16,8 +16,8 @@ describe('InventarioController location reads', () => {
   let app: INestApplication;
   let currentRoles = ['Admin'];
   const locationsRepository = { find: jest.fn(), findOne: jest.fn() };
-  const stockRepository = { findOne: jest.fn() };
-  const productsRepository = { findOne: jest.fn() };
+  const stockRepository = { find: jest.fn(), findOne: jest.fn() };
+  const productsRepository = { find: jest.fn(), findOne: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -96,6 +96,55 @@ describe('InventarioController location reads', () => {
       .expect(403);
 
     expect(locationsRepository.find).not.toHaveBeenCalled();
+  });
+
+  it('returns the selected location balances in one bulk response', async () => {
+    locationsRepository.findOne.mockResolvedValue({
+      Id: 3,
+      Codigo: 'POS_EDITORIAL',
+    });
+    productsRepository.find.mockResolvedValue([{ Id: '1' }, { Id: '2' }]);
+    stockRepository.find.mockResolvedValue([
+      { ProductoId: '1', UbicacionId: 3, Stock: 12 },
+    ]);
+
+    await request(app.getHttpServer())
+      .get('/api/inventario/stock')
+      .query({ locationCode: 'POS_EDITORIAL' })
+      .expect(200)
+      .expect([
+        {
+          productId: '1',
+          locationCode: 'POS_EDITORIAL',
+          stock: 12,
+          provisioned: true,
+        },
+        {
+          productId: '2',
+          locationCode: 'POS_EDITORIAL',
+          stock: 0,
+          provisioned: false,
+        },
+      ]);
+
+    expect(productsRepository.find).toHaveBeenCalledWith({
+      order: { Id: 'ASC' },
+    });
+    expect(stockRepository.find).toHaveBeenCalledWith({
+      where: { UbicacionId: 3 },
+    });
+    expect(productsRepository.findOne).not.toHaveBeenCalled();
+    expect(stockRepository.findOne).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid bulk location with HTTP 400', async () => {
+    await request(app.getHttpServer())
+      .get('/api/inventario/stock')
+      .query({ locationCode: 'POS_DESCONOCIDO' })
+      .expect(400);
+
+    expect(productsRepository.find).not.toHaveBeenCalled();
+    expect(stockRepository.find).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown location code without mutating repositories', async () => {
