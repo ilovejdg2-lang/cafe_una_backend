@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
@@ -15,6 +15,8 @@ export const CANONICAL_LOCATIONS = [
   { code: 'POS_EDITORIAL', name: 'Editorial' },
   { code: 'POS_STAND_FERIAS', name: 'Stand Ferias' },
 ] as const;
+
+export const BODEGA_CENTRAL = 'BODEGA_CENTRAL';
 
 type LocationCode = (typeof CANONICAL_LOCATIONS)[number]['code'];
 
@@ -39,7 +41,81 @@ export class InventarioService {
     private readonly stockRepository: Repository<InventarioStockUbicacion>,
     @InjectRepository(Producto)
     private readonly productsRepository: Repository<Producto>,
+    private readonly dataSource: DataSource,
   ) {}
+
+  async actualizarStockCentral(
+    productId: string,
+    stock: unknown,
+  ): Promise<{
+    productId: string;
+    locationCode: typeof BODEGA_CENTRAL;
+    stock: number;
+  } | null> {
+    const validatedStock = this.validarStockCentral(stock);
+    const queryRunner = this.dataSource.createQueryRunner();
+
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const centralLocation = await queryRunner.manager.findOne(
+        InventarioUbicacion,
+        { where: { Codigo: BODEGA_CENTRAL } },
+      );
+      if (!centralLocation) {
+        throw new NotFoundException(
+          'La ubicación de inventario no está inicializada.',
+        );
+      }
+
+      const product = await queryRunner.manager.findOne(Producto, {
+        where: { Id: productId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!product) {
+        await queryRunner.rollbackTransaction();
+        return null;
+      }
+
+      const balance = await queryRunner.manager.findOne(
+        InventarioStockUbicacion,
+        {
+          where: {
+            ProductoId: productId,
+            UbicacionId: centralLocation.Id,
+          },
+          lock: { mode: 'pessimistic_write' },
+        },
+      );
+      if (!balance) {
+        throw new NotFoundException(
+          'El balance de Bodega Central no está inicializado.',
+        );
+      }
+
+      balance.Stock = validatedStock;
+      product.Stock = validatedStock;
+      if (validatedStock === 0) product.EsDestacado = false;
+
+      await queryRunner.manager.save(balance);
+      await queryRunner.manager.save(product);
+      await queryRunner.commitTransaction();
+
+      return {
+        productId: product.Id,
+        locationCode: BODEGA_CENTRAL,
+        stock: validatedStock,
+      };
+    } catch (error) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
 
   async obtenerUbicaciones(): Promise<InventoryLocationResponse[]> {
     const locations = await this.locationsRepository.find({
@@ -100,5 +176,20 @@ export class InventarioService {
     }
 
     return locationCode as LocationCode;
+  }
+
+  private validarStockCentral(stock: unknown): number {
+    if (
+      typeof stock !== 'number' ||
+      !Number.isInteger(stock) ||
+      stock < 0 ||
+      stock > 2147483647
+    ) {
+      throw new BadRequestException(
+        'La cantidad de stock central debe ser un entero entre 0 y 2147483647.',
+      );
+    }
+
+    return stock;
   }
 }

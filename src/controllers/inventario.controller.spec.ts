@@ -10,6 +10,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { InventarioController } from './inventario.controller';
 import { InventarioService } from '../services/inventario.service';
+import { DataSource } from 'typeorm';
 
 describe('InventarioController location reads', () => {
   let app: INestApplication;
@@ -38,6 +39,10 @@ describe('InventarioController location reads', () => {
         {
           provide: getRepositoryToken(Producto),
           useValue: productsRepository,
+        },
+        {
+          provide: DataSource,
+          useValue: { createQueryRunner: jest.fn() },
         },
       ],
     })

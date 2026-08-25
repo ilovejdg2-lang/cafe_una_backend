@@ -54,12 +54,21 @@ For Feature Branch Chain: PR1 branch `feature/inventory-f06-location-stock-found
 
 ## Phase 3: Central Compatibility (PR3)
 
-- [ ] 3.1 Write RED unit tests for strict quantities, missing products, unauthorized writes, zero clearing `EsDestacado`, and `stock`/`Stock` compatibility.
+- [x] 3.1 Write RED unit tests for strict quantities, missing products, unauthorized writes, zero clearing `EsDestacado`, and `stock`/`Stock` compatibility.
 - [ ] 3.2 Delegate `src/controllers/productos.controller.ts` and `src/services/productos.service.ts` to one QueryRunner transaction with deterministic locks and atomic mirror updates.
 - [ ] 3.3 Verify no POS write route exists and failed requests leave both representations unchanged.
+
+### PR3A Work Unit Evidence
+
+| Evidence          | Result                                                                                                                                             |
+| ----------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test      | `npm test -- --runInBand src/services/inventario.service.spec.ts` — 1 suite, 11 tests passed.                                                       |
+| Runtime harness   | QueryRunner unit harness verified strict validation, deterministic locks, dual saves, commit and rollback behavior without shared database writes. |
+| Rollback boundary | Revert the central transaction method and its tests; retain PR1 persistence and PR2 reads.                                                         |
 
 ## Phase 4: Isolated Verification (PR4)
 
 - [ ] 4.1 Extend `test/inventory-location-stock.integration.spec.ts` with concurrent central updates and final mirror equality.
 - [ ] 4.2 Run all integration tests only with `TEST_DATABASE_URL`, `synchronize: false`, and never shared Supabase.
 - [ ] 4.3 Run `npm test -- --runInBand`, `npm exec -- tsc --noEmit`, `npm run build`, and `git diff --check`.
+
