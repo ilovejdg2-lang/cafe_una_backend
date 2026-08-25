@@ -38,7 +38,7 @@ Chain strategy: feature-branch-chain
 ## Phase 3: Verification
 
 - [x] 3.1 Run focused and full Jest suites, typecheck, build, and diff checks.
-- [ ] 3.2 Verify the route against isolated PostgreSQL; do not write shared Supabase data.
+- [x] 3.2 Verify the route against isolated PostgreSQL; do not write shared Supabase data.
 
 ### Work Unit Evidence
 
@@ -46,4 +46,4 @@ Chain strategy: feature-branch-chain
 |------|----------|
 | 1 | `npm test -- --runInBand src/controllers/inventario.controller.spec.ts` — 1 suite, 12 tests passed; Nest HTTP harness verified permission and casing. Rollback: revert permission, route tests, and contract. |
 | 2 | `npm test -- --runInBand src/services/inventario.service.spec.ts` — 1 suite, 27 tests passed; QueryRunner harness verified locks, atomic audit, central rejection, no-op, and rollback. Rollback: revert service/controller implementation and unit tests. |
-| 3 | `npm test -- --runInBand` — 5 suites, 53 tests passed; `npm exec -- tsc --noEmit`, `npm run build`, focused ESLint (0 errors, 12 pre-existing warnings), and `git diff --check` passed. Runtime integration remains pending. |
+| 3 | `npm run test:integration -- --runInBand` — 3 suites, 14 tests passed against temporary PostgreSQL on `127.0.0.1:5433`; `npm test -- --runInBand` — 5 suites, 55 tests passed; `npm exec -- tsc --noEmit`, `npm run build`, focused ESLint (0 errors, 12 pre-existing warnings), and `git diff --check` passed. |
