@@ -2,14 +2,14 @@
 
 ## Review Workload Forecast
 
-| Field | Value |
-|-------|-------|
-| Estimated changed lines | 500–750 authored lines |
-| 400-line budget risk | High |
-| Chained PRs recommended | Yes |
-| Suggested split | Persistence → reads → central compatibility → verification |
-| Delivery strategy | auto-chain |
-| Chain strategy | feature-branch-chain |
+| Field                   | Value                                                      |
+| ----------------------- | ---------------------------------------------------------- |
+| Estimated changed lines | 500–750 authored lines                                     |
+| 400-line budget risk    | High                                                       |
+| Chained PRs recommended | Yes                                                        |
+| Suggested split         | Persistence → reads → central compatibility → verification |
+| Delivery strategy       | auto-chain                                                 |
+| Chain strategy          | feature-branch-chain                                       |
 
 delivery_strategy: auto-chain
 chain_strategy: feature-branch-chain
@@ -21,12 +21,12 @@ Chain strategy: feature-branch-chain
 
 ### Suggested Work Units
 
-| Unit | Goal | Base → target | Focused test command | Runtime harness | Rollback boundary |
-|---|---|---|---|---|---|
-| 1 | Entities, migration, seed and backfill | tracker → tracker | `npm run test:integration -- --runInBand inventory-location-stock.integration.spec.ts` | Isolated PostgreSQL via `TEST_DATABASE_URL`; never Supabase | Revert migration/entities; preserve `Producto.Stock` |
-| 2 | Authorized location and balance reads | PR1 → PR1 | `npm test -- --runInBand src/controllers/inventario.controller.spec.ts` | `npm run start:dev` with authenticated Supertest | Revert read controller/service only |
-| 3 | Atomic central mirror compatibility | PR2 → PR2 | `npm test -- --runInBand src/services/inventario.service.spec.ts src/controllers/productos.controller.spec.ts` | Local backend and isolated PostgreSQL; no shared writes | Revert delegation/transaction code; retain reads |
-| 4 | Concurrency and migration regression proof | PR3 → PR3 | `npm run test:integration -- --runInBand` | Disposable PostgreSQL, `synchronize: false`; never Supabase | Revert tests/harness only |
+| Unit | Goal                                       | Base → target     | Focused test command                                                                                           | Runtime harness                                             | Rollback boundary                                    |
+| ---- | ------------------------------------------ | ----------------- | -------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------- | ---------------------------------------------------- |
+| 1    | Entities, migration, seed and backfill     | tracker → tracker | `npm run test:integration -- --runInBand inventory-location-stock.integration.spec.ts`                         | Isolated PostgreSQL via `TEST_DATABASE_URL`; never Supabase | Revert migration/entities; preserve `Producto.Stock` |
+| 2    | Authorized location and balance reads      | PR1 → PR1         | `npm test -- --runInBand src/controllers/inventario.controller.spec.ts`                                        | `npm run start:dev` with authenticated Supertest            | Revert read controller/service only                  |
+| 3    | Atomic central mirror compatibility        | PR2 → PR2         | `npm test -- --runInBand src/services/inventario.service.spec.ts src/controllers/productos.controller.spec.ts` | Local backend and isolated PostgreSQL; no shared writes     | Revert delegation/transaction code; retain reads     |
+| 4    | Concurrency and migration regression proof | PR3 → PR3         | `npm run test:integration -- --runInBand`                                                                      | Disposable PostgreSQL, `synchronize: false`; never Supabase | Revert tests/harness only                            |
 
 For Feature Branch Chain: PR1 branch `feature/inventory-f06-location-stock-foundation-p1`, PR2 `...-p2`, PR3 `...-p3`, PR4 `...-p4`; each targets the previous boundary. Only the tracker branch is promoted to `development`.
 
@@ -39,9 +39,18 @@ For Feature Branch Chain: PR1 branch `feature/inventory-f06-location-stock-found
 
 ## Phase 2: Authorized Reads (PR2)
 
-- [ ] 2.1 Write RED API tests for missing permission (403), unknown code, unsupported CRUD, absent balance, and provisioned zero; failures must not mutate data.
-- [ ] 2.2 Create `src/services/inventario.service.ts` and `src/controllers/inventario.controller.ts` for canonical location listing and location-scoped reads.
-- [ ] 2.3 Wire `src/app.module.ts` and verify `locationCode`, `stock`, `provisioned`, casing, and authorization responses.
+- [x] 2.1 Write RED API tests for missing permission (403), unknown code, unsupported CRUD, absent balance, and provisioned zero; failures must not mutate data.
+- [x] 2.2 Create `src/services/inventario.service.ts` and `src/controllers/inventario.controller.ts` for canonical location listing and location-scoped reads.
+- [x] 2.3 Wire `src/app.module.ts` and verify `locationCode`, `stock`, `provisioned`, casing, and authorization responses.
+
+### PR2 Work Unit Evidence
+
+| Evidence          | Result                                                                                                                                                                              |
+| ----------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test      | `npm test -- --runInBand src/controllers/inventario.controller.spec.ts` — 1 suite, 8 tests passed.                                                                                  |
+| Runtime harness   | Nest HTTP test application with `JwtAuthGuard` overridden only for deterministic role scenarios — authorization, casing, absent/provisioned balances and unsupported CRUD verified. |
+| Regression/build  | `npm test -- --runInBand` — 3 suites, 21 tests passed; `npm exec -- tsc --noEmit` and `npm run build` passed; `git diff --check` passed.                                            |
+| Rollback boundary | Revert `src/controllers/inventario.controller.ts`, `src/services/inventario.service.ts`, module wiring, and the PR2 controller tests; retain PR1 persistence.                       |
 
 ## Phase 3: Central Compatibility (PR3)
 
