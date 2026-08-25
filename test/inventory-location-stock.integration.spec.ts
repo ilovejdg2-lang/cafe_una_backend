@@ -154,6 +154,8 @@ describeIntegration('inventory location stock foundation migration', () => {
     try {
       await firstRunner.connect();
       await secondRunner.connect();
+      await firstRunner.query(`SET search_path TO "${schemaName}"`);
+      await secondRunner.query(`SET search_path TO "${schemaName}"`);
       await firstRunner.startTransaction();
       await firstRunner.query(
         `SELECT "Id" FROM productos WHERE "Id" = $1 FOR UPDATE`,
