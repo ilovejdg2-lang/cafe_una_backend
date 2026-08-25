@@ -223,11 +223,14 @@ export class InventarioService {
       locations.map((location) => [location.Codigo, location]),
     );
 
-    return CANONICAL_LOCATIONS.flatMap(({ code, name }) => {
+    return CANONICAL_LOCATIONS.map(({ code, name }) => {
       const location = byCode.get(code);
-      return location
-        ? [{ code: location.Codigo, name: location.Nombre || name }]
-        : [];
+      if (!location) {
+        throw new NotFoundException(
+          'La ubicación de inventario no está inicializada.',
+        );
+      }
+      return { code: location.Codigo, name: location.Nombre || name };
     });
   }
 
@@ -287,11 +290,7 @@ export class InventarioService {
       where: { UbicacionId: location.Id },
     });
     const balancesByProduct = new Map(
-      balances
-        .filter(
-          (balance) => String(balance.UbicacionId) === String(location.Id),
-        )
-        .map((balance) => [String(balance.ProductoId), balance]),
+      balances.map((balance) => [String(balance.ProductoId), balance]),
     );
 
     return products.map((product) => {

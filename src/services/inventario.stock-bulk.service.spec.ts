@@ -71,7 +71,6 @@ describe('InventarioService bulk location stock reads', () => {
     stockRepository.find.mockResolvedValue([
       { ProductoId: '2', UbicacionId: 2, Stock: 0 },
       { ProductoId: '3', UbicacionId: 2, Stock: 12 },
-      { ProductoId: '3', UbicacionId: 1, Stock: 99 },
     ]);
 
     await expect(

@@ -25,14 +25,14 @@ export class InventarioController {
   }
 
   @Get('stock')
-  obtenerStockPorUbicacion(@Query('locationCode') locationCode?: string) {
+  obtenerStockPorUbicacion(@Query('locationCode') locationCode: string) {
     return this.inventarioService.obtenerStockPorUbicacion(locationCode);
   }
 
   @Get('productos/:id/stock')
   async obtenerStockProducto(
     @Param('id') id: string,
-    @Query('locationCode') locationCode?: string,
+    @Query('locationCode') locationCode: string,
   ) {
     const stock = await this.inventarioService.obtenerStockProducto(
       id,

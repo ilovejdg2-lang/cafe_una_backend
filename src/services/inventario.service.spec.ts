@@ -168,6 +168,18 @@ describe('InventarioService central stock compatibility', () => {
     expect(stockRepository.findOne).not.toHaveBeenCalled();
   });
 
+  it('fails when any canonical inventory location is not initialized', async () => {
+    locationsRepository.find.mockResolvedValue([
+      { Id: 1, Codigo: 'BODEGA_CENTRAL', Nombre: 'Bodega Central' },
+      { Id: 2, Codigo: 'POS_FUNA_UNA', Nombre: 'FUNA-UNA' },
+      { Id: 4, Codigo: 'POS_STAND_FERIAS', Nombre: 'Stand Ferias' },
+    ]);
+
+    await expect(service.obtenerUbicaciones()).rejects.toThrow(
+      'La ubicación de inventario no está inicializada.',
+    );
+  });
+
   it('rejects an invalid bulk location before querying repositories', async () => {
     await expect(
       service.obtenerStockPorUbicacion('POS_DESCONOCIDO'),
