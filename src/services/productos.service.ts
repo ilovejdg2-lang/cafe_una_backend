@@ -7,7 +7,6 @@ const IVA_RATE = 0.13;
 const ESTADO_HABILITADO = 'Habilitado';
 const ESTADO_DESHABILITADO = 'Deshabilitado';
 const MAX_PRODUCTOS_DESTACADOS = 3;
-const BODEGA_CENTRAL = 'BODEGA_CENTRAL';
 
 @Injectable()
 export class ProductosService {
@@ -125,40 +124,6 @@ export class ProductosService {
     }
 
     return this.repo.save(actual);
-  }
-
-  async actualizarStockCentral(
-    id: string,
-    stock: unknown,
-  ): Promise<{
-    productId: string;
-    locationCode: string;
-    stock: number;
-  } | null> {
-    const validatedStock = stock;
-    if (
-      typeof validatedStock !== 'number' ||
-      !Number.isInteger(validatedStock) ||
-      validatedStock < 0 ||
-      validatedStock > 2147483647
-    ) {
-      throw new Error(
-        'La cantidad de stock central debe ser un entero entre 0 y 2147483647.',
-      );
-    }
-
-    const actual = await this.repo.findOne({ where: { Id: id } });
-    if (!actual) return null;
-
-    actual.Stock = validatedStock;
-    if (actual.Stock === 0) actual.EsDestacado = false;
-
-    const actualizado = await this.repo.save(actual);
-    return {
-      productId: actualizado.Id,
-      locationCode: BODEGA_CENTRAL,
-      stock: actualizado.Stock,
-    };
   }
 
   async eliminar(id: string): Promise<boolean> {

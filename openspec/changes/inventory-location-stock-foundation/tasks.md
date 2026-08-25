@@ -55,8 +55,16 @@ For Feature Branch Chain: PR1 branch `feature/inventory-f06-location-stock-found
 ## Phase 3: Central Compatibility (PR3)
 
 - [x] 3.1 Write RED unit tests for strict quantities, missing products, unauthorized writes, zero clearing `EsDestacado`, and `stock`/`Stock` compatibility.
-- [ ] 3.2 Delegate `src/controllers/productos.controller.ts` and `src/services/productos.service.ts` to one QueryRunner transaction with deterministic locks and atomic mirror updates.
-- [ ] 3.3 Verify no POS write route exists and failed requests leave both representations unchanged.
+- [x] 3.2 Delegate `src/controllers/productos.controller.ts` and `src/services/productos.service.ts` to one QueryRunner transaction with deterministic locks and atomic mirror updates.
+- [x] 3.3 Verify no POS write route exists and failed requests leave both representations unchanged.
+
+### PR3B Work Unit Evidence
+
+| Evidence          | Result                                                                                                                                                                          |
+| ----------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Focused test      | `npm test -- --runInBand src/controllers/productos.stock-central.http.spec.ts src/controllers/productos.controller.spec.ts` — 2 suites, 8 tests passed.                         |
+| Runtime harness   | Nest HTTP test application verified permission enforcement, both body casing conventions and rejection of POS writes; the route delegates to the inventory transaction service. |
+| Rollback boundary | Revert the product-controller delegation, module wiring and endpoint tests; retain PR3A transaction service plus PR1 persistence and PR2 reads.                                 |
 
 ### PR3A Work Unit Evidence
 

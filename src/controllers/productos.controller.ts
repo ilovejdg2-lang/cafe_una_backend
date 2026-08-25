@@ -13,11 +13,16 @@ import {
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
+import { BODEGA_CENTRAL } from '../services/inventario.service';
+import { InventarioService } from '../services/inventario.service';
 import { ProductosService } from '../services/productos.service';
 
 @Controller('productos')
 export class ProductosController {
-  constructor(private readonly productosService: ProductosService) {}
+  constructor(
+    private readonly productosService: ProductosService,
+    private readonly inventarioService: InventarioService,
+  ) {}
 
   @Get()
   obtenerProductos() {
@@ -88,14 +93,33 @@ export class ProductosController {
   @RequierePermiso('actualizar_stock_productos')
   async actualizarStockCentral(
     @Param('id') id: string,
-    @Body() request: { stock?: unknown; Stock?: unknown },
+    @Body()
+    request: {
+      stock?: unknown;
+      Stock?: unknown;
+      locationCode?: unknown;
+      LocationCode?: unknown;
+    },
   ) {
     try {
+      const requestedLocation =
+        request && Object.prototype.hasOwnProperty.call(request, 'locationCode')
+          ? request.locationCode
+          : request?.LocationCode;
+      if (
+        requestedLocation !== undefined &&
+        requestedLocation !== BODEGA_CENTRAL
+      ) {
+        throw new BadRequestException(
+          'La ruta de stock central solo admite BODEGA_CENTRAL.',
+        );
+      }
+
       const stock =
         request && Object.prototype.hasOwnProperty.call(request, 'stock')
           ? request.stock
           : request?.Stock;
-      const actualizado = await this.productosService.actualizarStockCentral(
+      const actualizado = await this.inventarioService.actualizarStockCentral(
         id,
         stock,
       );
