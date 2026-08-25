@@ -32,10 +32,10 @@ For Feature Branch Chain: PR1 branch `feature/inventory-f06-location-stock-found
 
 ## Phase 1: Persistence Foundation (PR1)
 
-- [ ] 1.1 Write RED integration tests for four canonical seeds, idempotency, central backfill, zero POS rows, uniqueness, constraints, and guarded rollback in `test/inventory-location-stock.integration.spec.ts`.
-- [ ] 1.2 Create `src/entities/inventario-ubicacion.entity.ts` and `src/entities/inventario-stock-ubicacion.entity.ts` with stable codes, composite uniqueness, and non-negative integer constraints.
-- [ ] 1.3 Register entities in `src/entities/index.ts` and `src/modules/inventario.module.ts`.
-- [ ] 1.4 Create `src/database/migrations/*-inventory-location-stock-foundation.ts` with transactional seed, backfill, conflict-safe zero rows, and protected down migration.
+- [x] 1.1 Write RED integration tests for four canonical seeds, idempotency, central backfill, zero POS rows, uniqueness, constraints, and guarded rollback in `test/inventory-location-stock.integration.spec.ts`.
+- [x] 1.2 Create `src/entities/inventario-ubicacion.entity.ts` and `src/entities/inventario-stock-ubicacion.entity.ts` with stable codes, composite uniqueness, and non-negative integer constraints.
+- [x] 1.3 Register entities in `src/entities/index.ts` and `src/modules/inventario.module.ts`.
+- [x] 1.4 Create `src/database/migrations/*-inventory-location-stock-foundation.ts` with transactional seed, backfill, conflict-safe zero rows, and protected down migration.
 
 ## Phase 2: Authorized Reads (PR2)
 
