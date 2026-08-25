@@ -27,7 +27,12 @@ export function resolveTestDatabaseUrl(
     throw new Error('TEST_DATABASE_URL is required for integration tests');
   }
 
-  const parsedUrl = new URL(databaseUrl);
+  let parsedUrl: URL;
+  try {
+    parsedUrl = new URL(databaseUrl);
+  } catch {
+    throw new Error('TEST_DATABASE_URL must be a valid URL');
+  }
 
   if (!['postgres:', 'postgresql:'].includes(parsedUrl.protocol)) {
     throw new Error('TEST_DATABASE_URL must use the PostgreSQL protocol');
