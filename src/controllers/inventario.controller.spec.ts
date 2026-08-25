@@ -246,4 +246,59 @@ describe('InventarioController location reads', () => {
       expect(locationsRepository.findOne).not.toHaveBeenCalled();
     },
   );
+
+  it('rejects location stock adjustments when the administrator permission is missing', async () => {
+    currentRoles = ['Vendedor'];
+
+    await request(app.getHttpServer())
+      .put('/api/inventario/ubicaciones/POS_EDITORIAL/productos/1/stock')
+      .send({ stock: 12, reason: 'Carga inicial' })
+      .expect(403);
+
+    expect(stockRepository.findOne).not.toHaveBeenCalled();
+  });
+
+  it('adjusts a location balance using the public request contract', async () => {
+    const queryRunner = {
+      manager: {
+        findOne: jest
+          .fn()
+          .mockResolvedValueOnce({ Id: 3, Codigo: 'POS_EDITORIAL' })
+          .mockResolvedValueOnce({ Id: '1', Stock: 10 })
+          .mockResolvedValueOnce({
+            Id: '7',
+            ProductoId: '1',
+            UbicacionId: 3,
+            Stock: 0,
+          }),
+        save: jest.fn(),
+        insert: jest.fn(),
+      },
+      connect: jest.fn(),
+      startTransaction: jest.fn(),
+      commitTransaction: jest.fn(),
+      rollbackTransaction: jest.fn(),
+      release: jest.fn(),
+      isTransactionActive: true,
+    };
+    const dataSource = app.get(DataSource);
+    jest
+      .spyOn(dataSource, 'createQueryRunner')
+      .mockReturnValue(queryRunner as never);
+
+    await request(app.getHttpServer())
+      .put('/api/inventario/ubicaciones/POS_EDITORIAL/productos/1/stock')
+      .send({ Stock: 12, Reason: 'Carga inicial del punto de venta' })
+      .expect(200)
+      .expect({
+        productId: '1',
+        locationCode: 'POS_EDITORIAL',
+        previousStock: 0,
+        stock: 12,
+        reason: 'Carga inicial del punto de venta',
+      });
+
+    expect(queryRunner.manager.insert).toHaveBeenCalledTimes(1);
+    expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+  });
 });

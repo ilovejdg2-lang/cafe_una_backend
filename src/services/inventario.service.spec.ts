@@ -12,6 +12,7 @@ describe('InventarioService central stock compatibility', () => {
     manager: {
       findOne: jest.fn(),
       save: jest.fn(),
+      insert: jest.fn(),
     },
     connect: jest.fn(),
     startTransaction: jest.fn(),
@@ -186,5 +187,121 @@ describe('InventarioService central stock compatibility', () => {
 
     expect(productsRepository.find).not.toHaveBeenCalled();
     expect(stockRepository.find).not.toHaveBeenCalled();
+  });
+
+  it.each([-1, 1.5, 2147483648, '4', '', null, true, NaN])(
+    'rejects strict location stock value: %s',
+    async (stock) => {
+      await expect(
+        service.ajustarStockUbicacion(
+          'POS_EDITORIAL',
+          '1',
+          stock,
+          'Carga inicial',
+        ),
+      ).rejects.toThrow(
+        'La cantidad de stock debe ser un entero entre 0 y 2147483647.',
+      );
+
+      expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+    },
+  );
+
+  it('updates a POS balance and records its audit entry atomically', async () => {
+    const product = { Id: '1', Stock: 10 };
+    const balance = {
+      Id: '7',
+      ProductoId: '1',
+      UbicacionId: 3,
+      Stock: 0,
+    };
+    queryRunner.manager.findOne
+      .mockResolvedValueOnce({ Id: 3, Codigo: 'POS_EDITORIAL' })
+      .mockResolvedValueOnce(product)
+      .mockResolvedValueOnce(balance);
+
+    await expect(
+      service.ajustarStockUbicacion(
+        'POS_EDITORIAL',
+        '1',
+        12,
+        'Carga inicial del punto de venta',
+      ),
+    ).resolves.toEqual({
+      productId: '1',
+      locationCode: 'POS_EDITORIAL',
+      previousStock: 0,
+      stock: 12,
+      reason: 'Carga inicial del punto de venta',
+    });
+
+    expect(balance.Stock).toBe(12);
+    expect(product.Stock).toBe(10);
+    expect(queryRunner.manager.save).toHaveBeenCalledWith(balance);
+    expect(queryRunner.manager.insert).toHaveBeenCalledTimes(1);
+    expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not expose the central stock through the POS adjustment route', async () => {
+    await expect(
+      service.ajustarStockUbicacion('BODEGA_CENTRAL', '1', 12, 'Corrección'),
+    ).rejects.toThrow('La ruta de ajustes solo admite puntos de venta.');
+
+    expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+  });
+
+  it('does not write an audit row when the requested stock is unchanged', async () => {
+    const balance = {
+      Id: '7',
+      ProductoId: '1',
+      UbicacionId: 3,
+      Stock: 12,
+    };
+    queryRunner.manager.findOne
+      .mockResolvedValueOnce({ Id: 3, Codigo: 'POS_EDITORIAL' })
+      .mockResolvedValueOnce({ Id: '1', Stock: 10 })
+      .mockResolvedValueOnce(balance);
+
+    await expect(
+      service.ajustarStockUbicacion('POS_EDITORIAL', '1', 12, 'Verificación'),
+    ).resolves.toMatchObject({ previousStock: 12, stock: 12 });
+
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.manager.insert).not.toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('rejects an empty adjustment reason before opening a transaction', async () => {
+    await expect(
+      service.ajustarStockUbicacion('POS_EDITORIAL', '1', 12, '   '),
+    ).rejects.toThrow(
+      'El motivo del ajuste debe tener entre 1 y 300 caracteres.',
+    );
+
+    expect(dataSource.createQueryRunner).not.toHaveBeenCalled();
+  });
+
+  it('rolls back the POS balance when the audit insert fails', async () => {
+    const balance = {
+      Id: '7',
+      ProductoId: '1',
+      UbicacionId: 3,
+      Stock: 0,
+    };
+    queryRunner.manager.findOne
+      .mockResolvedValueOnce({ Id: 3, Codigo: 'POS_EDITORIAL' })
+      .mockResolvedValueOnce({ Id: '1', Stock: 10 })
+      .mockResolvedValueOnce(balance);
+    queryRunner.manager.insert.mockRejectedValueOnce(
+      new Error('audit failure'),
+    );
+
+    await expect(
+      service.ajustarStockUbicacion('POS_EDITORIAL', '1', 12, 'Corrección'),
+    ).rejects.toThrow('audit failure');
+
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+    expect(queryRunner.release).toHaveBeenCalledTimes(1);
   });
 });

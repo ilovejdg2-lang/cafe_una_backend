@@ -5,6 +5,8 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { getAuditoriaUserId } from '../common/auditoria-context';
+import { Auditoria } from '../entities/auditoria.entity';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
@@ -30,6 +32,14 @@ export type InventoryLocationStockResponse = {
   locationCode: LocationCode;
   stock: number;
   provisioned: boolean;
+};
+
+export type InventoryStockAdjustmentResponse = {
+  productId: string;
+  locationCode: Exclude<LocationCode, typeof BODEGA_CENTRAL>;
+  previousStock: number;
+  stock: number;
+  reason: string;
 };
 
 @Injectable()
@@ -106,6 +116,94 @@ export class InventarioService {
         productId: product.Id,
         locationCode: BODEGA_CENTRAL,
         stock: validatedStock,
+      };
+    } catch (error) {
+      if (queryRunner.isTransactionActive) {
+        await queryRunner.rollbackTransaction();
+      }
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async ajustarStockUbicacion(
+    locationCode: unknown,
+    productId: unknown,
+    stock: unknown,
+    reason: unknown,
+  ): Promise<InventoryStockAdjustmentResponse | null> {
+    const canonicalCode = this.validarCodigoUbicacion(locationCode);
+    if (canonicalCode === BODEGA_CENTRAL) {
+      throw new BadRequestException(
+        'La ruta de ajustes solo admite puntos de venta.',
+      );
+    }
+
+    const validatedProductId = this.validarProductId(productId);
+    const validatedStock = this.validarStock(stock);
+    const validatedReason = this.validarReason(reason);
+    const queryRunner = this.dataSource.createQueryRunner();
+
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const location = await queryRunner.manager.findOne(InventarioUbicacion, {
+        where: { Codigo: canonicalCode },
+      });
+      if (!location) {
+        throw new NotFoundException(
+          'La ubicación de inventario no está inicializada.',
+        );
+      }
+
+      const product = await queryRunner.manager.findOne(Producto, {
+        where: { Id: validatedProductId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!product) {
+        await queryRunner.rollbackTransaction();
+        return null;
+      }
+
+      const balance = await queryRunner.manager.findOne(
+        InventarioStockUbicacion,
+        {
+          where: {
+            ProductoId: validatedProductId,
+            UbicacionId: location.Id,
+          },
+          lock: { mode: 'pessimistic_write' },
+        },
+      );
+      if (!balance) {
+        throw new NotFoundException(
+          'El balance de la ubicación no está inicializado.',
+        );
+      }
+
+      const previousStock = balance.Stock;
+      balance.Stock = validatedStock;
+      if (previousStock !== validatedStock) {
+        await queryRunner.manager.save(balance);
+        await queryRunner.manager.insert(Auditoria, {
+          Accion: 'AJUSTE_STOCK',
+          Tabla: 'inventario_stock_ubicaciones',
+          IdRegistro: balance.Id,
+          Detalle: `Producto ${validatedProductId}; ubicación ${canonicalCode}; anterior ${previousStock}; nuevo ${validatedStock}; motivo: ${validatedReason}`,
+          Fecha: new Date(),
+          IdUsuario: getAuditoriaUserId(),
+        });
+      }
+      await queryRunner.commitTransaction();
+
+      return {
+        productId: validatedProductId,
+        locationCode: canonicalCode,
+        previousStock,
+        stock: validatedStock,
+        reason: validatedReason,
       };
     } catch (error) {
       if (queryRunner.isTransactionActive) {
@@ -216,6 +314,50 @@ export class InventarioService {
     }
 
     return locationCode as LocationCode;
+  }
+
+  private validarProductId(productId: unknown): string {
+    if (
+      typeof productId !== 'string' ||
+      !/^\d+$/.test(productId) ||
+      BigInt(productId) <= 0n
+    ) {
+      throw new BadRequestException(
+        'El identificador del producto no es válido.',
+      );
+    }
+
+    return productId;
+  }
+
+  private validarStock(stock: unknown): number {
+    if (
+      typeof stock !== 'number' ||
+      !Number.isInteger(stock) ||
+      stock < 0 ||
+      stock > 2147483647
+    ) {
+      throw new BadRequestException(
+        'La cantidad de stock debe ser un entero entre 0 y 2147483647.',
+      );
+    }
+
+    return stock;
+  }
+
+  private validarReason(reason: unknown): string {
+    if (typeof reason !== 'string') {
+      throw new BadRequestException('El motivo del ajuste es obligatorio.');
+    }
+
+    const normalizedReason = reason.trim();
+    if (normalizedReason.length === 0 || normalizedReason.length > 300) {
+      throw new BadRequestException(
+        'El motivo del ajuste debe tener entre 1 y 300 caracteres.',
+      );
+    }
+
+    return normalizedReason;
   }
 
   private validarStockCentral(stock: unknown): number {

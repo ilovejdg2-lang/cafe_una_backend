@@ -4,6 +4,8 @@ import {
   NotFoundException,
   Param,
   Query,
+  Body,
+  Put,
   UseGuards,
 } from '@nestjs/common';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
@@ -38,5 +40,42 @@ export class InventarioController {
     );
     if (!stock) throw new NotFoundException();
     return stock;
+  }
+
+  @Put('ubicaciones/:locationCode/productos/:productId/stock')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ajustar_stock_ubicaciones')
+  async ajustarStockUbicacion(
+    @Param('locationCode') locationCode: string,
+    @Param('productId') productId: string,
+    @Body()
+    request: {
+      stock?: unknown;
+      Stock?: unknown;
+      reason?: unknown;
+      Reason?: unknown;
+    },
+  ) {
+    try {
+      const stock =
+        request && Object.prototype.hasOwnProperty.call(request, 'stock')
+          ? request.stock
+          : request?.Stock;
+      const reason =
+        request && Object.prototype.hasOwnProperty.call(request, 'reason')
+          ? request.reason
+          : request?.Reason;
+      const actualizado = await this.inventarioService.ajustarStockUbicacion(
+        locationCode,
+        productId,
+        stock,
+        reason,
+      );
+      if (!actualizado) throw new NotFoundException();
+      return actualizado;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw error;
+    }
   }
 }
