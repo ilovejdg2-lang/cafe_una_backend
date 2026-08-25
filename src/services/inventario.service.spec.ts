@@ -5,9 +5,9 @@ import { Producto } from '../entities/producto.entity';
 import { InventarioService } from './inventario.service';
 
 describe('InventarioService central stock compatibility', () => {
-  const locationsRepository = { findOne: jest.fn() };
-  const stockRepository = { findOne: jest.fn() };
-  const productsRepository = { findOne: jest.fn() };
+  const locationsRepository = { find: jest.fn(), findOne: jest.fn() };
+  const stockRepository = { find: jest.fn(), findOne: jest.fn() };
+  const productsRepository = { find: jest.fn(), findOne: jest.fn() };
   const queryRunner = {
     manager: {
       findOne: jest.fn(),
@@ -125,5 +125,66 @@ describe('InventarioService central stock compatibility', () => {
     expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
     expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
     expect(queryRunner.release).toHaveBeenCalledTimes(1);
+  });
+
+  it('returns one scoped balance per product without issuing product-level stock queries', async () => {
+    locationsRepository.findOne.mockResolvedValue({
+      Id: 3,
+      Codigo: 'POS_EDITORIAL',
+    });
+    productsRepository.find.mockResolvedValue([
+      { Id: '1', Nombre: 'Café 1' },
+      { Id: '2', Nombre: 'Café 2' },
+    ]);
+    stockRepository.find.mockResolvedValue([
+      { ProductoId: '1', UbicacionId: 3, Stock: 0 },
+    ]);
+
+    await expect(
+      service.obtenerStockPorUbicacion('POS_EDITORIAL'),
+    ).resolves.toEqual([
+      {
+        productId: '1',
+        locationCode: 'POS_EDITORIAL',
+        stock: 0,
+        provisioned: true,
+      },
+      {
+        productId: '2',
+        locationCode: 'POS_EDITORIAL',
+        stock: 0,
+        provisioned: false,
+      },
+    ]);
+
+    expect(productsRepository.find).toHaveBeenCalledWith({
+      order: { Id: 'ASC' },
+    });
+    expect(stockRepository.find).toHaveBeenCalledWith({
+      where: { UbicacionId: 3 },
+    });
+    expect(productsRepository.findOne).not.toHaveBeenCalled();
+    expect(stockRepository.findOne).not.toHaveBeenCalled();
+  });
+
+  it('rejects an invalid bulk location before querying repositories', async () => {
+    await expect(
+      service.obtenerStockPorUbicacion('POS_DESCONOCIDO'),
+    ).rejects.toThrow('El código de ubicación no es válido.');
+
+    expect(locationsRepository.findOne).not.toHaveBeenCalled();
+    expect(productsRepository.find).not.toHaveBeenCalled();
+    expect(stockRepository.find).not.toHaveBeenCalled();
+  });
+
+  it('fails when the requested location is not initialized', async () => {
+    locationsRepository.findOne.mockResolvedValue(null);
+
+    await expect(
+      service.obtenerStockPorUbicacion('POS_EDITORIAL'),
+    ).rejects.toThrow('La ubicación de inventario no está inicializada.');
+
+    expect(productsRepository.find).not.toHaveBeenCalled();
+    expect(stockRepository.find).not.toHaveBeenCalled();
   });
 });
