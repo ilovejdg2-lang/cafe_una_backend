@@ -15,7 +15,12 @@ import { DataSource } from 'typeorm';
 describe('InventarioController location reads', () => {
   let app: INestApplication;
   let currentRoles = ['Admin'];
-  const locationsRepository = { find: jest.fn(), findOne: jest.fn() };
+  const locationsRepository = {
+    find: jest.fn(),
+    findOne: jest.fn(),
+    create: jest.fn((row) => row),
+    save: jest.fn(async (rows) => rows),
+  };
   const stockRepository = { find: jest.fn(), findOne: jest.fn() };
   const productsRepository = { find: jest.fn(), findOne: jest.fn() };
 
@@ -42,7 +47,10 @@ describe('InventarioController location reads', () => {
         },
         {
           provide: DataSource,
-          useValue: { createQueryRunner: jest.fn() },
+          useValue: {
+            createQueryRunner: jest.fn(),
+            getRepository: jest.fn(() => ({ insert: jest.fn() })),
+          },
         },
       ],
     })
@@ -69,22 +77,22 @@ describe('InventarioController location reads', () => {
     await app.close();
   });
 
-  it('lists the four canonical locations with the public casing', async () => {
+  it('lists inventory locations with the public casing and active flag', async () => {
     locationsRepository.find.mockResolvedValue([
-      { Id: 1, Codigo: 'BODEGA_CENTRAL', Nombre: 'Bodega Central' },
-      { Id: 2, Codigo: 'POS_FUNA_UNA', Nombre: 'FUNA-UNA' },
-      { Id: 3, Codigo: 'POS_EDITORIAL', Nombre: 'Editorial' },
-      { Id: 4, Codigo: 'POS_STAND_FERIAS', Nombre: 'Stand Ferias' },
+      { Id: 1, Codigo: 'BODEGA_CENTRAL', Nombre: 'Bodega Central', Activo: true },
+      { Id: 2, Codigo: 'POS_FUNA_UNA', Nombre: 'FUNA-UNA', Activo: true },
+      { Id: 3, Codigo: 'POS_EDITORIAL', Nombre: 'Editorial', Activo: true },
+      { Id: 4, Codigo: 'POS_STAND_FERIAS', Nombre: 'Stand Ferias', Activo: false },
     ]);
 
     await request(app.getHttpServer())
       .get('/api/inventario/ubicaciones')
       .expect(200)
       .expect([
-        { code: 'BODEGA_CENTRAL', name: 'Bodega Central' },
-        { code: 'POS_FUNA_UNA', name: 'FUNA-UNA' },
-        { code: 'POS_EDITORIAL', name: 'Editorial' },
-        { code: 'POS_STAND_FERIAS', name: 'Stand Ferias' },
+        { code: 'BODEGA_CENTRAL', name: 'Bodega Central', activo: true },
+        { code: 'POS_FUNA_UNA', name: 'FUNA-UNA', activo: true },
+        { code: 'POS_EDITORIAL', name: 'Editorial', activo: true },
+        { code: 'POS_STAND_FERIAS', name: 'Stand Ferias', activo: false },
       ]);
   });
 
@@ -138,6 +146,8 @@ describe('InventarioController location reads', () => {
   });
 
   it('rejects an invalid bulk location with HTTP 400', async () => {
+    locationsRepository.findOne.mockResolvedValue(null);
+
     await request(app.getHttpServer())
       .get('/api/inventario/stock')
       .query({ locationCode: 'POS_DESCONOCIDO' })
@@ -148,6 +158,8 @@ describe('InventarioController location reads', () => {
   });
 
   it('rejects an unknown location code without mutating repositories', async () => {
+    locationsRepository.findOne.mockResolvedValue(null);
+
     await request(app.getHttpServer())
       .get('/api/inventario/productos/1/stock')
       .query({ locationCode: 'POS_DESCONOCIDO' })
@@ -233,19 +245,36 @@ describe('InventarioController location reads', () => {
     });
   });
 
-  it.each(['post', 'delete'])(
-    'does not expose unsupported location CRUD through %s',
-    async (method) => {
-      const response =
-        method === 'post'
-          ? request(app.getHttpServer()).post('/api/inventario/ubicaciones')
-          : request(app.getHttpServer()).delete('/api/inventario/ubicaciones');
-      await response.expect(404);
+  it('rejects physical deletion of locations and allows authenticated create', async () => {
+    locationsRepository.findOne.mockResolvedValue(null);
+    locationsRepository.save.mockImplementation(async (row) => ({
+      Id: 9,
+      ...row,
+    }));
 
-      expect(locationsRepository.find).not.toHaveBeenCalled();
-      expect(locationsRepository.findOne).not.toHaveBeenCalled();
-    },
-  );
+    await request(app.getHttpServer())
+      .delete('/api/inventario/ubicaciones')
+      .expect(404);
+
+    await request(app.getHttpServer())
+      .post('/api/inventario/ubicaciones')
+      .send({ nombre: 'Kiosco Norte' })
+      .expect(201)
+      .expect(({ body }) => {
+        expect(body).toMatchObject({
+          name: 'Kiosco Norte',
+          activo: true,
+        });
+        expect(body.code).toMatch(/^POS_/);
+      });
+  });
+
+  it('blocks editing Bodega Central', async () => {
+    await request(app.getHttpServer())
+      .put('/api/inventario/ubicaciones/BODEGA_CENTRAL')
+      .send({ nombre: 'Otra' })
+      .expect(400);
+  });
 
   it('rejects location stock adjustments when the administrator permission is missing', async () => {
     currentRoles = ['Vendedor'];

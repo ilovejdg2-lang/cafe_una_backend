@@ -10,4 +10,7 @@ export class InventarioUbicacion {
 
   @Column({ name: 'Nombre', type: 'varchar', length: 100 })
   Nombre: string;
+
+  @Column({ name: 'Activo', type: 'boolean', default: true })
+  Activo: boolean;
 }
