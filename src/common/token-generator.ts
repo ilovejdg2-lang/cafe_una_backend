@@ -15,11 +15,12 @@ export function generateToken(
   issuer: string,
   audience: string,
 ): string {
+  const roles = Array.isArray(usuario.Roles) ? usuario.Roles : [];
   const payload: JwtPayload = {
     sub: usuario.Id.toString(),
     unique_name: usuario.Nombre,
     email: usuario.Correo,
-    role: usuario.Roles.length === 1 ? usuario.Roles[0] : usuario.Roles,
+    role: roles.length === 1 ? roles[0] : roles,
   };
 
   return jwtService.sign(payload, {
