@@ -45,8 +45,9 @@ export const PERMISOS_POR_ROL: Record<string, readonly string[]> = {
   crear_productos: [SA],
   comprar_productos: [CL],
   actualizar_stock_productos: staff,
+  ajustar_stock_ubicaciones: admins,
   actualizar_productos: admins,
-  inactivar_productos: admins,
+  inactivar_productos: [SA],
   ver_historial_compras_clientes: staff,
   ver_historial_compras_propio: [CL],
   ver_inventario: admins,
@@ -105,7 +106,10 @@ function normalizarRol(rol: string): string {
   return (rol ?? '').trim();
 }
 
-export function tienePermiso(roles: string[] | null | undefined, codigo: string): boolean {
+export function tienePermiso(
+  roles: string[] | null | undefined,
+  codigo: string,
+): boolean {
   const permitidos = PERMISOS_POR_ROL[codigo];
   if (!permitidos) return false;
   const propios = (roles ?? []).map(normalizarRol);

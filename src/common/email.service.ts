@@ -25,6 +25,12 @@ export class EmailService {
     'Email',
     'actualizacion-voluntariado.html',
   );
+  private readonly alertaStockTemplatePath = path.join(
+    process.cwd(),
+    'Templates',
+    'Email',
+    'alerta-stock.html',
+  );
 
   constructor(private readonly config: ConfigService) {}
 
@@ -111,6 +117,38 @@ export class EmailService {
     );
   }
 
+  async enviarAlertaStockBajo(
+    destinatario: string,
+    datos: {
+      nombreAdmin: string;
+      nombreProducto: string;
+      stockActual: number;
+      stockMinimo: number;
+      productoId: string;
+    },
+  ): Promise<boolean> {
+    const agotado = datos.stockActual <= 0;
+    const titulo = agotado ? 'Producto agotado' : 'Stock bajo';
+    const mensaje = agotado
+      ? 'Un producto del inventario de Café UNA se quedó sin unidades disponibles.'
+      : 'Un producto del inventario de Café UNA bajó al stock mínimo o por debajo.';
+    const nota = `Revisá el panel de inventario (producto #${datos.productoId}) para reponer o transferir stock. Este es un aviso automático para SuperAdmin.`;
+
+    return this.enviar(
+      destinatario,
+      `${titulo}: ${datos.nombreProducto} - Café UNA`,
+      await this.buildAlertaStockEmail({
+        nombreAdmin: datos.nombreAdmin,
+        titulo,
+        mensaje,
+        nombreProducto: datos.nombreProducto,
+        stockActual: String(datos.stockActual),
+        stockMinimo: String(datos.stockMinimo),
+        nota,
+      }),
+    );
+  }
+
   private async enviar(
     destinatario: string,
     subject: string,
@@ -169,6 +207,30 @@ export class EmailService {
       .replaceAll('{{mensaje}}', this.escapeHtml(mensaje))
       .replaceAll('{{codigo}}', this.escapeHtml(codigo))
       .replaceAll('{{nota}}', this.escapeHtml(nota));
+  }
+
+  private async buildAlertaStockEmail(datos: {
+    nombreAdmin: string;
+    titulo: string;
+    mensaje: string;
+    nombreProducto: string;
+    stockActual: string;
+    stockMinimo: string;
+    nota: string;
+  }): Promise<string> {
+    const saludo = datos.nombreAdmin?.trim()
+      ? `Hola, ${this.escapeHtml(datos.nombreAdmin)}`
+      : 'Hola';
+    const template = await fs.readFile(this.alertaStockTemplatePath, 'utf8');
+
+    return template
+      .replaceAll('{{saludo}}', saludo)
+      .replaceAll('{{titulo}}', this.escapeHtml(datos.titulo))
+      .replaceAll('{{mensaje}}', this.escapeHtml(datos.mensaje))
+      .replaceAll('{{nombreProducto}}', this.escapeHtml(datos.nombreProducto))
+      .replaceAll('{{stockActual}}', this.escapeHtml(datos.stockActual))
+      .replaceAll('{{stockMinimo}}', this.escapeHtml(datos.stockMinimo))
+      .replaceAll('{{nota}}', this.escapeHtml(datos.nota));
   }
 
   private escapeHtml(value: string): string {

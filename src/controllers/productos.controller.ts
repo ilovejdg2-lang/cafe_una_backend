@@ -13,15 +13,43 @@ import {
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
+import { BODEGA_CENTRAL } from '../services/inventario.service';
+import { InventarioService } from '../services/inventario.service';
 import { ProductosService } from '../services/productos.service';
 
 @Controller('productos')
 export class ProductosController {
-  constructor(private readonly productosService: ProductosService) {}
+  constructor(
+    private readonly productosService: ProductosService,
+    private readonly inventarioService: InventarioService,
+  ) {}
 
   @Get()
-  obtenerProductos() {
-    return this.productosService.obtenerTodos();
+  async obtenerProductos() {
+    return this.productosService.obtenerTodosConStockTotal();
+  }
+
+  @Get('alertas-stock')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ver_inventario', 'ver_panel_administrativo')
+  listarAlertasStock() {
+    return this.productosService.listarAlertasStock();
+  }
+
+  @Get(':id/stock')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ver_inventario')
+  async obtenerStockDesglosado(@Param('id') id: string) {
+    const stock = await this.inventarioService.obtenerStockDesglosadoProducto(id);
+    if (!stock) throw new NotFoundException();
+    return stock;
+  }
+
+  @Get(':id')
+  async obtenerProducto(@Param('id') id: string) {
+    const producto = await this.productosService.obtenerPorId(id);
+    if (!producto) throw new NotFoundException();
+    return producto;
   }
 
   @Post()
@@ -37,11 +65,18 @@ export class ProductosController {
       Stock: number;
       Estado?: string;
       Peso: string;
+      Categoria?: string;
+      Subcategoria?: string;
       EsDestacado: boolean;
+      StockMinimo?: number;
+      stockMinimo?: number;
     },
   ) {
     try {
-      return await this.productosService.crear(request);
+      return await this.productosService.crear({
+        ...request,
+        StockMinimo: request.StockMinimo ?? request.stockMinimo,
+      });
     } catch (error) {
       throw new BadRequestException({
         message: error instanceof Error ? error.message : 'Error.',
@@ -68,11 +103,63 @@ export class ProductosController {
       Stock?: number;
       Estado?: string;
       Peso?: string;
+      Categoria?: string;
+      Subcategoria?: string;
       EsDestacado?: boolean;
+      StockMinimo?: number;
+      stockMinimo?: number;
     },
   ) {
     try {
-      const actualizado = await this.productosService.actualizar(id, cambios);
+      const actualizado = await this.productosService.actualizar(id, {
+        ...cambios,
+        StockMinimo: cambios.StockMinimo ?? cambios.stockMinimo,
+      });
+      if (!actualizado) throw new NotFoundException();
+      return actualizado;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      throw new BadRequestException({
+        message: error instanceof Error ? error.message : 'Error.',
+      });
+    }
+  }
+
+  @Put(':id/stock-central')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('actualizar_stock_productos')
+  async actualizarStockCentral(
+    @Param('id') id: string,
+    @Body()
+    request: {
+      stock?: unknown;
+      Stock?: unknown;
+      locationCode?: unknown;
+      LocationCode?: unknown;
+    },
+  ) {
+    try {
+      const requestedLocation =
+        request && Object.prototype.hasOwnProperty.call(request, 'locationCode')
+          ? request.locationCode
+          : request?.LocationCode;
+      if (
+        requestedLocation !== undefined &&
+        requestedLocation !== BODEGA_CENTRAL
+      ) {
+        throw new BadRequestException(
+          'La ruta de stock central solo admite BODEGA_CENTRAL.',
+        );
+      }
+
+      const stock =
+        request && Object.prototype.hasOwnProperty.call(request, 'stock')
+          ? request.stock
+          : request?.Stock;
+      const actualizado = await this.inventarioService.actualizarStockCentral(
+        id,
+        stock,
+      );
       if (!actualizado) throw new NotFoundException();
       return actualizado;
     } catch (error) {

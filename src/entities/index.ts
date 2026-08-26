@@ -1,22 +1,30 @@
+import { ActivoFijo } from './activo-fijo.entity';
 import { Auditoria } from './auditoria.entity';
+import { CompraItem } from './compra-item.entity';
+import { Compra } from './compra.entity';
 import { CambioCorreoPendiente } from './cambio-correo-pendiente.entity';
+import { Categoria } from './categoria.entity';
 import { EnlaceSitio } from './enlace-sitio.entity';
 import { GaleriaInstitucionalItem } from './galeria-institucional-item.entity';
 import { HeroPrincipal } from './hero-principal.entity';
 import { InformacionFooter } from './informacion-footer.entity';
 import { InformacionNavbar } from './informacion-navbar.entity';
+import { InventarioStockUbicacion } from './inventario-stock-ubicacion.entity';
+import { InventarioUbicacion } from './inventario-ubicacion.entity';
 import { PasswordResetEntry } from './password-reset-entry.entity';
 import { Producto } from './producto.entity';
 import { RegistroPendiente } from './registro-pendiente.entity';
 import { SolicitudVoluntariado } from './solicitud-voluntariado.entity';
 import { TarjetaInicio } from './tarjeta-inicio.entity';
 import { TextoInstitucional } from './texto-institucional.entity';
+import { Transferencia } from './transferencia.entity';
 import { UsuarioCreacionPendiente } from './usuario-creacion-pendiente.entity';
 import { Usuario } from './usuario.entity';
 
 export const entities = [
   Usuario,
   Producto,
+  Categoria,
   HeroPrincipal,
   TextoInstitucional,
   TarjetaInicio,
@@ -30,10 +38,17 @@ export const entities = [
   CambioCorreoPendiente,
   UsuarioCreacionPendiente,
   Auditoria,
+  InventarioUbicacion,
+  InventarioStockUbicacion,
+  ActivoFijo,
+  Compra,
+  CompraItem,
+  Transferencia,
 ];
 
 export * from './usuario.entity';
 export * from './producto.entity';
+export * from './categoria.entity';
 export * from './hero-principal.entity';
 export * from './texto-institucional.entity';
 export * from './tarjeta-inicio.entity';
@@ -47,3 +62,9 @@ export * from './registro-pendiente.entity';
 export * from './cambio-correo-pendiente.entity';
 export * from './usuario-creacion-pendiente.entity';
 export * from './auditoria.entity';
+export * from './inventario-ubicacion.entity';
+export * from './inventario-stock-ubicacion.entity';
+export * from './activo-fijo.entity';
+export * from './compra.entity';
+export * from './compra-item.entity';
+export * from './transferencia.entity';
