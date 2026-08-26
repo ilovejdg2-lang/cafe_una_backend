@@ -47,7 +47,7 @@ export const PERMISOS_POR_ROL: Record<string, readonly string[]> = {
   actualizar_stock_productos: staff,
   ajustar_stock_ubicaciones: admins,
   actualizar_productos: admins,
-  inactivar_productos: admins,
+  inactivar_productos: [SA],
   ver_historial_compras_clientes: staff,
   ver_historial_compras_propio: [CL],
   ver_inventario: admins,

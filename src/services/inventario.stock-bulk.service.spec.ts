@@ -2,7 +2,11 @@ import { DataSource } from 'typeorm';
 import { InventarioService } from './inventario.service';
 
 describe('InventarioService bulk location stock reads', () => {
-  const locationsRepository = { findOne: jest.fn() };
+  const locationsRepository = {
+    findOne: jest.fn(),
+    create: jest.fn((row) => row),
+    save: jest.fn(async (row) => ({ Id: 9, ...row })),
+  };
   const stockRepository = { find: jest.fn(), findOne: jest.fn() };
   const productsRepository = { find: jest.fn(), findOne: jest.fn() };
   const dataSource = { createQueryRunner: jest.fn() };
@@ -16,6 +20,7 @@ describe('InventarioService bulk location stock reads', () => {
       stockRepository as never,
       productsRepository as never,
       dataSource as unknown as DataSource,
+      { verificarTrasMovimiento: jest.fn().mockResolvedValue(null) } as never,
     );
   });
 
@@ -122,14 +127,17 @@ describe('InventarioService bulk location stock reads', () => {
     expect(stockRepository.find).not.toHaveBeenCalled();
   });
 
-  it('returns 404 when the canonical location is not initialized', async () => {
+  it('creates the canonical location when it is missing', async () => {
     locationsRepository.findOne.mockResolvedValue(null);
+    productsRepository.find.mockResolvedValue([]);
 
     await expect(
       service.obtenerStockPorUbicacion('POS_FUNA_UNA'),
-    ).rejects.toThrow('La ubicación de inventario no está inicializada.');
+    ).resolves.toEqual([]);
 
-    expect(productsRepository.find).not.toHaveBeenCalled();
-    expect(stockRepository.find).not.toHaveBeenCalled();
+    expect(locationsRepository.save).toHaveBeenCalledWith({
+      Codigo: 'POS_FUNA_UNA',
+      Nombre: 'FUNA-UNA',
+    });
   });
 });
