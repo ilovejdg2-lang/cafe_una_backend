@@ -1,11 +1,12 @@
 import {
+  Body,
   Controller,
   Get,
   NotFoundException,
   Param,
-  Query,
-  Body,
+  Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
@@ -22,6 +23,35 @@ export class InventarioController {
   @Get('ubicaciones')
   obtenerUbicaciones() {
     return this.inventarioService.obtenerUbicaciones();
+  }
+
+  @Post('ubicaciones')
+  @RequierePermiso('ajustar_stock_ubicaciones')
+  crearUbicacion(
+    @Body()
+    body: {
+      codigo?: unknown;
+      Codigo?: unknown;
+      nombre?: unknown;
+      Nombre?: unknown;
+    },
+  ) {
+    return this.inventarioService.crearUbicacion(body ?? {});
+  }
+
+  @Put('ubicaciones/:locationCode')
+  @RequierePermiso('ajustar_stock_ubicaciones')
+  actualizarUbicacion(
+    @Param('locationCode') locationCode: string,
+    @Body()
+    body: {
+      nombre?: unknown;
+      Nombre?: unknown;
+      activo?: unknown;
+      Activo?: unknown;
+    },
+  ) {
+    return this.inventarioService.actualizarUbicacion(locationCode, body ?? {});
   }
 
   @Get('stock')
@@ -43,7 +73,6 @@ export class InventarioController {
   }
 
   @Put('ubicaciones/:locationCode/productos/:productId/stock')
-  @UseGuards(JwtAuthGuard, PermisosGuard)
   @RequierePermiso('ajustar_stock_ubicaciones')
   async ajustarStockUbicacion(
     @Param('locationCode') locationCode: string,
@@ -56,26 +85,21 @@ export class InventarioController {
       Reason?: unknown;
     },
   ) {
-    try {
-      const stock =
-        request && Object.prototype.hasOwnProperty.call(request, 'stock')
-          ? request.stock
-          : request?.Stock;
-      const reason =
-        request && Object.prototype.hasOwnProperty.call(request, 'reason')
-          ? request.reason
-          : request?.Reason;
-      const actualizado = await this.inventarioService.ajustarStockUbicacion(
-        locationCode,
-        productId,
-        stock,
-        reason,
-      );
-      if (!actualizado) throw new NotFoundException();
-      return actualizado;
-    } catch (error) {
-      if (error instanceof NotFoundException) throw error;
-      throw error;
-    }
+    const stock =
+      request && Object.prototype.hasOwnProperty.call(request, 'stock')
+        ? request.stock
+        : request?.Stock;
+    const reason =
+      request && Object.prototype.hasOwnProperty.call(request, 'reason')
+        ? request.reason
+        : request?.Reason;
+    const actualizado = await this.inventarioService.ajustarStockUbicacion(
+      locationCode,
+      productId,
+      stock,
+      reason,
+    );
+    if (!actualizado) throw new NotFoundException();
+    return actualizado;
   }
 }

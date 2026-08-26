@@ -25,8 +25,31 @@ export class ProductosController {
   ) {}
 
   @Get()
-  obtenerProductos() {
-    return this.productosService.obtenerTodos();
+  async obtenerProductos() {
+    return this.productosService.obtenerTodosConStockTotal();
+  }
+
+  @Get('alertas-stock')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ver_inventario', 'ver_panel_administrativo')
+  listarAlertasStock() {
+    return this.productosService.listarAlertasStock();
+  }
+
+  @Get(':id/stock')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ver_inventario')
+  async obtenerStockDesglosado(@Param('id') id: string) {
+    const stock = await this.inventarioService.obtenerStockDesglosadoProducto(id);
+    if (!stock) throw new NotFoundException();
+    return stock;
+  }
+
+  @Get(':id')
+  async obtenerProducto(@Param('id') id: string) {
+    const producto = await this.productosService.obtenerPorId(id);
+    if (!producto) throw new NotFoundException();
+    return producto;
   }
 
   @Post()
@@ -42,11 +65,18 @@ export class ProductosController {
       Stock: number;
       Estado?: string;
       Peso: string;
+      Categoria?: string;
+      Subcategoria?: string;
       EsDestacado: boolean;
+      StockMinimo?: number;
+      stockMinimo?: number;
     },
   ) {
     try {
-      return await this.productosService.crear(request);
+      return await this.productosService.crear({
+        ...request,
+        StockMinimo: request.StockMinimo ?? request.stockMinimo,
+      });
     } catch (error) {
       throw new BadRequestException({
         message: error instanceof Error ? error.message : 'Error.',
@@ -73,11 +103,18 @@ export class ProductosController {
       Stock?: number;
       Estado?: string;
       Peso?: string;
+      Categoria?: string;
+      Subcategoria?: string;
       EsDestacado?: boolean;
+      StockMinimo?: number;
+      stockMinimo?: number;
     },
   ) {
     try {
-      const actualizado = await this.productosService.actualizar(id, cambios);
+      const actualizado = await this.productosService.actualizar(id, {
+        ...cambios,
+        StockMinimo: cambios.StockMinimo ?? cambios.stockMinimo,
+      });
       if (!actualizado) throw new NotFoundException();
       return actualizado;
     } catch (error) {

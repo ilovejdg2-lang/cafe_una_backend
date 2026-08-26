@@ -29,6 +29,21 @@ export class Producto {
   @Column({ name: 'Peso', length: 50 })
   Peso: string;
 
+  @Column({ name: 'Categoria', length: 80, default: '' })
+  Categoria: string;
+
+  @Column({ name: 'Subcategoria', length: 80, default: '' })
+  Subcategoria: string;
+
   @Column({ name: 'EsDestacado', default: false })
   EsDestacado: boolean;
+
+  @Column({ name: 'StockMinimo', type: 'int', default: 0 })
+  StockMinimo: number;
+
+  @Column({ name: 'AlertaStock', type: 'boolean', default: false })
+  AlertaStock: boolean;
+
+  @Column({ name: 'Disponible', type: 'boolean', default: true })
+  Disponible: boolean;
 }

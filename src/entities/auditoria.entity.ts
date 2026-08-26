@@ -18,6 +18,12 @@ export class Auditoria {
   @Column({ name: 'Detalle', type: 'varchar', length: 500, default: '' })
   Detalle: string;
 
+  @Column({ name: 'DatosAnteriores', type: 'jsonb', nullable: true })
+  DatosAnteriores: Record<string, unknown> | null;
+
+  @Column({ name: 'DatosNuevos', type: 'jsonb', nullable: true })
+  DatosNuevos: Record<string, unknown> | null;
+
   @Column({ name: 'Fecha', type: 'timestamptz' })
   Fecha: Date;
 
