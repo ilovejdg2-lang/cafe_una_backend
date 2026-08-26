@@ -2,6 +2,12 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import { Producto } from '../entities/producto.entity';
+import {
+  CategoriasService,
+  TIPO_CATEGORIA_PRODUCTO,
+} from './categorias.service';
+import { InventarioService } from './inventario.service';
+import { StockAlertaService } from './stock-alerta.service';
 
 const IVA_RATE = 0.13;
 const ESTADO_HABILITADO = 'Habilitado';
@@ -14,10 +20,33 @@ export class ProductosService {
     @InjectRepository(Producto)
     private readonly repo: Repository<Producto>,
     private readonly dataSource: DataSource,
+    private readonly categoriasService: CategoriasService,
+    private readonly inventarioService: InventarioService,
+    private readonly stockAlertaService: StockAlertaService,
   ) {}
 
   async obtenerTodos(): Promise<Producto[]> {
     return this.repo.find({ order: { Id: 'ASC' } });
+  }
+
+  async obtenerTodosConStockTotal(): Promise<
+    Array<Producto & { stockTotal: number; stock_total: number }>
+  > {
+    const productos = await this.obtenerTodos();
+    const totales = await this.inventarioService.obtenerTotalesStockPorProducto();
+    return productos.map((producto) => {
+      const stockTotal =
+        totales.get(String(producto.Id)) ?? (Number(producto.Stock) || 0);
+      return Object.assign(producto, {
+        stockTotal,
+        stock_total: stockTotal,
+      });
+    });
+  }
+
+  async obtenerPorId(id: string): Promise<Producto | null> {
+    if (!id?.trim()) return null;
+    return this.repo.findOne({ where: { Id: id } });
   }
 
   async crear(request: {
@@ -28,7 +57,10 @@ export class ProductosService {
     Stock: number;
     Estado?: string;
     Peso: string;
+    Categoria?: string;
+    Subcategoria?: string;
     EsDestacado: boolean;
+    StockMinimo?: number;
   }): Promise<Producto> {
     this.validarDatosProducto(
       request.Nombre,
@@ -43,6 +75,12 @@ export class ProductosService {
       this.validarProductoDestacable(estado, request.Stock);
     }
 
+    const categoria = await this.resolverCategoria(request.Categoria);
+    const subcategoria = await this.resolverSubcategoria(
+      categoria,
+      request.Subcategoria,
+    );
+    const stockMinimo = this.normalizarStockMinimo(request.StockMinimo);
     const producto = this.repo.create({
       Nombre: request.Nombre.trim(),
       Descripcion: request.Descripcion.trim(),
@@ -52,10 +90,17 @@ export class ProductosService {
       Stock: request.Stock,
       Estado: estado,
       Peso: request.Peso.trim(),
+      Categoria: categoria,
+      Subcategoria: subcategoria,
       EsDestacado: request.EsDestacado,
+      StockMinimo: stockMinimo,
+      AlertaStock: request.Stock <= stockMinimo,
+      Disponible: request.Stock > 0,
     });
 
-    return this.repo.save(producto);
+    const guardado = await this.repo.save(producto);
+    await this.stockAlertaService.verificarTrasMovimiento(String(guardado.Id));
+    return (await this.obtenerPorId(String(guardado.Id))) ?? guardado;
   }
 
   async actualizar(
@@ -69,7 +114,10 @@ export class ProductosService {
       Stock?: number;
       Estado?: string;
       Peso?: string;
+      Categoria?: string;
+      Subcategoria?: string;
       EsDestacado?: boolean;
+      StockMinimo?: number;
     },
   ): Promise<Producto | null> {
     const actual = await this.repo.findOne({ where: { Id: id } });
@@ -92,6 +140,7 @@ export class ProductosService {
       actual.PrecioConIVA = cambios.PrecioConIVA.toFixed(2);
     }
 
+    let stockCambio = false;
     if (cambios.Stock != null) {
       if (cambios.Stock < 0) throw new Error('El stock no puede ser negativo.');
       if (cambios.Stock <= 0 && actual.EsDestacado) {
@@ -101,9 +150,27 @@ export class ProductosService {
       }
       actual.Stock = cambios.Stock;
       if (actual.Stock <= 0) actual.EsDestacado = false;
+      stockCambio = true;
+    }
+
+    if (cambios.StockMinimo != null) {
+      actual.StockMinimo = this.normalizarStockMinimo(cambios.StockMinimo);
+      stockCambio = true;
     }
 
     if (cambios.Peso != null) actual.Peso = cambios.Peso.trim();
+    if (cambios.Categoria != null) {
+      actual.Categoria = await this.resolverCategoria(cambios.Categoria);
+      if (cambios.Subcategoria == null) {
+        actual.Subcategoria = '';
+      }
+    }
+    if (cambios.Subcategoria != null) {
+      actual.Subcategoria = await this.resolverSubcategoria(
+        actual.Categoria,
+        cambios.Subcategoria,
+      );
+    }
 
     if (cambios.Estado?.trim()) {
       const nuevoEstado = this.normalizarEstado(cambios.Estado);
@@ -123,13 +190,19 @@ export class ProductosService {
       actual.EsDestacado = cambios.EsDestacado;
     }
 
-    return this.repo.save(actual);
+    await this.repo.save(actual);
+    if (stockCambio) {
+      await this.stockAlertaService.verificarTrasMovimiento(String(actual.Id));
+    }
+    return this.obtenerPorId(String(actual.Id));
   }
 
   async eliminar(id: string): Promise<boolean> {
     const producto = await this.repo.findOne({ where: { Id: id } });
     if (!producto) return false;
-    await this.repo.remove(producto);
+    producto.Estado = ESTADO_DESHABILITADO;
+    producto.EsDestacado = false;
+    await this.repo.save(producto);
     return true;
   }
 
@@ -168,6 +241,9 @@ export class ProductosService {
       }
 
       await queryRunner.commitTransaction();
+      for (const producto of actualizados) {
+        await this.stockAlertaService.verificarTrasMovimiento(String(producto.Id));
+      }
       return actualizados;
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -175,6 +251,19 @@ export class ProductosService {
     } finally {
       await queryRunner.release();
     }
+  }
+
+  listarAlertasStock() {
+    return this.stockAlertaService.listarAlertas();
+  }
+
+  private normalizarStockMinimo(valor: unknown): number {
+    if (valor === undefined || valor === null || valor === '') return 0;
+    const n = Number(valor);
+    if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
+      throw new Error('El stock mínimo debe ser un entero mayor o igual a 0.');
+    }
+    return n;
   }
 
   private calcularPrecioConIVA(precioNormal: number): number {
@@ -207,6 +296,30 @@ export class ProductosService {
     return estado?.trim().toLowerCase() === ESTADO_DESHABILITADO.toLowerCase()
       ? ESTADO_DESHABILITADO
       : ESTADO_HABILITADO;
+  }
+
+  private async resolverCategoria(categoria?: string): Promise<string> {
+    const limpio = String(categoria || '').trim();
+    if (!limpio) return '';
+    return this.categoriasService.asegurar(limpio, TIPO_CATEGORIA_PRODUCTO);
+  }
+
+  private async resolverSubcategoria(
+    categoria: string,
+    subcategoria?: string,
+  ): Promise<string> {
+    const limpio = String(subcategoria || '').trim();
+    if (!limpio) return '';
+    if (!categoria) {
+      throw new Error(
+        'Seleccione una categoría antes de asignar una subcategoría.',
+      );
+    }
+    return this.categoriasService.asegurar(
+      limpio,
+      TIPO_CATEGORIA_PRODUCTO,
+      categoria,
+    );
   }
 
   private validarDatosProducto(

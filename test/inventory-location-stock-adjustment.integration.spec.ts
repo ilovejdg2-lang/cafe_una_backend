@@ -111,6 +111,7 @@ describeIntegration('inventory location stock adjustment', () => {
       serviceDataSource.getRepository(InventarioStockUbicacion),
       serviceDataSource.getRepository(Producto),
       serviceDataSource,
+      { verificarTrasMovimiento: async () => null } as never,
     );
 
     await expect(

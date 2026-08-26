@@ -157,7 +157,7 @@ export class InformacionController {
   @UseGuards(JwtAuthGuard, PermisosGuard)
   @RequierePermiso('agregar_imagenes_galeria')
   async crearGaleriaItem(
-    @Body() request: { Title: string; Image: string; Orden?: number },
+    @Body() request: { Title: string; Image: string; Categoria?: string; Orden?: number },
   ) {
     return this.galeriaService.crear(request);
   }
@@ -167,7 +167,7 @@ export class InformacionController {
   @RequierePermiso('actualizar_informacion')
   async actualizarGaleriaItem(
     @Param('id') id: string,
-    @Body() cambios: { Title?: string; Image?: string; Orden?: number },
+    @Body() cambios: { Title?: string; Image?: string; Categoria?: string; Orden?: number },
   ) {
     const actualizado = await this.galeriaService.actualizar(id, cambios);
     if (!actualizado) throw new NotFoundException();
