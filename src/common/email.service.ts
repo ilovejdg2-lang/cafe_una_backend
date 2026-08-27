@@ -125,13 +125,17 @@ export class EmailService {
       stockActual: number;
       stockMinimo: number;
       productoId: string;
+      ubicacionNombre?: string;
     },
   ): Promise<boolean> {
     const agotado = datos.stockActual <= 0;
     const titulo = agotado ? 'Producto agotado' : 'Stock bajo';
+    const lugar = datos.ubicacionNombre?.trim()
+      ? ` en ${datos.ubicacionNombre.trim()}`
+      : '';
     const mensaje = agotado
-      ? 'Un producto del inventario de Café UNA se quedó sin unidades disponibles.'
-      : 'Un producto del inventario de Café UNA bajó al stock mínimo o por debajo.';
+      ? `Un producto del inventario de Café UNA se quedó sin unidades disponibles${lugar}.`
+      : `Un producto del inventario de Café UNA bajó al stock mínimo o por debajo${lugar}.`;
     const nota = `Revisá el panel de inventario (producto #${datos.productoId}) para reponer o transferir stock. Este es un aviso automático para SuperAdmin.`;
 
     return this.enviar(
