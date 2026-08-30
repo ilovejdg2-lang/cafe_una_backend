@@ -10,6 +10,7 @@ import { ComprasModule } from './modules/compras.module';
 import { InventarioModule } from './modules/inventario.module';
 import { AuthModule } from './modules/auth.module';
 import { AuditoriaModule } from './modules/auditoria.module';
+import { AjustesModule } from './modules/ajustes.module';
 import { CedulaModule } from './modules/cedula.module';
 import { DatabaseModule } from './modules/database.module';
 import { EmailModule } from './modules/email.module';
@@ -42,6 +43,7 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     VoluntariadoModule,
     CedulaModule,
     AuditoriaModule,
+    AjustesModule,
   ],
   controllers: [HealthController],
   providers: [

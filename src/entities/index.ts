@@ -20,6 +20,11 @@ import { TextoInstitucional } from './texto-institucional.entity';
 import { Transferencia } from './transferencia.entity';
 import { UsuarioCreacionPendiente } from './usuario-creacion-pendiente.entity';
 import { Usuario } from './usuario.entity';
+import { Rol } from './rol.entity';
+import { Permiso } from './permiso.entity';
+import { RolPermiso } from './rol-permiso.entity';
+import { AjusteSistema } from './ajuste-sistema.entity';
+import { DisponibilidadGrupo } from './disponibilidad-grupo.entity';
 
 export const entities = [
   Usuario,
@@ -44,6 +49,11 @@ export const entities = [
   Compra,
   CompraItem,
   Transferencia,
+  Rol,
+  Permiso,
+  RolPermiso,
+  DisponibilidadGrupo,
+  AjusteSistema,
 ];
 
 export * from './usuario.entity';
@@ -68,3 +78,8 @@ export * from './activo-fijo.entity';
 export * from './compra.entity';
 export * from './compra-item.entity';
 export * from './transferencia.entity';
+export * from './rol.entity';
+export * from './permiso.entity';
+export * from './rol-permiso.entity';
+export * from './disponibilidad-grupo.entity';
+export * from './ajuste-sistema.entity';
