@@ -3,6 +3,7 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
   Query,
   Req,
@@ -58,6 +59,18 @@ export class ComprasController {
       id,
       req.user.userId ?? null,
       req.user.roles ?? [],
+    );
+  }
+
+  @Patch(':id/estado')
+  @RequierePermiso('actualizar_ventas', 'registrar_ventas')
+  cambiarEstado(
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.comprasService.cambiarEstado(
+      id,
+      body?.estado ?? body?.Estado,
     );
   }
 }

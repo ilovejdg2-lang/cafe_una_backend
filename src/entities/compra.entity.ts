@@ -63,7 +63,7 @@ export class Compra {
   @Column({ name: 'MetodoPago', type: 'varchar', length: 50, default: 'Tarjeta' })
   MetodoPago: string;
 
-  @Column({ name: 'Estado', type: 'varchar', length: 40, default: 'Pagado' })
+  @Column({ name: 'Estado', type: 'varchar', length: 40, default: 'Pendiente' })
   Estado: string;
 
   @Column({ name: 'FacturaId', type: 'varchar', length: 80, nullable: true })
