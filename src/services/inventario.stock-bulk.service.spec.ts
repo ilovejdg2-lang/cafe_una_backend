@@ -19,6 +19,7 @@ describe('InventarioService bulk location stock reads', () => {
       locationsRepository as never,
       stockRepository as never,
       productsRepository as never,
+      { createQueryBuilder: jest.fn() } as never,
       dataSource as unknown as DataSource,
       { verificarTrasMovimiento: jest.fn().mockResolvedValue(null) } as never,
     );

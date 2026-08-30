@@ -4,17 +4,22 @@ import { Repository } from 'typeorm';
 import { EmailService } from '../common/email.service';
 import {
   TOKEN_LIFETIME_MS,
-  generarCodigoNumerico,
   generarCodigoRecuperacion,
   mensajeEsperaCorreo,
-  mensajeEsperaCorreoPorMinutos,
 } from '../common/verificacion-correo.util';
-import { UsuarioValidacion } from '../common/usuario-validacion';
+import { UsuarioValidacion, copiarUsuario } from '../common/usuario-validacion';
 import { PasswordResetEntry } from '../entities/password-reset-entry.entity';
 import { RegistroPendiente } from '../entities/registro-pendiente.entity';
 import { Usuario } from '../entities/usuario.entity';
-import { verificarContrasena } from '../common/password.util';
+import {
+  hashearContrasena,
+  necesitaRehash,
+  verificarContrasena,
+} from '../common/password.util';
 import { UsuariosService } from './usuarios.service';
+
+const MENSAJE_RECUPERACION_GENERICO =
+  'Si existe una cuenta con esos datos, enviamos un código de recuperación al correo registrado.';
 
 @Injectable()
 export class AuthService {
@@ -33,12 +38,21 @@ export class AuthService {
   ): Promise<Usuario | null> {
     if (!identifier?.trim() || !password?.trim()) return null;
 
-    const usuario = await this.usuariosService.obtenerPorNombreOCorreo(identifier);
+    const usuario = await this.usuariosService.obtenerPorNombreOCorreo(
+      identifier,
+      { incluirPassword: true },
+    );
     if (!usuario || usuario.Estado.toLowerCase() !== 'activo') return null;
+    if (!(await verificarContrasena(password, usuario.PasswordHash))) {
+      return null;
+    }
 
-    return (await verificarContrasena(password, usuario.PasswordHash))
-      ? usuario
-      : null;
+    if (necesitaRehash(usuario.PasswordHash)) {
+      const nuevoHash = await hashearContrasena(password);
+      await this.usuariosService.actualizarHashPassword(usuario.Id, nuevoHash);
+    }
+
+    return copiarUsuario(usuario);
   }
 
   async solicitarRegistro(request: {
@@ -94,12 +108,13 @@ export class AuthService {
       .execute();
 
     const token = generarCodigoRecuperacion();
+    const passwordHash = await hashearContrasena(password);
     await this.registrosRepo.save(
       this.registrosRepo.create({
         Token: token,
         Correo: correo,
         Nombre: nombre,
-        PasswordHash: password,
+        PasswordHash: passwordHash,
         ExpiraEnUtc: new Date(now.getTime() + TOKEN_LIFETIME_MS),
         Usado: false,
       }),
@@ -153,10 +168,14 @@ export class AuthService {
       throw new Error('Ese nombre de usuario ya está en uso.');
     }
 
+    const passwordHash = entry.PasswordHash.startsWith('$2')
+      ? entry.PasswordHash
+      : await hashearContrasena(entry.PasswordHash);
+
     const usuario = await this.usuariosService.crear({
       Nombre: entry.Nombre,
       Correo: entry.Correo,
-      PasswordHash: entry.PasswordHash,
+      PasswordHash: passwordHash,
       Roles: ['Usuario'],
     });
 
@@ -167,17 +186,15 @@ export class AuthService {
 
   async solicitarRecuperacion(request: {
     Identifier: string;
-  }): Promise<{
-    UsuarioEncontrado: boolean;
-    EmailEnviado?: boolean;
-    MensajeError?: string;
-  }> {
+  }): Promise<{ Mensaje: string }> {
     const identifier = request.Identifier.trim();
-    if (!identifier) return { UsuarioEncontrado: false };
+    if (!identifier) {
+      return { Mensaje: MENSAJE_RECUPERACION_GENERICO };
+    }
 
     const usuario = await this.usuariosService.obtenerPorNombreOCorreo(identifier);
     if (!usuario || usuario.Estado.toLowerCase() !== 'activo') {
-      return { UsuarioEncontrado: false };
+      return { Mensaje: MENSAJE_RECUPERACION_GENERICO };
     }
 
     const now = new Date();
@@ -191,15 +208,10 @@ export class AuthService {
       .getOne();
 
     if (recuperacionActiva) {
-      const mensajeEspera = mensajeEsperaCorreo(
-        recuperacionActiva.ExpiraEnUtc,
-      );
+      const mensajeEspera = mensajeEsperaCorreo(recuperacionActiva.ExpiraEnUtc);
       if (mensajeEspera) {
-        return {
-          UsuarioEncontrado: true,
-          EmailEnviado: false,
-          MensajeError: mensajeEspera,
-        };
+        // Misma forma de respuesta; no revelar si el usuario existe.
+        return { Mensaje: MENSAJE_RECUPERACION_GENERICO };
       }
     }
 
@@ -222,21 +234,23 @@ export class AuthService {
       }),
     );
 
-    const emailEnviado = await this.emailService.enviarCodigoRecuperacion(
+    await this.emailService.enviarCodigoRecuperacion(
       usuario.Correo,
       usuario.Nombre,
       token,
     );
-    return { UsuarioEncontrado: true, EmailEnviado: emailEnviado };
+    return { Mensaje: MENSAJE_RECUPERACION_GENERICO };
   }
 
   async restablecerPassword(request: {
     Token: string;
     NuevaPassword: string;
+    Identifier?: string;
   }): Promise<boolean> {
     const token = request.Token.trim().toUpperCase();
     const nuevaPassword = request.NuevaPassword;
-    if (!token) return false;
+    const identifier = (request.Identifier ?? '').trim();
+    if (!token || !identifier) return false;
 
     UsuarioValidacion.validarPassword(nuevaPassword);
 
@@ -250,14 +264,28 @@ export class AuthService {
       .getOne();
     if (!entry) return false;
 
+    const usuario = await this.usuariosService.obtenerPorNombreOCorreo(identifier);
+    if (
+      !usuario ||
+      usuario.Correo.trim().toLowerCase() !== entry.Correo.trim().toLowerCase()
+    ) {
+      return false;
+    }
+
     const actualizado = await this.usuariosService.actualizarPasswordPorCorreo(
       entry.Correo,
       nuevaPassword,
     );
     if (!actualizado) return false;
 
-    entry.Usado = true;
-    await this.passwordResetRepo.save(entry);
+    await this.passwordResetRepo
+      .createQueryBuilder()
+      .update()
+      .set({ Usado: true })
+      .where('LOWER("Correo") = LOWER(:correo) AND "Usado" = false', {
+        correo: entry.Correo,
+      })
+      .execute();
     return true;
   }
 }

@@ -11,6 +11,7 @@ import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
 import { Transferencia } from '../entities/transferencia.entity';
+import { Usuario } from '../entities/usuario.entity';
 import { StockAlertaService } from './stock-alerta.service';
 
 export const CANONICAL_LOCATIONS = [
@@ -56,6 +57,26 @@ export type RespuestaTransferencia = {
   responsableId: number | null;
 };
 
+export type HistorialTransferenciaItem = {
+  id: string;
+  fecha: string;
+  productoId: string;
+  productoNombre: string;
+  cantidad: number;
+  destinoCodigo: string;
+  destinoNombre: string;
+  responsableId: number | null;
+  responsableNombre?: string | null;
+  notas: string;
+};
+
+export type HistorialTransferenciasResponse = {
+  items: HistorialTransferenciaItem[];
+  total: number;
+  page: number;
+  pageSize: number;
+};
+
 @Injectable()
 export class InventarioService {
   constructor(
@@ -65,6 +86,8 @@ export class InventarioService {
     private readonly stockRepository: Repository<InventarioStockUbicacion>,
     @InjectRepository(Producto)
     private readonly productsRepository: Repository<Producto>,
+    @InjectRepository(Transferencia)
+    private readonly transferenciasRepository: Repository<Transferencia>,
     private readonly dataSource: DataSource,
     private readonly stockAlertaService: StockAlertaService,
   ) {}
@@ -390,6 +413,104 @@ export class InventarioService {
     }
   }
 
+  async listarHistorialTransferencias(filtros: {
+    fechaDesde?: string;
+    fechaHasta?: string;
+    ubicacionDestino?: string;
+    ubicacionDestinoId?: string;
+    codigo?: string;
+    page?: string;
+    pageSize?: string;
+  }): Promise<HistorialTransferenciasResponse> {
+    const page = this.parsearEnteroPositivo(filtros.page, 1, 'página');
+    const pageSizeRaw = this.parsearEnteroPositivo(
+      filtros.pageSize,
+      20,
+      'tamaño de página',
+    );
+    const pageSize = Math.min(pageSizeRaw, 20);
+
+    const qb = this.transferenciasRepository
+      .createQueryBuilder('t')
+      .leftJoinAndSelect('t.Producto', 'producto')
+      .leftJoinAndSelect('t.Destino', 'destino')
+      .leftJoinAndSelect('t.Responsable', 'responsable')
+      .orderBy('t.Fecha', 'DESC');
+
+    const fechaDesde = (filtros.fechaDesde ?? '').trim();
+    if (fechaDesde) {
+      const desde = this.parsearFechaIso(fechaDesde, 'fechaDesde');
+      qb.andWhere('t.Fecha >= :fechaDesde', {
+        fechaDesde: `${desde}T00:00:00.000Z`,
+      });
+    }
+
+    const fechaHasta = (filtros.fechaHasta ?? '').trim();
+    if (fechaHasta) {
+      const hasta = this.parsearFechaIso(fechaHasta, 'fechaHasta');
+      qb.andWhere('t.Fecha < :fechaHasta', {
+        fechaHasta: this.siguienteDiaIso(hasta),
+      });
+    }
+
+    const destinoIdRaw = (filtros.ubicacionDestinoId ?? '').trim();
+    const destinoRef = (filtros.ubicacionDestino ?? '').trim();
+    const codigoDestino = (filtros.codigo ?? '').trim();
+
+    if (destinoIdRaw) {
+      if (!/^\d+$/.test(destinoIdRaw)) {
+        throw new BadRequestException(
+          'El identificador de la ubicación destino no es válido.',
+        );
+      }
+      qb.andWhere('t.UbicacionDestinoId = :destinoId', {
+        destinoId: Number(destinoIdRaw),
+      });
+    } else if (destinoRef) {
+      if (/^\d+$/.test(destinoRef)) {
+        qb.andWhere('t.UbicacionDestinoId = :destinoId', {
+          destinoId: Number(destinoRef),
+        });
+      } else {
+        const code = this.normalizarCodigoEntrada(destinoRef);
+        qb.andWhere('destino.Codigo = :destinoCodigo', {
+          destinoCodigo: code,
+        });
+      }
+    } else if (codigoDestino) {
+      const code = this.normalizarCodigoEntrada(codigoDestino);
+      qb.andWhere('destino.Codigo = :destinoCodigo', {
+        destinoCodigo: code,
+      });
+    }
+
+    const [rows, total] = await qb
+      .skip((page - 1) * pageSize)
+      .take(pageSize)
+      .getManyAndCount();
+
+    return {
+      items: rows.map((row) => ({
+        id: String(row.Id),
+        fecha:
+          row.Fecha instanceof Date
+            ? row.Fecha.toISOString()
+            : String(row.Fecha ?? ''),
+        productoId: String(row.ProductoId),
+        productoNombre: row.Producto?.Nombre ?? '',
+        cantidad: Number(row.Cantidad) || 0,
+        destinoCodigo: row.Destino?.Codigo ?? '',
+        destinoNombre: row.Destino?.Nombre ?? '',
+        responsableId: row.ResponsableId,
+        responsableNombre: row.Responsable?.Nombre ?? null,
+        notas: row.Notas ?? '',
+      })),
+      total,
+      page,
+      pageSize,
+    };
+  }
+
   async obtenerUbicaciones(): Promise<InventoryLocationResponse[]> {
     const ubicaciones = await this.locationsRepository.find({
       order: { Id: 'ASC' },
@@ -679,6 +800,41 @@ export class InventarioService {
       );
     }
     return code;
+  }
+
+  private parsearEnteroPositivo(
+    value: string | undefined,
+    defaultValue: number,
+    label: string,
+  ): number {
+    if (value === undefined || value === null || String(value).trim() === '') {
+      return defaultValue;
+    }
+    const n = Number(String(value).trim());
+    if (!Number.isInteger(n) || n < 1) {
+      throw new BadRequestException(`El parámetro ${label} no es válido.`);
+    }
+    return n;
+  }
+
+  private parsearFechaIso(value: string, label: string): string {
+    const trimmed = value.trim();
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(trimmed)) {
+      throw new BadRequestException(
+        `El parámetro ${label} debe tener formato YYYY-MM-DD.`,
+      );
+    }
+    const parsed = new Date(`${trimmed}T00:00:00.000Z`);
+    if (Number.isNaN(parsed.getTime())) {
+      throw new BadRequestException(`El parámetro ${label} no es una fecha válida.`);
+    }
+    return trimmed;
+  }
+
+  private siguienteDiaIso(yyyyMmDd: string): string {
+    const d = new Date(`${yyyyMmDd}T00:00:00.000Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    return d.toISOString();
   }
 
   private normalizarCodigoEntrada(locationCode: unknown): string {

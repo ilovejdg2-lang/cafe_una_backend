@@ -124,21 +124,9 @@ export class AuthController {
       const result = await this.authService.solicitarRecuperacion({
         Identifier: identifier,
       });
-      if (result.MensajeError) {
-        throw new BadRequestException({ message: result.MensajeError });
-      }
-      if (!result.UsuarioEncontrado) {
-        return {
-          found: false,
-          message: 'No hay ningún usuario con ese correo o nombre de usuario.',
-        };
-      }
+      // Misma respuesta siempre (no enumerar usuarios).
       return {
-        found: true,
-        message: result.EmailEnviado
-          ? 'Se envió el código de recuperación al correo registrado.'
-          : MENSAJE_CORREO_NO_ENVIADO,
-        emailSent: result.EmailEnviado,
+        message: result.Mensaje,
       };
     } catch (error) {
       if (error instanceof BadRequestException) throw error;
@@ -150,11 +138,12 @@ export class AuthController {
 
   @Post('reset-password')
   async resetPassword(@Body() body: Record<string, unknown>) {
-    const { token, nuevaPassword } = normalizeAuthBody(body);
+    const { token, nuevaPassword, identifier } = normalizeAuthBody(body);
 
     const success = await this.authService.restablecerPassword({
       Token: token,
       NuevaPassword: nuevaPassword,
+      Identifier: identifier,
     });
     if (!success) {
       throw new BadRequestException({

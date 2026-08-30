@@ -189,6 +189,7 @@ export class InformacionController {
     @Body()
     request: {
       Etiqueta: string;
+      EtiquetaEn?: string;
       Ruta: string;
       Seccion: string;
       Orden?: number;
@@ -206,6 +207,7 @@ export class InformacionController {
     @Body()
     cambios: {
       Etiqueta?: string;
+      EtiquetaEn?: string;
       Ruta?: string;
       Seccion?: string;
       Orden?: number;

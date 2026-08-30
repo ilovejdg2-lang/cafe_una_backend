@@ -1,6 +1,7 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { normalizarRutaSegura } from '../common/url-segura.util';
 import { EnlaceSitio } from '../entities/enlace-sitio.entity';
 
 @Injectable()
@@ -22,6 +23,7 @@ export class EnlaceSitioService {
 
   async crear(request: {
     Etiqueta: string;
+    EtiquetaEn?: string;
     Ruta: string;
     Seccion: string;
     Orden?: number;
@@ -33,7 +35,8 @@ export class EnlaceSitioService {
       .getRawOne<{ max: number | null }>();
     const enlace = this.repo.create({
       Etiqueta: request.Etiqueta.trim(),
-      Ruta: request.Ruta.trim(),
+      EtiquetaEn: (request.EtiquetaEn ?? '').trim(),
+      Ruta: normalizarRutaSegura(request.Ruta),
       Seccion: request.Seccion.trim(),
       Orden: request.Orden ?? (maxOrden?.max ?? 0) + 1,
       AbrirEnNuevaPestana: request.AbrirEnNuevaPestana,
@@ -45,6 +48,7 @@ export class EnlaceSitioService {
     id: string,
     cambios: {
       Etiqueta?: string;
+      EtiquetaEn?: string;
       Ruta?: string;
       Seccion?: string;
       Orden?: number;
@@ -54,7 +58,10 @@ export class EnlaceSitioService {
     const actual = await this.repo.findOne({ where: { Id: id } });
     if (!actual) return null;
     if (cambios.Etiqueta?.trim()) actual.Etiqueta = cambios.Etiqueta.trim();
-    if (cambios.Ruta?.trim()) actual.Ruta = cambios.Ruta.trim();
+    if (cambios.EtiquetaEn != null) {
+      actual.EtiquetaEn = cambios.EtiquetaEn.trim();
+    }
+    if (cambios.Ruta?.trim()) actual.Ruta = normalizarRutaSegura(cambios.Ruta);
     if (cambios.Seccion?.trim()) actual.Seccion = cambios.Seccion.trim();
     if (cambios.Orden != null) actual.Orden = cambios.Orden;
     if (cambios.AbrirEnNuevaPestana != null) {

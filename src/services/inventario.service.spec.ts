@@ -40,6 +40,7 @@ describe('InventarioService central stock compatibility', () => {
       locationsRepository as never,
       stockRepository as never,
       productsRepository as never,
+      { createQueryBuilder: jest.fn() } as never,
       dataSource as unknown as DataSource,
       { verificarTrasMovimiento: jest.fn().mockResolvedValue(null) } as never,
     );
@@ -378,6 +379,7 @@ describe('InventarioService transferencias', () => {
       locationsRepository as never,
       stockRepository as never,
       productsRepository as never,
+      { createQueryBuilder: jest.fn() } as never,
       dataSource as unknown as DataSource,
       stockAlerta as never,
     );

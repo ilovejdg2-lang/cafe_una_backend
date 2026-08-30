@@ -14,6 +14,9 @@ export class InformacionFooter {
   @Column({ name: 'FraseMarca', length: 500, default: '' })
   FraseMarca: string;
 
+  @Column({ name: 'FraseMarcaEn', length: 500, default: '' })
+  FraseMarcaEn: string;
+
   @Column({ name: 'Telefono', length: 50, default: '' })
   Telefono: string;
 
@@ -31,4 +34,7 @@ export class InformacionFooter {
 
   @Column({ name: 'TextoCopyright', length: 500, default: '' })
   TextoCopyright: string;
+
+  @Column({ name: 'TextoCopyrightEn', length: 500, default: '' })
+  TextoCopyrightEn: string;
 }
