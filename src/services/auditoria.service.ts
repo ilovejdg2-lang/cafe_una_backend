@@ -24,6 +24,53 @@ const MODULO_TABLAS: Record<string, string[]> = {
   compras: ['compras', 'compra_items'],
 };
 
+const CLAVES_SECRETO =
+  /password|contrase[nñ]a|secret|(^|_)token($|_)|(^|_)salt($|_)|(^|_)hash($|_)/i;
+
+function redactarSecreto(valor: unknown): string {
+  if (valor == null || valor === '') return '[hash]';
+  const texto = String(valor).trim();
+  if (!texto || texto === '[hash]' || texto === '[redacted]') return '[hash]';
+  if (texto.startsWith('$2')) return `${texto.slice(0, 12)}…`;
+  return '[hash]';
+}
+
+function sanitizarPayload(datos: unknown): unknown {
+  if (datos == null) return datos;
+  if (typeof datos === 'string') {
+    try {
+      return sanitizarPayload(JSON.parse(datos));
+    } catch {
+      return datos;
+    }
+  }
+  if (Array.isArray(datos)) return datos.map((item) => sanitizarPayload(item));
+  if (typeof datos !== 'object') return datos;
+  const out: Record<string, unknown> = {};
+  for (const [clave, valor] of Object.entries(
+    datos as Record<string, unknown>,
+  )) {
+    if (CLAVES_SECRETO.test(clave)) {
+      out[clave] = redactarSecreto(valor);
+      continue;
+    }
+    out[clave] = sanitizarPayload(valor);
+  }
+  return out;
+}
+
+function sanitizarRegistro(registro: Auditoria): Auditoria {
+  return {
+    ...registro,
+    DatosAnteriores: sanitizarPayload(
+      registro.DatosAnteriores,
+    ) as Auditoria['DatosAnteriores'],
+    DatosNuevos: sanitizarPayload(
+      registro.DatosNuevos,
+    ) as Auditoria['DatosNuevos'],
+  };
+}
+
 @Injectable()
 export class AuditoriaService {
   constructor(
@@ -31,7 +78,7 @@ export class AuditoriaService {
     private readonly repo: Repository<Auditoria>,
   ) {}
 
-  obtenerTodas(
+  async obtenerTodas(
     query: Record<string, string | undefined> = {},
   ): Promise<Auditoria[]> {
     const qb = this.repo
@@ -87,6 +134,7 @@ export class AuditoriaService {
     const limit = Math.min(Math.max(Number(query.limit) || 500, 1), 2000);
     qb.take(limit);
 
-    return qb.getMany();
+    const filas = await qb.getMany();
+    return filas.map(sanitizarRegistro);
   }
 }
