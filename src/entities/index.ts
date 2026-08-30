@@ -4,6 +4,7 @@ import { CompraItem } from './compra-item.entity';
 import { Compra } from './compra.entity';
 import { CambioCorreoPendiente } from './cambio-correo-pendiente.entity';
 import { Categoria } from './categoria.entity';
+import { DetalleSolicitud } from './detalle-solicitud.entity';
 import { EnlaceSitio } from './enlace-sitio.entity';
 import { GaleriaInstitucionalItem } from './galeria-institucional-item.entity';
 import { HeroPrincipal } from './hero-principal.entity';
@@ -11,9 +12,12 @@ import { InformacionFooter } from './informacion-footer.entity';
 import { InformacionNavbar } from './informacion-navbar.entity';
 import { InventarioStockUbicacion } from './inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from './inventario-ubicacion.entity';
+import { MovimientoInventario } from './movimiento-inventario.entity';
 import { PasswordResetEntry } from './password-reset-entry.entity';
 import { Producto } from './producto.entity';
+import { Proveedor } from './proveedor.entity';
 import { RegistroPendiente } from './registro-pendiente.entity';
+import { SolicitudCompra } from './solicitud-compra.entity';
 import { SolicitudVoluntariado } from './solicitud-voluntariado.entity';
 import { TarjetaInicio } from './tarjeta-inicio.entity';
 import { TextoInstitucional } from './texto-institucional.entity';
@@ -49,6 +53,10 @@ export const entities = [
   Compra,
   CompraItem,
   Transferencia,
+  Proveedor,
+  SolicitudCompra,
+  DetalleSolicitud,
+  MovimientoInventario,
   Rol,
   Permiso,
   RolPermiso,
@@ -78,6 +86,10 @@ export * from './activo-fijo.entity';
 export * from './compra.entity';
 export * from './compra-item.entity';
 export * from './transferencia.entity';
+export * from './proveedor.entity';
+export * from './solicitud-compra.entity';
+export * from './detalle-solicitud.entity';
+export * from './movimiento-inventario.entity';
 export * from './rol.entity';
 export * from './permiso.entity';
 export * from './rol-permiso.entity';
