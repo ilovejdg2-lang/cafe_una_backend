@@ -1,6 +1,7 @@
 import { NestFactory } from '@nestjs/core';
 import type { CustomOrigin } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { ValidationPipe } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { CamelCaseInterceptor } from './common/camel-case.interceptor';
@@ -30,8 +31,9 @@ const validarOrigen: CustomOrigin = (origen, callback) => {
 };
 
 async function bootstrap() {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
+  // Proformas y uploads solo por endpoints autenticados (no static público).
   app.setGlobalPrefix('api');
   app.use(
     helmet({
