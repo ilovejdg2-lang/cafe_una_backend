@@ -178,7 +178,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
           "Impuestos" numeric(14,2) NOT NULL DEFAULT 0,
           "Total" numeric(14,2) NOT NULL DEFAULT 0,
           "MetodoPago" varchar(50) NOT NULL DEFAULT 'Tarjeta',
-          "Estado" varchar(40) NOT NULL DEFAULT 'Pagado',
+          "Estado" varchar(40) NOT NULL DEFAULT 'Pendiente',
           "FacturaId" varchar(80) NULL
         );
       `);
@@ -193,6 +193,11 @@ export class DatabaseBootstrapService implements OnModuleInit {
           "Subtotal" numeric(14,2) NOT NULL DEFAULT 0
         );
       `);
+      await this.asegurarTablasSolicitudesCompra();
+      await this.asegurarTablasRolesPermisos();
+      await this.asegurarTablaDisponibilidadGrupos();
+      await this.asegurarTablaAjustesEIdiomas();
+      await this.asegurarTraduccionesInglesVacias();
       await this.asegurarTablaAuditoria();
       await this.asegurarTriggersAuditoria();
       this.logger.log(
@@ -204,6 +209,442 @@ export class DatabaseBootstrapService implements OnModuleInit {
         error instanceof Error ? error.stack : String(error),
       );
     }
+  }
+
+  private async asegurarTablasSolicitudesCompra(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS proveedores (
+        "Id" serial PRIMARY KEY,
+        "Nombre" varchar(200) NOT NULL,
+        "Correo" varchar(150) NOT NULL DEFAULT '',
+        "Telefono" varchar(40) NOT NULL DEFAULT '',
+        "Activo" boolean NOT NULL DEFAULT true,
+        "CreadoEn" timestamptz NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS solicitudes_compra (
+        "Id" bigserial PRIMARY KEY,
+        "ProveedorId" integer NOT NULL,
+        "Estado" varchar(20) NOT NULL DEFAULT 'pendiente',
+        "FechaEstimadaEntrega" date NULL,
+        "UrlProformaPdf" varchar(1000) NULL,
+        "Notas" varchar(1000) NOT NULL DEFAULT '',
+        "CreadoPor" integer NULL,
+        "HistorialEstados" jsonb NOT NULL DEFAULT '[]'::jsonb,
+        "CreadoEn" timestamptz NOT NULL DEFAULT NOW(),
+        "ActualizadoEn" timestamptz NOT NULL DEFAULT NOW(),
+        CONSTRAINT "CK_solicitudes_compra_estado"
+          CHECK ("Estado" IN ('pendiente', 'aprobada', 'recibida'))
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_solicitudes_compra_Estado"
+        ON solicitudes_compra ("Estado");
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_solicitudes_compra_ProveedorId"
+        ON solicitudes_compra ("ProveedorId");
+    `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS detalle_solicitud (
+        "Id" bigserial PRIMARY KEY,
+        "SolicitudId" bigint NOT NULL
+          REFERENCES solicitudes_compra("Id") ON DELETE CASCADE,
+        "ProductoId" bigint NOT NULL,
+        "CantidadSolicitada" numeric(12,2) NOT NULL,
+        CONSTRAINT "CK_detalle_solicitud_cantidad_positiva"
+          CHECK ("CantidadSolicitada" > 0)
+      );
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE detalle_solicitud
+        ADD COLUMN IF NOT EXISTS "SolicitudId" bigint NULL;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE detalle_solicitud
+        ADD COLUMN IF NOT EXISTS "ProductoId" bigint NULL;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE detalle_solicitud
+        ADD COLUMN IF NOT EXISTS "CantidadSolicitada" numeric(12,2) NULL;
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_detalle_solicitud_SolicitudId"
+        ON detalle_solicitud ("SolicitudId");
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_detalle_solicitud_ProductoId"
+        ON detalle_solicitud ("ProductoId");
+    `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS movimientos_inventario (
+        "Id" bigserial PRIMARY KEY,
+        "Tipo" varchar(30) NOT NULL,
+        "ProductoId" bigint NOT NULL,
+        "Cantidad" integer NOT NULL,
+        "Responsable" varchar(200) NOT NULL DEFAULT '',
+        "ResponsableId" integer NULL,
+        "Observaciones" varchar(500) NOT NULL DEFAULT '',
+        "Notas" varchar(500) NOT NULL DEFAULT '',
+        "SolicitudId" bigint NULL,
+        "Fecha" timestamptz NOT NULL DEFAULT NOW(),
+        CONSTRAINT "CK_movimientos_inventario_cantidad_positiva"
+          CHECK ("Cantidad" > 0)
+      );
+    `);
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'movimientos_inventario'
+            AND column_name = 'TipoMovimiento'
+        ) AND NOT EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'movimientos_inventario'
+            AND column_name = 'Tipo'
+        ) THEN
+          ALTER TABLE movimientos_inventario
+            RENAME COLUMN "TipoMovimiento" TO "Tipo";
+        ELSIF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'movimientos_inventario'
+            AND column_name = 'TipoMovimiento'
+        ) AND EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'movimientos_inventario'
+            AND column_name = 'Tipo'
+        ) THEN
+          UPDATE movimientos_inventario
+          SET "Tipo" = COALESCE(NULLIF("Tipo", ''), NULLIF("TipoMovimiento", ''), 'entrada')
+          WHERE "Tipo" IS NULL OR "Tipo" = '';
+          ALTER TABLE movimientos_inventario DROP COLUMN "TipoMovimiento";
+        END IF;
+      END
+      $$;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "Tipo" varchar(30);
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "ProductoId" bigint;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "Cantidad" integer;
+    `);
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'movimientos_inventario'
+            AND column_name = 'Cantidad'
+            AND data_type IN ('numeric', 'double precision', 'real')
+        ) THEN
+          ALTER TABLE movimientos_inventario
+            ALTER COLUMN "Cantidad" TYPE integer
+            USING ROUND("Cantidad")::integer;
+        END IF;
+      END
+      $$;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "ResponsableId" integer NULL;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "Responsable" varchar(200) NOT NULL DEFAULT '';
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "Observaciones" varchar(500) NOT NULL DEFAULT '';
+    `);
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'movimientos_inventario'
+            AND column_name = 'Responsable'
+        ) THEN
+          ALTER TABLE movimientos_inventario
+            ALTER COLUMN "Responsable" SET DEFAULT '';
+          UPDATE movimientos_inventario
+          SET "Responsable" = COALESCE("Responsable", '')
+          WHERE "Responsable" IS NULL;
+        END IF;
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'movimientos_inventario'
+            AND column_name = 'Observaciones'
+        ) THEN
+          ALTER TABLE movimientos_inventario
+            ALTER COLUMN "Observaciones" SET DEFAULT '';
+          UPDATE movimientos_inventario
+          SET "Observaciones" = COALESCE("Observaciones", '')
+          WHERE "Observaciones" IS NULL;
+        END IF;
+      END
+      $$;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "Notas" varchar(500) NOT NULL DEFAULT '';
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "SolicitudId" bigint NULL;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "Fecha" timestamptz NOT NULL DEFAULT NOW();
+    `);
+    await this.dataSource.query(`
+      UPDATE movimientos_inventario
+      SET "Tipo" = COALESCE(NULLIF("Tipo", ''), 'entrada')
+      WHERE "Tipo" IS NULL OR "Tipo" = '';
+    `);
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_schema = 'public'
+            AND table_name = 'movimientos_inventario'
+            AND column_name = 'Tipo'
+            AND is_nullable = 'YES'
+        ) THEN
+          ALTER TABLE movimientos_inventario ALTER COLUMN "Tipo" SET NOT NULL;
+        END IF;
+      END
+      $$;
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_movimientos_inventario_ProductoId"
+        ON movimientos_inventario ("ProductoId");
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_movimientos_inventario_SolicitudId"
+        ON movimientos_inventario ("SolicitudId");
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_movimientos_inventario_Fecha"
+        ON movimientos_inventario ("Fecha");
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "UbicacionId" integer NULL;
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_movimientos_inventario_UbicacionId"
+        ON movimientos_inventario ("UbicacionId");
+    `);
+  }
+
+  private async asegurarTablasRolesPermisos(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS roles (
+        "Id" serial PRIMARY KEY,
+        "Nombre" varchar(50) NOT NULL UNIQUE,
+        "Activo" boolean NOT NULL DEFAULT true
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS permisos (
+        "Id" serial PRIMARY KEY,
+        "Codigo" varchar(80) NOT NULL UNIQUE,
+        "Nombre" varchar(200) NOT NULL,
+        "Activo" boolean NOT NULL DEFAULT true
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS rol_permiso (
+        "Id" serial PRIMARY KEY,
+        "RolId" integer NOT NULL REFERENCES roles("Id") ON DELETE CASCADE,
+        "PermisoId" integer NOT NULL REFERENCES permisos("Id") ON DELETE CASCADE,
+        CONSTRAINT "UQ_rol_permiso_rol_permiso" UNIQUE ("RolId", "PermisoId")
+      );
+    `);
+  }
+
+  private async asegurarTablaDisponibilidadGrupos(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS disponibilidad_grupos (
+        "Id" serial PRIMARY KEY,
+        "Tipo" varchar(30) NOT NULL,
+        "Fecha" date NOT NULL,
+        "HoraInicio" varchar(5) NOT NULL DEFAULT '',
+        "HoraFin" varchar(5) NOT NULL DEFAULT '',
+        "Disponible" boolean NOT NULL DEFAULT true,
+        "CupoMaximo" integer NULL,
+        "Nota" varchar(300) NOT NULL DEFAULT ''
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_disponibilidad_grupos_tipo_fecha"
+        ON disponibilidad_grupos ("Tipo", "Fecha");
+    `);
+  }
+
+  private async asegurarTablaAjustesEIdiomas(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS ajustes_sistema (
+        "Id" serial PRIMARY KEY,
+        "IdiomaPredeterminado" varchar(5) NOT NULL DEFAULT 'es'
+      );
+    `);
+    await this.dataSource.query(`
+      INSERT INTO ajustes_sistema ("Id", "IdiomaPredeterminado")
+      VALUES (1, 'es')
+      ON CONFLICT ("Id") DO NOTHING;
+    `);
+
+    const alters: string[] = [
+      `ALTER TABLE hero_principal ADD COLUMN IF NOT EXISTS "EyebrowEn" varchar(200) NOT NULL DEFAULT ''`,
+      `ALTER TABLE hero_principal ADD COLUMN IF NOT EXISTS "TitleEn" varchar(500) NOT NULL DEFAULT ''`,
+      `ALTER TABLE hero_principal ADD COLUMN IF NOT EXISTS "SubtitleEn" varchar(1000) NOT NULL DEFAULT ''`,
+      `ALTER TABLE hero_principal ADD COLUMN IF NOT EXISTS "PrimaryButtonTextEn" varchar(200) NOT NULL DEFAULT ''`,
+      `ALTER TABLE hero_principal ADD COLUMN IF NOT EXISTS "ButtonTextEn" varchar(200) NOT NULL DEFAULT ''`,
+      `ALTER TABLE tarjetas_inicio ADD COLUMN IF NOT EXISTS "EtiquetaEn" varchar(100) NOT NULL DEFAULT ''`,
+      `ALTER TABLE tarjetas_inicio ADD COLUMN IF NOT EXISTS "TituloEn" varchar(300) NOT NULL DEFAULT ''`,
+      `ALTER TABLE tarjetas_inicio ADD COLUMN IF NOT EXISTS "DescripcionEn" varchar(2000) NOT NULL DEFAULT ''`,
+      `ALTER TABLE tarjetas_inicio ADD COLUMN IF NOT EXISTS "TextoBotonEn" varchar(200) NOT NULL DEFAULT ''`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "EyebrowEn" varchar(200) NULL`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "TitleEn" varchar(500) NOT NULL DEFAULT ''`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "DescriptionEn" varchar(4000) NOT NULL DEFAULT ''`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "LinkTextEn" varchar(200) NULL`,
+      `ALTER TABLE enlaces_sitio ADD COLUMN IF NOT EXISTS "EtiquetaEn" varchar(200) NOT NULL DEFAULT ''`,
+      `ALTER TABLE informacion_footer ADD COLUMN IF NOT EXISTS "FraseMarcaEn" varchar(500) NOT NULL DEFAULT ''`,
+      `ALTER TABLE informacion_footer ADD COLUMN IF NOT EXISTS "TextoCopyrightEn" varchar(500) NOT NULL DEFAULT ''`,
+      `ALTER TABLE productos ADD COLUMN IF NOT EXISTS "NombreEn" varchar(200) NOT NULL DEFAULT ''`,
+      `ALTER TABLE productos ADD COLUMN IF NOT EXISTS "DescripcionEn" varchar(2000) NOT NULL DEFAULT ''`,
+    ];
+    for (const sql of alters) {
+      await this.dataSource.query(sql);
+    }
+  }
+
+  /**
+   * Si *En está vacío, rellena inglés a partir del español actual
+   * (solo una vez; no pisa traducciones ya guardadas en el CMS).
+   */
+  private async asegurarTraduccionesInglesVacias(): Promise<void> {
+    const mapaEnlace: Record<string, string> = {
+      'Sobre nosotros': 'About us',
+      Productos: 'Products',
+      Voluntariado: 'Volunteering',
+      Donaciones: 'Donations',
+      Visitas: 'Visits',
+      Inicio: 'Home',
+    };
+
+    await this.dataSource.query(`
+      UPDATE hero_principal SET
+        "EyebrowEn" = CASE WHEN TRIM(COALESCE("EyebrowEn", '')) = '' AND TRIM(COALESCE("Eyebrow", '')) <> ''
+          THEN CASE
+            WHEN LOWER("Eyebrow") LIKE '%artesanal%' THEN 'Artisanal & organic'
+            ELSE "Eyebrow"
+          END ELSE "EyebrowEn" END,
+        "TitleEn" = CASE WHEN TRIM(COALESCE("TitleEn", '')) = '' AND TRIM(COALESCE("Title", '')) <> ''
+          THEN CASE
+            WHEN LOWER("Title") LIKE '%universitario%' THEN 'The best coffee for university students'
+            ELSE "Title"
+          END ELSE "TitleEn" END,
+        "SubtitleEn" = CASE WHEN TRIM(COALESCE("SubtitleEn", '')) = '' AND TRIM(COALESCE("Subtitle", '')) <> ''
+          THEN CASE
+            WHEN LOWER("Subtitle") LIKE '%deleitarte%' OR LOWER("Subtitle") LIKE '%espectacular%'
+              THEN 'Come and enjoy this spectacular coffee'
+            ELSE "Subtitle"
+          END ELSE "SubtitleEn" END,
+        "PrimaryButtonTextEn" = CASE WHEN TRIM(COALESCE("PrimaryButtonTextEn", '')) = '' AND TRIM(COALESCE("PrimaryButtonText", '')) <> ''
+          THEN CASE
+            WHEN LOWER("PrimaryButtonText") LIKE '%producto%' THEN 'View products'
+            ELSE "PrimaryButtonText"
+          END ELSE "PrimaryButtonTextEn" END,
+        "ButtonTextEn" = CASE WHEN TRIM(COALESCE("ButtonTextEn", '')) = '' AND TRIM(COALESCE("ButtonText", '')) <> ''
+          THEN CASE
+            WHEN LOWER("ButtonText") LIKE '%producto%' THEN 'View products'
+            WHEN LOWER("ButtonText") LIKE '%conoc%' OR LOWER("ButtonText") LIKE '%about%' THEN 'About us'
+            WHEN LOWER("ButtonText") LIKE '%volunt%' THEN 'Volunteer'
+            ELSE "ButtonText"
+          END ELSE "ButtonTextEn" END
+      WHERE "Id" = 1;
+    `);
+
+    await this.dataSource.query(`
+      UPDATE informacion_footer SET
+        "FraseMarcaEn" = CASE WHEN TRIM(COALESCE("FraseMarcaEn", '')) = '' AND TRIM(COALESCE("FraseMarca", '')) <> ''
+          THEN CASE
+            WHEN LOWER("FraseMarca") LIKE '%placer%' THEN 'An awakening to sensory pleasure'
+            ELSE "FraseMarca"
+          END ELSE "FraseMarcaEn" END,
+        "TextoCopyrightEn" = CASE WHEN TRIM(COALESCE("TextoCopyrightEn", '')) = '' AND TRIM(COALESCE("TextoCopyright", '')) <> ''
+          THEN CASE
+            WHEN "TextoCopyright" ILIKE '%derechos%' THEN '© 2026 Café UNA. All rights reserved.'
+            ELSE "TextoCopyright"
+          END ELSE "TextoCopyrightEn" END
+      WHERE "Id" = 1;
+    `);
+
+    for (const [es, en] of Object.entries(mapaEnlace)) {
+      await this.dataSource.query(
+        `
+        UPDATE enlaces_sitio
+        SET "EtiquetaEn" = $1
+        WHERE TRIM(COALESCE("EtiquetaEn", '')) = ''
+          AND LOWER(TRIM("Etiqueta")) = LOWER(TRIM($2));
+        `,
+        [en, es],
+      );
+    }
+
+    await this.dataSource.query(`
+      UPDATE textos_institucionales SET
+        "TitleEn" = CASE WHEN TRIM(COALESCE("TitleEn", '')) = '' AND TRIM(COALESCE("Title", '')) <> '' THEN
+          CASE
+            WHEN "Clave" = 'homespotlight' THEN 'Learn more about Café UNA'
+            WHEN "Clave" = 'homefeatured' THEN 'The best of our collection'
+            WHEN "Clave" = 'homeiniciativas' THEN 'Every contribution, visit or collaboration leaves a special mark.'
+            WHEN "Clave" = 'homelocation' THEN 'Visit us at the Santa Lucía Experimental Farm'
+            ELSE "Title"
+          END ELSE "TitleEn" END,
+        "DescriptionEn" = CASE WHEN TRIM(COALESCE("DescriptionEn", '')) = '' AND TRIM(COALESCE("Description", '')) <> '' THEN
+          CASE
+            WHEN "Clave" = 'homespotlight' THEN 'Discover our story, purpose and the impact we build with local producers and the university community.'
+            WHEN "Clave" = 'homefeatured' THEN 'Explore all our products and choose the coffee that best fits your taste, routine and way of enjoying it.'
+            WHEN "Clave" = 'homeiniciativas' THEN 'Choose how you want to get involved with Café UNA and complete the corresponding form.'
+            WHEN "Clave" = 'homelocation' THEN 'We are in Heredia, Barva. Open it in Google Maps to see the route and get here easily.'
+            ELSE "Description"
+          END ELSE "DescriptionEn" END,
+        "EyebrowEn" = CASE WHEN TRIM(COALESCE("EyebrowEn", '')) = '' AND TRIM(COALESCE("Eyebrow", '')) <> '' THEN
+          CASE
+            WHEN "Clave" = 'homeiniciativas' THEN 'Get involved with us'
+            WHEN "Clave" = 'homelocation' THEN 'Our location'
+            ELSE "Eyebrow"
+          END ELSE "EyebrowEn" END,
+        "LinkTextEn" = CASE WHEN TRIM(COALESCE("LinkTextEn", '')) = '' AND TRIM(COALESCE("LinkText", '')) <> '' THEN
+          CASE
+            WHEN "Clave" = 'homespotlight' THEN 'Read our full story'
+            WHEN "Clave" = 'homefeatured' THEN 'Browse our catalog'
+            WHEN "Clave" = 'homelocation' THEN 'Open in Google Maps'
+            ELSE "LinkText"
+          END ELSE "LinkTextEn" END
+      WHERE "Clave" IN ('homespotlight', 'homefeatured', 'homeiniciativas', 'homelocation');
+    `);
+
+    this.logger.log('Traducciones EN vacías rellenadas (solo donde *En estaba vacío).');
   }
 
   private async asegurarTablaAuditoria(): Promise<void> {
@@ -293,6 +734,10 @@ export class DatabaseBootstrapService implements OnModuleInit {
       'activos_fijos',
       'compras',
       'compra_items',
+      'roles',
+      'permisos',
+      'rol_permiso',
+      'disponibilidad_grupos',
     ];
     const tablasClave = ['textos_institucionales', 'tarjetas_inicio'];
 

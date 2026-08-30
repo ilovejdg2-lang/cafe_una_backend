@@ -10,6 +10,7 @@ import { ComprasModule } from './modules/compras.module';
 import { InventarioModule } from './modules/inventario.module';
 import { AuthModule } from './modules/auth.module';
 import { AuditoriaModule } from './modules/auditoria.module';
+import { AjustesModule } from './modules/ajustes.module';
 import { CedulaModule } from './modules/cedula.module';
 import { DatabaseModule } from './modules/database.module';
 import { EmailModule } from './modules/email.module';
@@ -17,6 +18,7 @@ import { InformacionModule } from './modules/informacion.module';
 import { PerfilModule } from './modules/perfil.module';
 import { ProductosModule } from './modules/productos.module';
 import { CategoriasModule } from './modules/categorias.module';
+import { SolicitudesCompraModule } from './modules/solicitudes-compra.module';
 import { UsuariosModule } from './modules/usuarios.module';
 import { VoluntariadoModule } from './modules/voluntariado.module';
 
@@ -38,10 +40,12 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     InventarioModule,
     ActivosFijosModule,
     ComprasModule,
+    SolicitudesCompraModule,
     InformacionModule,
     VoluntariadoModule,
     CedulaModule,
     AuditoriaModule,
+    AjustesModule,
   ],
   controllers: [HealthController],
   providers: [
