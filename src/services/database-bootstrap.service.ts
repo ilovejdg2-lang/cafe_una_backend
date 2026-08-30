@@ -694,6 +694,27 @@ export class DatabaseBootstrapService implements OnModuleInit {
         END;
         v_old := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE to_jsonb(OLD) END;
         v_new := CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+        -- Nunca guardar contraseña en texto plano en la bitácora
+        IF v_old IS NOT NULL THEN
+          IF v_old ? 'PasswordHash' THEN
+            IF left(COALESCE(v_old->>'PasswordHash', ''), 2) = '$2' THEN
+              v_old := jsonb_set(v_old, '{PasswordHash}', to_jsonb(left(v_old->>'PasswordHash', 20) || '...'));
+            ELSE
+              v_old := jsonb_set(v_old, '{PasswordHash}', '"[hash]"');
+            END IF;
+          END IF;
+          v_old := v_old - 'password' - 'Password' - 'contrasena' - 'Contraseña';
+        END IF;
+        IF v_new IS NOT NULL THEN
+          IF v_new ? 'PasswordHash' THEN
+            IF left(COALESCE(v_new->>'PasswordHash', ''), 2) = '$2' THEN
+              v_new := jsonb_set(v_new, '{PasswordHash}', to_jsonb(left(v_new->>'PasswordHash', 20) || '...'));
+            ELSE
+              v_new := jsonb_set(v_new, '{PasswordHash}', '"[hash]"');
+            END IF;
+          END IF;
+          v_new := v_new - 'password' - 'Password' - 'contrasena' - 'Contraseña';
+        END IF;
         BEGIN
           INSERT INTO auditoria (
             "Accion", "Tabla", "IdRegistro", "Detalle",
