@@ -18,7 +18,6 @@ import { InformacionModule } from './modules/informacion.module';
 import { PerfilModule } from './modules/perfil.module';
 import { ProductosModule } from './modules/productos.module';
 import { CategoriasModule } from './modules/categorias.module';
-import { SolicitudesCompraModule } from './modules/solicitudes-compra.module';
 import { UsuariosModule } from './modules/usuarios.module';
 import { VoluntariadoModule } from './modules/voluntariado.module';
 
@@ -40,7 +39,6 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     InventarioModule,
     ActivosFijosModule,
     ComprasModule,
-    SolicitudesCompraModule,
     InformacionModule,
     VoluntariadoModule,
     CedulaModule,
