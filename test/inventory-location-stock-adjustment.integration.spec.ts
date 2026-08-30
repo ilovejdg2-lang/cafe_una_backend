@@ -7,6 +7,7 @@ import { Auditoria } from '../src/entities/auditoria.entity';
 import { InventarioStockUbicacion } from '../src/entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../src/entities/inventario-ubicacion.entity';
 import { Producto } from '../src/entities/producto.entity';
+import { Transferencia } from '../src/entities/transferencia.entity';
 import { entities } from '../src/entities';
 
 const describeIntegration = process.env.TEST_DATABASE_URL
@@ -110,6 +111,7 @@ describeIntegration('inventory location stock adjustment', () => {
       serviceDataSource.getRepository(InventarioUbicacion),
       serviceDataSource.getRepository(InventarioStockUbicacion),
       serviceDataSource.getRepository(Producto),
+      serviceDataSource.getRepository(Transferencia),
       serviceDataSource,
       { verificarTrasMovimiento: async () => null } as never,
     );
