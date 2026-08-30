@@ -7,6 +7,12 @@ export async function hashearContrasena(textoPlano: string): Promise<string> {
   return bcrypt.hash(textoPlano, RONDAS_BCRYPT);
 }
 
+/** true si el hash no es bcrypt (legacy sha256 / plaintext). */
+export function necesitaRehash(hash: string | null | undefined): boolean {
+  if (!hash) return true;
+  return !hash.startsWith('$2');
+}
+
 export async function verificarContrasena(
   textoPlano: string,
   hashGuardado: string,

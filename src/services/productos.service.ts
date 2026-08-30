@@ -1,19 +1,20 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
+import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
 import {
   CategoriasService,
   TIPO_CATEGORIA_PRODUCTO,
 } from './categorias.service';
-import { InventarioService } from './inventario.service';
+import { InventarioService, BODEGA_CENTRAL } from './inventario.service';
 import { StockAlertaService } from './stock-alerta.service';
 
 const IVA_RATE = 0.13;
 const ESTADO_HABILITADO = 'Habilitado';
 const ESTADO_DESHABILITADO = 'Deshabilitado';
 const MAX_PRODUCTOS_DESTACADOS = 3;
-const BODEGA_CENTRAL = 'BODEGA_CENTRAL';
 
 @Injectable()
 export class ProductosService {
@@ -53,6 +54,8 @@ export class ProductosService {
   async crear(request: {
     Nombre: string;
     Descripcion: string;
+    NombreEn?: string;
+    DescripcionEn?: string;
     Imagen: string;
     PrecioNormal: number;
     Stock: number;
@@ -85,6 +88,8 @@ export class ProductosService {
     const producto = this.repo.create({
       Nombre: request.Nombre.trim(),
       Descripcion: request.Descripcion.trim(),
+      NombreEn: (request.NombreEn ?? '').trim(),
+      DescripcionEn: (request.DescripcionEn ?? '').trim(),
       Imagen: request.Imagen.trim(),
       PrecioNormal: request.PrecioNormal.toFixed(2),
       PrecioConIVA: this.calcularPrecioConIVA(request.PrecioNormal).toFixed(2),
@@ -109,6 +114,8 @@ export class ProductosService {
     cambios: {
       Nombre?: string;
       Descripcion?: string;
+      NombreEn?: string;
+      DescripcionEn?: string;
       Imagen?: string;
       PrecioNormal?: number;
       PrecioConIVA?: number;
@@ -127,6 +134,10 @@ export class ProductosService {
     if (cambios.Nombre?.trim()) actual.Nombre = cambios.Nombre.trim();
     if (cambios.Descripcion?.trim())
       actual.Descripcion = cambios.Descripcion.trim();
+    if (cambios.NombreEn != null) actual.NombreEn = cambios.NombreEn.trim();
+    if (cambios.DescripcionEn != null) {
+      actual.DescripcionEn = cambios.DescripcionEn.trim();
+    }
     if (cambios.Imagen != null) actual.Imagen = cambios.Imagen.trim();
 
     if (cambios.PrecioNormal != null) {
@@ -143,15 +154,14 @@ export class ProductosService {
 
     let stockCambio = false;
     if (cambios.Stock != null) {
-      if (cambios.Stock < 0) throw new Error('El stock no puede ser negativo.');
-      if (cambios.Stock <= 0 && actual.EsDestacado) {
-        throw new Error(
-          'Quita el producto de destacados antes de dejar el stock en cero.',
-        );
-      }
-      actual.Stock = cambios.Stock;
-      if (actual.Stock <= 0) actual.EsDestacado = false;
+      // Stock solo vía ledger de Bodega Central (evita desfase con ubicaciones).
+      await this.inventarioService.actualizarStockCentral(id, cambios.Stock);
       stockCambio = true;
+      const refrescado = await this.repo.findOne({ where: { Id: id } });
+      if (refrescado) {
+        actual.Stock = refrescado.Stock;
+        actual.EsDestacado = refrescado.EsDestacado;
+      }
     }
 
     if (cambios.StockMinimo != null) {
@@ -206,30 +216,7 @@ export class ProductosService {
     locationCode: string;
     stock: number;
   } | null> {
-    const validatedStock = stock;
-    if (
-      typeof validatedStock !== 'number' ||
-      !Number.isInteger(validatedStock) ||
-      validatedStock < 0 ||
-      validatedStock > 2147483647
-    ) {
-      throw new Error(
-        'La cantidad de stock central debe ser un entero entre 0 y 2147483647.',
-      );
-    }
-
-    const actual = await this.repo.findOne({ where: { Id: id } });
-    if (!actual) return null;
-
-    actual.Stock = validatedStock;
-    if (actual.Stock === 0) actual.EsDestacado = false;
-
-    const actualizado = await this.repo.save(actual);
-    return {
-      productId: actualizado.Id,
-      locationCode: BODEGA_CENTRAL,
-      stock: actualizado.Stock,
-    };
+    return this.inventarioService.actualizarStockCentral(id, stock);
   }
 
   async eliminar(id: string): Promise<boolean> {
@@ -260,6 +247,7 @@ export class ProductosService {
         const id = String(solicitud.Id);
         const producto = await queryRunner.manager.findOne(Producto, {
           where: { Id: id },
+          lock: { mode: 'pessimistic_write' },
         });
         if (!producto) {
           throw new Error(`No se encontró el producto con id ${solicitud.Id}.`);
@@ -267,11 +255,39 @@ export class ProductosService {
         if (producto.Estado === ESTADO_DESHABILITADO) {
           throw new Error(`El producto ${producto.Nombre} está deshabilitado.`);
         }
-        if (producto.Stock < solicitud.Units) {
+
+        const central = await queryRunner.manager.findOne(InventarioUbicacion, {
+          where: { Codigo: BODEGA_CENTRAL },
+        });
+        if (!central) {
+          throw new Error('La Bodega Central no está inicializada.');
+        }
+
+        let balance = await queryRunner.manager.findOne(
+          InventarioStockUbicacion,
+          {
+            where: {
+              ProductoId: id,
+              UbicacionId: central.Id,
+            },
+            lock: { mode: 'pessimistic_write' },
+          },
+        );
+        const disponible = Number(balance?.Stock ?? producto.Stock) || 0;
+        if (disponible < solicitud.Units) {
           throw new Error(`No hay stock suficiente para ${producto.Nombre}.`);
         }
-        producto.Stock -= solicitud.Units;
+        if (!balance) {
+          balance = queryRunner.manager.create(InventarioStockUbicacion, {
+            ProductoId: id,
+            UbicacionId: central.Id,
+            Stock: disponible,
+          });
+        }
+        balance.Stock = disponible - solicitud.Units;
+        producto.Stock = balance.Stock;
         if (producto.Stock <= 0) producto.EsDestacado = false;
+        await queryRunner.manager.save(balance);
         actualizados.push(await queryRunner.manager.save(producto));
       }
 

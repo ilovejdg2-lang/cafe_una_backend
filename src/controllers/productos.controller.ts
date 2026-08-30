@@ -60,6 +60,10 @@ export class ProductosController {
     request: {
       Nombre: string;
       Descripcion: string;
+      NombreEn?: string;
+      DescripcionEn?: string;
+      nombreEn?: string;
+      descripcionEn?: string;
       Imagen: string;
       PrecioNormal: number;
       Stock: number;
@@ -75,6 +79,8 @@ export class ProductosController {
     try {
       return await this.productosService.crear({
         ...request,
+        NombreEn: request.NombreEn ?? request.nombreEn,
+        DescripcionEn: request.DescripcionEn ?? request.descripcionEn,
         StockMinimo: request.StockMinimo ?? request.stockMinimo,
       });
     } catch (error) {
@@ -86,17 +92,17 @@ export class ProductosController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, PermisosGuard)
-  @RequierePermiso(
-    'actualizar_productos',
-    'actualizar_stock_productos',
-    'inactivar_productos',
-  )
+  @RequierePermiso('actualizar_productos')
   async actualizarProducto(
     @Param('id') id: string,
     @Body()
     cambios: {
       Nombre?: string;
       Descripcion?: string;
+      NombreEn?: string;
+      DescripcionEn?: string;
+      nombreEn?: string;
+      descripcionEn?: string;
       Imagen?: string;
       PrecioNormal?: number;
       PrecioConIVA?: number;
@@ -113,6 +119,8 @@ export class ProductosController {
     try {
       const actualizado = await this.productosService.actualizar(id, {
         ...cambios,
+        NombreEn: cambios.NombreEn ?? cambios.nombreEn,
+        DescripcionEn: cambios.DescripcionEn ?? cambios.descripcionEn,
         StockMinimo: cambios.StockMinimo ?? cambios.stockMinimo,
       });
       if (!actualizado) throw new NotFoundException();
@@ -172,7 +180,7 @@ export class ProductosController {
 
   @Post('ajustar-stock')
   @UseGuards(JwtAuthGuard, PermisosGuard)
-  @RequierePermiso('comprar_productos', 'actualizar_stock_productos')
+  @RequierePermiso('actualizar_stock_productos')
   async ajustarStock(@Body() items: { Id: number | string; Units: number }[]) {
     try {
       return await this.productosService.ajustarStock(items);

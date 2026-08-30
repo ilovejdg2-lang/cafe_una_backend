@@ -1,4 +1,4 @@
-import { Module, forwardRef } from '@nestjs/common';
+﻿import { Module, forwardRef } from '@nestjs/common';
 import { APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -18,6 +18,7 @@ import { InformacionModule } from './modules/informacion.module';
 import { PerfilModule } from './modules/perfil.module';
 import { ProductosModule } from './modules/productos.module';
 import { CategoriasModule } from './modules/categorias.module';
+import { SolicitudesCompraModule } from './modules/solicitudes-compra.module';
 import { UsuariosModule } from './modules/usuarios.module';
 import { VoluntariadoModule } from './modules/voluntariado.module';
 
@@ -39,6 +40,7 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     InventarioModule,
     ActivosFijosModule,
     ComprasModule,
+    SolicitudesCompraModule,
     InformacionModule,
     VoluntariadoModule,
     CedulaModule,

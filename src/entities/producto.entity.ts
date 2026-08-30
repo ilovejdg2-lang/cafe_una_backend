@@ -8,8 +8,14 @@ export class Producto {
   @Column({ name: 'Nombre', length: 200 })
   Nombre: string;
 
+  @Column({ name: 'NombreEn', length: 200, default: '' })
+  NombreEn: string;
+
   @Column({ name: 'Descripcion', length: 2000 })
   Descripcion: string;
+
+  @Column({ name: 'DescripcionEn', length: 2000, default: '' })
+  DescripcionEn: string;
 
   @Column({ name: 'Imagen', length: 1000 })
   Imagen: string;

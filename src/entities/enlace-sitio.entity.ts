@@ -8,6 +8,9 @@ export class EnlaceSitio {
   @Column({ name: 'Etiqueta', length: 200 })
   Etiqueta: string;
 
+  @Column({ name: 'EtiquetaEn', length: 200, default: '' })
+  EtiquetaEn: string;
+
   @Column({ name: 'Ruta', length: 500 })
   Ruta: string;
 

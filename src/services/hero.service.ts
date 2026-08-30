@@ -21,34 +21,64 @@ export class HeroService {
     return { ...hero };
   }
 
-  async actualizar(cambios: {
-    Eyebrow?: string | null;
-    Title?: string;
-    Subtitle?: string;
-    PrimaryButtonText?: string | null;
-    PrimaryButtonUrl?: string | null;
-    ButtonText?: string | null;
-    ButtonUrl?: string | null;
-    BackgroundImage?: string | null;
-  }): Promise<HeroPrincipal> {
+  async actualizar(cambios: Record<string, unknown>): Promise<HeroPrincipal> {
     let hero = await this.repo.findOne({ where: { Id: this.singletonId } });
     if (!hero) {
       hero = this.repo.create({ Id: this.singletonId });
     }
 
-    if (cambios.Eyebrow != null) hero.Eyebrow = cambios.Eyebrow.trim();
-    if (cambios.Title?.trim()) hero.Title = cambios.Title.trim();
-    if (cambios.Subtitle?.trim()) hero.Subtitle = cambios.Subtitle.trim();
-    if (cambios.PrimaryButtonText != null) {
-      hero.PrimaryButtonText = cambios.PrimaryButtonText.trim();
+    const str = (v: unknown) => String(v ?? '').trim();
+    if (cambios.Eyebrow != null || cambios.eyebrow != null) {
+      hero.Eyebrow = str(cambios.Eyebrow ?? cambios.eyebrow);
     }
-    if (cambios.PrimaryButtonUrl != null) {
-      hero.PrimaryButtonUrl = cambios.PrimaryButtonUrl.trim();
+    if (cambios.EyebrowEn != null || cambios.eyebrowEn != null) {
+      hero.EyebrowEn = str(cambios.EyebrowEn ?? cambios.eyebrowEn);
     }
-    if (cambios.ButtonText != null) hero.ButtonText = cambios.ButtonText.trim();
-    if (cambios.ButtonUrl != null) hero.ButtonUrl = cambios.ButtonUrl.trim();
-    if (cambios.BackgroundImage != null) {
-      hero.BackgroundImage = cambios.BackgroundImage.trim();
+    if (cambios.Title != null || cambios.title != null) {
+      const t = str(cambios.Title ?? cambios.title);
+      if (t) hero.Title = t;
+    }
+    if (cambios.TitleEn != null || cambios.titleEn != null) {
+      hero.TitleEn = str(cambios.TitleEn ?? cambios.titleEn);
+    }
+    if (cambios.Subtitle != null || cambios.subtitle != null) {
+      const t = str(cambios.Subtitle ?? cambios.subtitle);
+      if (t) hero.Subtitle = t;
+    }
+    if (cambios.SubtitleEn != null || cambios.subtitleEn != null) {
+      hero.SubtitleEn = str(cambios.SubtitleEn ?? cambios.subtitleEn);
+    }
+    if (cambios.PrimaryButtonText != null || cambios.primaryButtonText != null) {
+      hero.PrimaryButtonText = str(
+        cambios.PrimaryButtonText ?? cambios.primaryButtonText,
+      );
+    }
+    if (
+      cambios.PrimaryButtonTextEn != null ||
+      cambios.primaryButtonTextEn != null
+    ) {
+      hero.PrimaryButtonTextEn = str(
+        cambios.PrimaryButtonTextEn ?? cambios.primaryButtonTextEn,
+      );
+    }
+    if (cambios.PrimaryButtonUrl != null || cambios.primaryButtonUrl != null) {
+      hero.PrimaryButtonUrl = str(
+        cambios.PrimaryButtonUrl ?? cambios.primaryButtonUrl,
+      );
+    }
+    if (cambios.ButtonText != null || cambios.buttonText != null) {
+      hero.ButtonText = str(cambios.ButtonText ?? cambios.buttonText);
+    }
+    if (cambios.ButtonTextEn != null || cambios.buttonTextEn != null) {
+      hero.ButtonTextEn = str(cambios.ButtonTextEn ?? cambios.buttonTextEn);
+    }
+    if (cambios.ButtonUrl != null || cambios.buttonUrl != null) {
+      hero.ButtonUrl = str(cambios.ButtonUrl ?? cambios.buttonUrl);
+    }
+    if (cambios.BackgroundImage != null || cambios.backgroundImage != null) {
+      hero.BackgroundImage = str(
+        cambios.BackgroundImage ?? cambios.backgroundImage,
+      );
     }
 
     const saved = await this.repo.save(hero);
