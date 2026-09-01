@@ -4,6 +4,8 @@ import { InventarioController } from '../controllers/inventario.controller';
 import { TransferenciasController } from '../controllers/transferencias.controller';
 import { VentasPresencialesController } from '../controllers/ventas-presenciales.controller';
 import {
+  Compra,
+  CompraItem,
   InventarioStockUbicacion,
   InventarioUbicacion,
   MovimientoInventario,
@@ -25,6 +27,8 @@ import { AuthModule } from './auth.module';
       Usuario,
       Transferencia,
       MovimientoInventario,
+      Compra,
+      CompraItem,
     ]),
     AuthModule,
   ],

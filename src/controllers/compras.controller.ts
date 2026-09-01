@@ -41,8 +41,18 @@ export class ComprasController {
 
   @Get()
   @RequierePermiso('ver_historial_compras_clientes', 'ver_ventas')
-  listarAdmin(@Query() query: Record<string, string | undefined>) {
-    return this.comprasService.listar(query);
+  listarAdmin(
+    @Query() query: Record<string, string | undefined>,
+    @Req() req: Request & { user: JwtUsuario },
+  ) {
+    const roles = (req.user?.roles ?? []).map((r) => String(r).toLowerCase());
+    const esAdmin = roles.includes('superadmin') || roles.includes('admin');
+    const queryFinal = { ...query };
+    if (!esAdmin && req.user?.userId) {
+      // El vendedor únicamente ve su propio historial de ventas
+      queryFinal.usuarioId = String(req.user.userId);
+    }
+    return this.comprasService.listar(queryFinal);
   }
 
   @Get(':id')

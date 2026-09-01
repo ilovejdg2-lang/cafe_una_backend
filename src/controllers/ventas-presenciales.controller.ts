@@ -30,4 +30,10 @@ export class VentasPresencialesController {
       req.user?.userId ?? null,
     );
   }
+
+  @Post('enviar-comprobante')
+  @RequierePermiso('registrar_ventas', 'ajustar_stock_ubicaciones', 'ver_inventario')
+  enviarComprobante(@Body() body: Record<string, unknown>) {
+    return this.ventasPresencialesService.enviarComprobante(body ?? {});
+  }
 }
