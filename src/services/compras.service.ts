@@ -70,6 +70,9 @@ export type CompraResumen = {
   id: number;
   numero: string;
   fecha: string;
+  usuarioId: number | null;
+  vendedorNombre: string;
+  vendedorCorreo: string;
   clienteNombre: string;
   clienteCorreo: string;
   cantidadProductos: number;
@@ -355,6 +358,7 @@ export class ComprasService {
     const qb = this.comprasRepository
       .createQueryBuilder('compra')
       .leftJoinAndSelect('compra.Items', 'items')
+      .leftJoinAndSelect('compra.Usuario', 'usuario')
       .orderBy('compra.Fecha', 'DESC');
 
     if (query.usuarioId) {
@@ -447,19 +451,18 @@ export class ComprasService {
     }
     const compra = await this.comprasRepository.findOne({
       where: { Id: compraId },
-      relations: ['Items'],
+      relations: ['Items', 'Usuario'],
     });
     if (!compra) throw new NotFoundException('La compra no existe.');
 
     if (!forRegistrar) {
-      const puedeVerTodas =
-        tienePermiso(roles, 'ver_historial_compras_clientes') ||
-        tienePermiso(roles, 'ver_ventas');
+      const rolesNorm = (roles ?? []).map((r) => String(r).toLowerCase());
+      const esAdmin = rolesNorm.includes('superadmin') || rolesNorm.includes('admin');
       const esPropia =
         usuarioId != null && Number(compra.UsuarioId) === Number(usuarioId);
-      if (!puedeVerTodas && !esPropia) {
+      if (!esAdmin && !esPropia) {
         throw new ForbiddenException(
-          'No tiene permiso para consultar esta compra.',
+          'Solo puede consultar las ventas registradas por su usuario.',
         );
       }
     }
@@ -607,10 +610,16 @@ export class ComprasService {
     const estado = normalizarEstadoCompra(compra.Estado || '');
     const esGanada = estado === 'Enviado';
     const total = Number(compra.Total) || 0;
+    const usuario = compra.Usuario;
+    const vendedorNombre = String(usuario?.Nombre || usuario?.Correo || '').trim();
+    const vendedorCorreo = String(usuario?.Correo || '').trim();
     return {
       id: Number(compra.Id),
       numero: compra.Numero,
       fecha: compra.Fecha?.toISOString?.() || String(compra.Fecha),
+      usuarioId: compra.UsuarioId ? Number(compra.UsuarioId) : null,
+      vendedorNombre,
+      vendedorCorreo,
       clienteNombre: compra.ClienteNombre,
       clienteCorreo: compra.ClienteCorreo,
       cantidadProductos: items.reduce((acc, item) => acc + (Number(item.Cantidad) || 0), 0),

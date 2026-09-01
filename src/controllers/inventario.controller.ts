@@ -16,11 +16,11 @@ import { InventarioService } from '../services/inventario.service';
 
 @Controller('inventario')
 @UseGuards(JwtAuthGuard, PermisosGuard)
-@RequierePermiso('ver_inventario')
 export class InventarioController {
   constructor(private readonly inventarioService: InventarioService) {}
 
   @Get('ubicaciones')
+  @RequierePermiso('ver_inventario', 'registrar_ventas')
   obtenerUbicaciones() {
     return this.inventarioService.obtenerUbicaciones();
   }
@@ -55,11 +55,13 @@ export class InventarioController {
   }
 
   @Get('stock')
+  @RequierePermiso('ver_inventario', 'registrar_ventas')
   obtenerStockPorUbicacion(@Query('locationCode') locationCode: string) {
     return this.inventarioService.obtenerStockPorUbicacion(locationCode);
   }
 
   @Get('productos/:id/stock')
+  @RequierePermiso('ver_inventario', 'registrar_ventas')
   async obtenerStockProducto(
     @Param('id') id: string,
     @Query('locationCode') locationCode: string,
