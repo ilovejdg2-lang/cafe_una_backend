@@ -7,10 +7,16 @@ import {
   NotFoundException,
   Param,
   ServiceUnavailableException,
+  UseGuards,
 } from '@nestjs/common';
+import { RequierePermiso } from '../common/requiere-permiso.decorator';
+import { JwtAuthGuard } from '../guards/jwt-auth.guard';
+import { PermisosGuard } from '../guards/permisos.guard';
 import { CedulaConsultaService } from '../services/cedula-consulta.service';
 
 @Controller('cedula')
+@UseGuards(JwtAuthGuard, PermisosGuard)
+@RequierePermiso('ingresar_solicitud_voluntariado')
 export class CedulaController {
   constructor(private readonly cedulaConsultaService: CedulaConsultaService) {}
 
@@ -38,7 +44,10 @@ export class CedulaController {
           error.message.includes('Espere') ||
           error.message.includes('Demasiadas consultas')
         ) {
-          throw new HttpException({ message: error.message }, HttpStatus.TOO_MANY_REQUESTS);
+          throw new HttpException(
+            { message: error.message },
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
         }
         if (error.message.includes('9 dígitos')) {
           throw new BadRequestException({ message: error.message });
@@ -52,7 +61,8 @@ export class CedulaController {
   @Get(':numero/detalle')
   async consultarDetalle(@Param('numero') numero: string) {
     try {
-      const resultado = await this.cedulaConsultaService.consultarDetallado(numero);
+      const resultado =
+        await this.cedulaConsultaService.consultarDetallado(numero);
       if (!resultado) {
         throw new NotFoundException({
           message: 'No se encontraron datos para esa cédula.',
@@ -73,7 +83,10 @@ export class CedulaController {
           error.message.includes('Espere') ||
           error.message.includes('Demasiadas consultas')
         ) {
-          throw new HttpException({ message: error.message }, HttpStatus.TOO_MANY_REQUESTS);
+          throw new HttpException(
+            { message: error.message },
+            HttpStatus.TOO_MANY_REQUESTS,
+          );
         }
         if (error.message.includes('9 dígitos')) {
           throw new BadRequestException({ message: error.message });

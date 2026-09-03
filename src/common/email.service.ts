@@ -25,6 +25,12 @@ export class EmailService {
     'Email',
     'actualizacion-voluntariado.html',
   );
+  private readonly alertaStockTemplatePath = path.join(
+    process.cwd(),
+    'Templates',
+    'Email',
+    'alerta-stock.html',
+  );
 
   constructor(private readonly config: ConfigService) {}
 
@@ -111,6 +117,316 @@ export class EmailService {
     );
   }
 
+  async enviarAlertaStockBajo(
+    destinatario: string,
+    datos: {
+      nombreAdmin: string;
+      nombreProducto: string;
+      stockActual: number;
+      stockMinimo: number;
+      productoId: string;
+      ubicacionNombre?: string;
+    },
+  ): Promise<boolean> {
+    const agotado = datos.stockActual <= 0;
+    const titulo = agotado ? 'Producto agotado' : 'Stock bajo';
+    const lugar = datos.ubicacionNombre?.trim()
+      ? ` en ${datos.ubicacionNombre.trim()}`
+      : '';
+    const mensaje = agotado
+      ? `Un producto del inventario de Café UNA se quedó sin unidades disponibles${lugar}.`
+      : `Un producto del inventario de Café UNA bajó al stock mínimo o por debajo${lugar}.`;
+    const nota = `Revisá el panel de inventario (producto #${datos.productoId}) para reponer o transferir stock. Este es un aviso automático para SuperAdmin.`;
+
+    return this.enviar(
+      destinatario,
+      `${titulo}: ${datos.nombreProducto} - Café UNA`,
+      await this.buildAlertaStockEmail({
+        nombreAdmin: datos.nombreAdmin,
+        titulo,
+        mensaje,
+        nombreProducto: datos.nombreProducto,
+        stockActual: String(datos.stockActual),
+        stockMinimo: String(datos.stockMinimo),
+        nota,
+      }),
+    );
+  }
+
+  async enviarComprobanteVentaFisica(
+    destinatario: string,
+    datos: {
+      numero?: string;
+      puntoVenta: string;
+      vendedor: string;
+      clienteNombre?: string;
+      metodoPago: string;
+      fecha?: string;
+      items: Array<{
+        nombre: string;
+        cantidad: number;
+        precioUnitario: number;
+        subtotal: number;
+      }>;
+      total: number;
+      notas?: string;
+    },
+  ): Promise<boolean> {
+    const htmlBody = this.buildComprobanteVentaHtml(datos);
+    return this.enviar(
+      destinatario,
+      `Comprobante de compra - Café UNA (${datos.numero || 'Venta Física'})`,
+      htmlBody,
+    );
+  }
+
+  private buildComprobanteVentaHtml(datos: {
+    numero?: string;
+    puntoVenta: string;
+    vendedor: string;
+    clienteNombre?: string;
+    metodoPago: string;
+    fecha?: string;
+    items: Array<{
+      nombre: string;
+      cantidad: number;
+      precioUnitario: number;
+      subtotal: number;
+    }>;
+    total: number;
+    notas?: string;
+  }): string {
+    const fmt = (num: number) =>
+      `₡${Math.round(Number(num) || 0).toLocaleString('es-CR')}`;
+
+    const fechaFormateada = datos.fecha
+      ? new Date(datos.fecha).toLocaleString('es-CR', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        })
+      : new Date().toLocaleString('es-CR', {
+          dateStyle: 'medium',
+          timeStyle: 'short',
+        });
+
+    const subtotalSinIva = Math.round(datos.total / 1.13);
+    const ivaMonto = Math.round(datos.total - subtotalSinIva);
+
+    const itemsRows = (datos.items || [])
+      .map(
+        (item) => `
+        <tr style="border-bottom: 1px solid #f1f5f9;">
+          <td style="padding: 14px 10px; font-size: 14px; color: #0f172a; font-weight: 600; vertical-align: middle;">
+            ${this.escapeHtml(item.nombre)}
+          </td>
+          <td style="padding: 14px 8px; font-size: 13px; color: #475569; text-align: center; vertical-align: middle; font-weight: 500;">
+            <span style="display: inline-block; background-color: #f1f5f9; border-radius: 6px; padding: 2px 8px; font-weight: 600;">${item.cantidad}</span>
+          </td>
+          <td style="padding: 14px 10px; font-size: 13px; color: #64748b; text-align: right; vertical-align: middle; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            ${fmt(item.precioUnitario)}
+          </td>
+          <td style="padding: 14px 10px; font-size: 14px; color: #0f172a; font-weight: 700; text-align: right; vertical-align: middle; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+            ${fmt(item.subtotal)}
+          </td>
+        </tr>`,
+      )
+      .join('');
+
+    const numeroComprobante = this.escapeHtml(datos.numero || 'VP-' + Date.now());
+
+    return `<!DOCTYPE html>
+<html lang="es" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light only" />
+  <meta name="supported-color-schemes" content="light only" />
+  <title>Comprobante de Venta - Café UNA</title>
+  <style>
+    body, table, td, p, h1, h2, span, a {
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    img { border: 0; outline: none; text-decoration: none; }
+    @media only screen and (max-width: 600px) {
+      .email-card { width: 100% !important; border-radius: 0 !important; }
+      .email-pad { padding: 20px 16px !important; }
+      .meta-col { display: block !important; width: 100% !important; margin-bottom: 8px !important; }
+    }
+  </style>
+</head>
+<body style="margin: 0; padding: 0; background-color: #f4f5f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; line-height: 1.5;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f5f8" style="background-color: #f4f5f8; width: 100%;">
+    <tr>
+      <td align="center" style="padding: 32px 12px 40px;">
+        <!-- Contenedor Principal / Tarjeta de Factura -->
+        <table role="presentation" class="email-card" width="580" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width: 100%; max-width: 580px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.07); border: 1px solid #e2e8f0;">
+          
+          <!-- Logo Oficial Café UNA -->
+          <tr>
+            <td align="center" bgcolor="#ffffff" style="padding: 28px 24px 18px; background-color: #ffffff;">
+              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="190" style="display: block; width: 190px; max-width: 190px; height: auto; margin: 0 auto;" />
+            </td>
+          </tr>
+
+          <!-- Barra de Acento Rojo Institucional Café UNA -->
+          <tr>
+            <td bgcolor="#C41E3A" style="background-color: #C41E3A; height: 4px; font-size: 0; line-height: 0;">&nbsp;</td>
+          </tr>
+
+          <!-- Cuadro de Datos de la Factura -->
+          <tr>
+            <td class="email-pad" style="padding: 24px 32px 16px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #fafaf9; border: 1px solid #e7e5e4; border-radius: 12px; padding: 16px 20px;">
+                <tr>
+                  <td style="padding: 6px 0; font-size: 13px; color: #57534e; width: 45%;" valign="top">
+                    <strong style="color: #1c1917;">Comprobante:</strong>
+                  </td>
+                  <td style="padding: 6px 0; font-size: 13px; color: #1c1917; text-align: right; font-family: Consolas, monospace; font-weight: 700;" valign="top">
+                    ${numeroComprobante}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 6px 0; font-size: 13px; color: #57534e;" valign="top">
+                    <strong style="color: #1c1917;">Fecha y hora:</strong>
+                  </td>
+                  <td style="padding: 6px 0; font-size: 13px; color: #1c1917; text-align: right; font-weight: 500;" valign="top">
+                    ${fechaFormateada}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 0; font-size: 13px; color: #57534e;" valign="top">
+                    <strong style="color: #1c1917;">Punto de venta:</strong>
+                  </td>
+                  <td style="padding: 5px 0; font-size: 13px; color: #1c1917; text-align: right; font-weight: 600;" valign="top">
+                    ${this.escapeHtml(datos.puntoVenta || 'Punto Presencial')}
+                  </td>
+                </tr>
+                <tr>
+                  <td style="padding: 5px 0; font-size: 13px; color: #57534e;" valign="top">
+                    <strong style="color: #1c1917;">Atendido por:</strong>
+                  </td>
+                  <td style="padding: 5px 0; font-size: 13px; color: #1c1917; text-align: right;" valign="top">
+                    ${this.escapeHtml(datos.vendedor || 'Personal Café UNA')}
+                  </td>
+                </tr>
+                ${
+                  datos.clienteNombre
+                    ? `<tr>
+                        <td style="padding: 5px 0; font-size: 13px; color: #57534e;" valign="top">
+                          <strong style="color: #1c1917;">Cliente:</strong>
+                        </td>
+                        <td style="padding: 5px 0; font-size: 13px; color: #1c1917; text-align: right; font-weight: 500;" valign="top">
+                          ${this.escapeHtml(datos.clienteNombre)}
+                        </td>
+                      </tr>`
+                    : ''
+                }
+                <tr>
+                  <td style="padding: 5px 0; font-size: 13px; color: #57534e;" valign="top">
+                    <strong style="color: #1c1917;">Método de pago:</strong>
+                  </td>
+                  <td style="padding: 5px 0; font-size: 13px; color: #1c1917; text-align: right; font-weight: 600;" valign="top">
+                    ${this.escapeHtml(datos.metodoPago || 'Efectivo')}
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+
+          <!-- Tabla de Productos Desglosada -->
+          <tr>
+            <td class="email-pad" style="padding: 12px 32px 24px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; width: 100%;">
+                <thead>
+                  <tr style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 2px solid #cbd5e1;">
+                    <th style="padding: 10px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; text-align: left;">Producto</th>
+                    <th style="padding: 10px 8px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; text-align: center;">Cant.</th>
+                    <th style="padding: 10px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; text-align: right;">Unitario</th>
+                    <th style="padding: 10px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; text-align: right;">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  ${itemsRows}
+                </tbody>
+              </table>
+
+              <!-- Desglose de Totales -->
+              <div style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td style="padding: 4px 10px; font-size: 13px; color: #64748b; text-align: right;">Subtotal (sin IVA):</td>
+                    <td style="padding: 4px 10px; font-size: 13px; color: #334155; text-align: right; width: 110px; font-weight: 500;">${fmt(subtotalSinIva)}</td>
+                  </tr>
+                  <tr>
+                    <td style="padding: 4px 10px; font-size: 13px; color: #64748b; text-align: right;">IVA (13% incluido):</td>
+                    <td style="padding: 4px 10px; font-size: 13px; color: #334155; text-align: right; width: 110px; font-weight: 500;">${fmt(ivaMonto)}</td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- Bloque Prominente del Total Pagado -->
+              <div style="margin-top: 16px; background-color: #0f172a; border-radius: 12px; padding: 18px 20px; color: #ffffff;">
+                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
+                  <tr>
+                    <td valign="middle" style="color: #e2e8f0;">
+                      <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; opacity: 0.8; display: block;">Total Cancelado</span>
+                      <span style="font-size: 13px; color: #94a3b8; margin-top: 2px; display: block;">Moneda de curso legal (CRC)</span>
+                    </td>
+                    <td valign="middle" align="right" style="text-align: right;">
+                      <span style="font-size: 26px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                        ${fmt(datos.total)}
+                      </span>
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              ${
+                datos.notas?.trim()
+                  ? `<div style="margin-top: 16px; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #92400e;">
+                      <strong style="color: #78350f;">Notas de la venta:</strong> ${this.escapeHtml(datos.notas.trim())}
+                    </div>`
+                  : ''
+              }
+            </td>
+          </tr>
+
+          <!-- Divisor Sutil -->
+          <tr>
+            <td style="padding: 0 32px;">
+              <div style="border-top: 1px dashed #cbd5e1; height: 1px; line-height: 1px;">&nbsp;</div>
+            </td>
+          </tr>
+
+          <!-- Pie de Página Institucional -->
+          <tr>
+            <td class="email-pad" align="center" style="padding: 24px 32px 30px; text-align: center; background-color: #ffffff;">
+              <p style="margin: 0 0 6px; font-size: 13px; font-weight: 700; color: #C41E3A; letter-spacing: 1.2px; text-transform: uppercase;">
+                Café UNA
+              </p>
+              <p style="margin: 0 0 4px; font-size: 12px; font-weight: 600; color: #334155;">
+                Universidad Nacional de Costa Rica
+              </p>
+              <p style="margin: 0 0 14px; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+                Campus Omar Dengo, Heredia · Fomentando la cultura y excelencia del café costarricense
+              </p>
+              <p style="margin: 0; font-size: 10px; color: #cbd5e1; font-family: Consolas, monospace; letter-spacing: 2px;">
+                |||| | |||| ||| || |||||| | ||||| ||| |||
+              </p>
+              <p style="margin: 4px 0 0; font-size: 10px; color: #94a3b8;">
+                Documento de compra emitido electrónicamente.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+  }
+
   private async enviar(
     destinatario: string,
     subject: string,
@@ -134,6 +450,9 @@ export class EmailService {
         port,
         secure: port === 465,
         auth: user ? { user, pass } : undefined,
+        connectionTimeout: 10_000,
+        greetingTimeout: 10_000,
+        socketTimeout: 15_000,
       });
 
       await transporter.sendMail({
@@ -169,6 +488,30 @@ export class EmailService {
       .replaceAll('{{mensaje}}', this.escapeHtml(mensaje))
       .replaceAll('{{codigo}}', this.escapeHtml(codigo))
       .replaceAll('{{nota}}', this.escapeHtml(nota));
+  }
+
+  private async buildAlertaStockEmail(datos: {
+    nombreAdmin: string;
+    titulo: string;
+    mensaje: string;
+    nombreProducto: string;
+    stockActual: string;
+    stockMinimo: string;
+    nota: string;
+  }): Promise<string> {
+    const saludo = datos.nombreAdmin?.trim()
+      ? `Hola, ${this.escapeHtml(datos.nombreAdmin)}`
+      : 'Hola';
+    const template = await fs.readFile(this.alertaStockTemplatePath, 'utf8');
+
+    return template
+      .replaceAll('{{saludo}}', saludo)
+      .replaceAll('{{titulo}}', this.escapeHtml(datos.titulo))
+      .replaceAll('{{mensaje}}', this.escapeHtml(datos.mensaje))
+      .replaceAll('{{nombreProducto}}', this.escapeHtml(datos.nombreProducto))
+      .replaceAll('{{stockActual}}', this.escapeHtml(datos.stockActual))
+      .replaceAll('{{stockMinimo}}', this.escapeHtml(datos.stockMinimo))
+      .replaceAll('{{nota}}', this.escapeHtml(datos.nota));
   }
 
   private escapeHtml(value: string): string {

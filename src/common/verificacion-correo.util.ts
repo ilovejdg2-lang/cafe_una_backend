@@ -1,4 +1,4 @@
-import { randomUUID } from 'crypto';
+import { randomBytes, randomInt } from 'crypto';
 
 export const TOKEN_LIFETIME_MS = 30 * 60 * 1000;
 export const EMAIL_COOLDOWN_MS = 3 * 60 * 1000;
@@ -7,11 +7,12 @@ export const MENSAJE_ESPERA_CORREO =
   'No se puede mandar un correo seguido. Espera 3 minutos.';
 
 export function generarCodigoNumerico(): string {
-  return Math.floor(100000 + Math.random() * 900000).toString();
+  return String(randomInt(100000, 1000000));
 }
 
+/** 20 hex chars (80 bits) — cabe en columnas Token varchar(20). */
 export function generarCodigoRecuperacion(): string {
-  return randomUUID().replace(/-/g, '').slice(0, 8).toUpperCase();
+  return randomBytes(10).toString('hex').toUpperCase();
 }
 
 export function expiraEn(minutos = 30): Date {

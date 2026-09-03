@@ -8,17 +8,29 @@ export class TarjetaInicio {
   @Column({ name: 'Etiqueta', length: 100, default: '' })
   Etiqueta: string;
 
+  @Column({ name: 'EtiquetaEn', length: 100, default: '' })
+  EtiquetaEn: string;
+
   @Column({ name: 'Titulo', length: 300, default: '' })
   Titulo: string;
 
+  @Column({ name: 'TituloEn', length: 300, default: '' })
+  TituloEn: string;
+
   @Column({ name: 'Descripcion', length: 2000, default: '' })
   Descripcion: string;
+
+  @Column({ name: 'DescripcionEn', length: 2000, default: '' })
+  DescripcionEn: string;
 
   @Column({ name: 'Ruta', type: 'varchar', length: 300, nullable: true })
   Ruta: string | null;
 
   @Column({ name: 'TextoBoton', length: 200, default: '' })
   TextoBoton: string;
+
+  @Column({ name: 'TextoBotonEn', length: 200, default: '' })
+  TextoBotonEn: string;
 
   @Column({ name: 'Orden', type: 'int', default: 0 })
   Orden: number;

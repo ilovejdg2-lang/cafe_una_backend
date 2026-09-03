@@ -3,7 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { tienePermiso } from '../common/permisos';
 import { Usuario } from '../entities/usuario.entity';
-import { verificarContrasena } from '../common/password.util';
+import { hashearContrasena, verificarContrasena } from '../common/password.util';
 import { UsuarioValidacion, copiarUsuario } from '../common/usuario-validacion';
 
 export interface UsuarioPerfilResponse {
@@ -52,13 +52,18 @@ export class UsuariosService {
     return usuario ? copiarUsuario(usuario) : null;
   }
 
-  async obtenerPorNombreOCorreo(identifier: string): Promise<Usuario | null> {
+  async obtenerPorNombreOCorreo(
+    identifier: string,
+    opciones?: { incluirPassword?: boolean },
+  ): Promise<Usuario | null> {
     const normalized = identifier.trim().toLowerCase();
     const usuario = await this.repo
       .createQueryBuilder('u')
       .where('LOWER(u.Correo) = :id OR LOWER(u.Nombre) = :id', { id: normalized })
       .getOne();
-    return usuario ? copiarUsuario(usuario) : null;
+    return usuario
+      ? copiarUsuario(usuario, { incluirPassword: opciones?.incluirPassword })
+      : null;
   }
 
   async existeCorreo(correo: string): Promise<boolean> {
@@ -75,10 +80,15 @@ export class UsuariosService {
   }
 
   async crear(nuevoUsuario: Partial<Usuario>): Promise<Usuario> {
+    const passwordRaw = nuevoUsuario.PasswordHash!;
+    const passwordHash = passwordRaw.startsWith('$2')
+      ? passwordRaw
+      : await hashearContrasena(passwordRaw);
+
     const usuario = this.repo.create({
       Nombre: nuevoUsuario.Nombre!.trim(),
       Correo: nuevoUsuario.Correo!.trim().toLowerCase(),
-      PasswordHash: nuevoUsuario.PasswordHash!,
+      PasswordHash: passwordHash,
       Estado: this.estadoActivo,
       Roles:
         !nuevoUsuario.Roles || nuevoUsuario.Roles.length === 0
@@ -87,6 +97,10 @@ export class UsuariosService {
     });
     const saved = await this.repo.save(usuario);
     return copiarUsuario(saved);
+  }
+
+  async actualizarHashPassword(id: number, hash: string): Promise<void> {
+    await this.repo.update({ Id: id }, { PasswordHash: hash });
   }
 
   async actualizarConActor(
@@ -130,7 +144,7 @@ export class UsuariosService {
       }
       await this.validarPasswordActualLocal(actual.PasswordHash, passwordActual);
       UsuarioValidacion.validarPassword(cambios.PasswordHash);
-      actual.PasswordHash = cambios.PasswordHash;
+      actual.PasswordHash = await hashearContrasena(cambios.PasswordHash);
     }
 
     if (puedeInactivar && cambios.Estado?.trim()) {
@@ -202,7 +216,7 @@ export class UsuariosService {
     if (!actual) return false;
 
     await this.validarPasswordActualLocal(actual.PasswordHash, passwordActual);
-    actual.PasswordHash = passwordNueva;
+    actual.PasswordHash = await hashearContrasena(passwordNueva);
     await this.repo.save(actual);
     return true;
   }
@@ -248,7 +262,7 @@ export class UsuariosService {
       .getOne();
     if (!actual) return null;
 
-    actual.PasswordHash = nuevaPassword;
+    actual.PasswordHash = await hashearContrasena(nuevaPassword);
     const saved = await this.repo.save(actual);
     return copiarUsuario(saved);
   }
