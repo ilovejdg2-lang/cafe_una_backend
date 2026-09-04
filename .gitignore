@@ -27,3 +27,6 @@ Thumbs.db
 
 # test
 /coverage
+
+# scripts Flyway / SQL sueltos (el esquema va en bootstrap y migraciones TypeORM)
+/src/database/sql/

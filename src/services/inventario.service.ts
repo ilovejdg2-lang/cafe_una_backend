@@ -13,6 +13,10 @@ import { Producto } from '../entities/producto.entity';
 import { Transferencia } from '../entities/transferencia.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { StockAlertaService } from './stock-alerta.service';
+import {
+  insertarMovimientoInventario,
+  TIPO_MOVIMIENTO,
+} from '../common/movimiento-inventario.util';
 
 export const CANONICAL_LOCATIONS = [
   { code: 'BODEGA_CENTRAL', name: 'Bodega Central' },
@@ -26,6 +30,7 @@ export const BODEGA_CENTRAL = 'BODEGA_CENTRAL';
 const LOCATION_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,48}$/;
 
 export type InventoryLocationResponse = {
+  id: number;
   code: string;
   name: string;
   activo: boolean;
@@ -378,6 +383,28 @@ export class InventarioService {
         Fecha: new Date(),
       });
       const guardada = await queryRunner.manager.save(transferencia);
+
+      let responsableNombre = '';
+      if (responsableId != null) {
+        const usuario = await queryRunner.manager.findOne(Usuario, {
+          where: { Id: responsableId },
+        });
+        responsableNombre = usuario
+          ? String(usuario.Nombre || usuario.Correo || `usuario:${responsableId}`).slice(0, 200)
+          : `usuario:${responsableId}`;
+      }
+
+      await insertarMovimientoInventario(queryRunner.manager, {
+        tipo: TIPO_MOVIMIENTO.TRANSFERENCIA,
+        productoId,
+        cantidad,
+        responsableId,
+        responsableNombre,
+        notas,
+        ubicacionOrigenId: origen.Id,
+        ubicacionDestinoId: destino.Id,
+        fecha: guardada.Fecha,
+      });
 
       await queryRunner.commitTransaction();
       await this.stockAlertaService.verificarTrasMovimiento(productoId);
@@ -758,6 +785,7 @@ export class InventarioService {
     location: InventarioUbicacion,
   ): InventoryLocationResponse {
     return {
+      id: location.Id,
       code: location.Codigo,
       name: location.Nombre,
       activo: location.Activo !== false,

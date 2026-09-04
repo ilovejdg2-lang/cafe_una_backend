@@ -10,12 +10,15 @@ import { Compra } from '../entities/compra.entity';
 import { CompraItem } from '../entities/compra-item.entity';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
-import { MovimientoInventario } from '../entities/movimiento-inventario.entity';
 import { Producto } from '../entities/producto.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { BODEGA_CENTRAL } from './inventario.service';
+import {
+  insertarMovimientoInventario,
+  TIPO_MOVIMIENTO,
+} from '../common/movimiento-inventario.util';
 
-const TIPO_VENTA_PRESENCIAL = 'Venta presencial';
+const TIPO_VENTA_PRESENCIAL = TIPO_MOVIMIENTO.VENTA_PRESENCIAL;
 const CODIGOS_RECHAZADOS = new Set([
   BODEGA_CENTRAL,
   'PLATAFORMA_WEB',
@@ -205,20 +208,17 @@ export class VentasPresencialesService {
           const subtotalItem = Math.round(precioUnitario * cant);
           totalVenta += subtotalItem;
 
-          const mov = await queryRunner.manager.save(
-            queryRunner.manager.create(MovimientoInventario, {
-              Tipo: TIPO_VENTA_PRESENCIAL,
-              ProductoId: String(producto.Id),
-              Cantidad: cant,
-              ResponsableNombre: responsableNombre,
-              ResponsableId: responsableId,
-              Observaciones: notas,
-              Notas: notas,
-              SolicitudId: null,
-              UbicacionId: ubicacion.Id,
-              Fecha: fecha,
-            }),
-          );
+          const mov = await insertarMovimientoInventario(queryRunner.manager, {
+            tipo: TIPO_VENTA_PRESENCIAL,
+            productoId: String(producto.Id),
+            cantidad: cant,
+            responsableId,
+            responsableNombre,
+            notas,
+            ubicacionId: ubicacion.Id,
+            ubicacionOrigenId: ubicacion.Id,
+            fecha,
+          });
 
           itemsCalculados.push({
             productoId: String(producto.Id),
@@ -285,20 +285,17 @@ export class VentasPresencialesService {
         const subtotalItem = Math.round(precioUnitario * cantidad);
         totalVenta = subtotalItem;
 
-        const movimiento = await queryRunner.manager.save(
-          queryRunner.manager.create(MovimientoInventario, {
-            Tipo: TIPO_VENTA_PRESENCIAL,
-            ProductoId: String(producto.Id),
-            Cantidad: cantidad,
-            ResponsableNombre: responsableNombre,
-            ResponsableId: responsableId,
-            Observaciones: notas,
-            Notas: notas,
-            SolicitudId: null,
-            UbicacionId: ubicacion.Id,
-            Fecha: fecha,
-          }),
-        );
+        const movimiento = await insertarMovimientoInventario(queryRunner.manager, {
+          tipo: TIPO_VENTA_PRESENCIAL,
+          productoId: String(producto.Id),
+          cantidad,
+          responsableId,
+          responsableNombre,
+          notas,
+          ubicacionId: ubicacion.Id,
+          ubicacionOrigenId: ubicacion.Id,
+          fecha,
+        });
 
         itemsCalculados.push({
           productoId: String(producto.Id),

@@ -6,10 +6,12 @@ import { CamelCaseInterceptor } from '../common/camel-case.interceptor';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
+import { Transferencia } from '../entities/transferencia.entity';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { InventarioController } from './inventario.controller';
 import { InventarioService } from '../services/inventario.service';
+import { StockAlertaService } from '../services/stock-alerta.service';
 import { DataSource } from 'typeorm';
 
 describe('InventarioController location reads', () => {
@@ -44,6 +46,14 @@ describe('InventarioController location reads', () => {
         {
           provide: getRepositoryToken(Producto),
           useValue: productsRepository,
+        },
+        {
+          provide: getRepositoryToken(Transferencia),
+          useValue: { createQueryBuilder: jest.fn() },
+        },
+        {
+          provide: StockAlertaService,
+          useValue: { verificarTrasMovimiento: jest.fn() },
         },
         {
           provide: DataSource,
@@ -89,15 +99,15 @@ describe('InventarioController location reads', () => {
       .get('/api/inventario/ubicaciones')
       .expect(200)
       .expect([
-        { code: 'BODEGA_CENTRAL', name: 'Bodega Central', activo: true },
-        { code: 'POS_FUNA_UNA', name: 'FUNA-UNA', activo: true },
-        { code: 'POS_EDITORIAL', name: 'Editorial', activo: true },
-        { code: 'POS_STAND_FERIAS', name: 'Stand Ferias', activo: false },
+        { id: 1, code: 'BODEGA_CENTRAL', name: 'Bodega Central', activo: true },
+        { id: 2, code: 'POS_FUNA_UNA', name: 'FUNA-UNA', activo: true },
+        { id: 3, code: 'POS_EDITORIAL', name: 'Editorial', activo: true },
+        { id: 4, code: 'POS_STAND_FERIAS', name: 'Stand Ferias', activo: false },
       ]);
   });
 
   it('rejects location reads with a 403 when the permission is missing', async () => {
-    currentRoles = ['Vendedor'];
+    currentRoles = ['Cliente'];
 
     await request(app.getHttpServer())
       .get('/api/inventario/ubicaciones')
@@ -277,7 +287,7 @@ describe('InventarioController location reads', () => {
   });
 
   it('rejects location stock adjustments when the administrator permission is missing', async () => {
-    currentRoles = ['Vendedor'];
+    currentRoles = ['Cliente'];
 
     await request(app.getHttpServer())
       .put('/api/inventario/ubicaciones/POS_EDITORIAL/productos/1/stock')

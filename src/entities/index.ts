@@ -29,6 +29,8 @@ import { Permiso } from './permiso.entity';
 import { RolPermiso } from './rol-permiso.entity';
 import { AjusteSistema } from './ajuste-sistema.entity';
 import { DisponibilidadGrupo } from './disponibilidad-grupo.entity';
+import { DonacionNecesidad } from './donacion-necesidad.entity';
+import { DonacionSolicitud } from './donacion-solicitud.entity';
 
 export const entities = [
   Usuario,
@@ -62,6 +64,8 @@ export const entities = [
   RolPermiso,
   DisponibilidadGrupo,
   AjusteSistema,
+  DonacionNecesidad,
+  DonacionSolicitud,
 ];
 
 export * from './usuario.entity';
@@ -95,3 +99,5 @@ export * from './permiso.entity';
 export * from './rol-permiso.entity';
 export * from './disponibilidad-grupo.entity';
 export * from './ajuste-sistema.entity';
+export * from './donacion-necesidad.entity';
+export * from './donacion-solicitud.entity';
