@@ -2,9 +2,10 @@ import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailService } from '../common/email.service';
+import { MENSAJE_CORREO_NO_ENVIADO } from '../common/respuesta-verificacion';
 import {
   TOKEN_LIFETIME_MS,
-  generarCodigoRecuperacion,
+  generarCodigoNumerico,
   mensajeEsperaCorreo,
 } from '../common/verificacion-correo.util';
 import { UsuarioValidacion, copiarUsuario } from '../common/usuario-validacion';
@@ -107,7 +108,7 @@ export class AuthService {
       )
       .execute();
 
-    const token = generarCodigoRecuperacion();
+    const token = generarCodigoNumerico();
     const passwordHash = await hashearContrasena(password);
     await this.registrosRepo.save(
       this.registrosRepo.create({
@@ -125,6 +126,13 @@ export class AuthService {
       nombre,
       token,
     );
+    if (!emailEnviado) {
+      await this.registrosRepo
+        .createQueryBuilder()
+        .delete()
+        .where('LOWER(Correo) = :correo AND Usado = false', { correo })
+        .execute();
+    }
     return { EmailEnviado: emailEnviado };
   }
 
@@ -210,8 +218,7 @@ export class AuthService {
     if (recuperacionActiva) {
       const mensajeEspera = mensajeEsperaCorreo(recuperacionActiva.ExpiraEnUtc);
       if (mensajeEspera) {
-        // Misma forma de respuesta; no revelar si el usuario existe.
-        return { Mensaje: MENSAJE_RECUPERACION_GENERICO };
+        return { Mensaje: mensajeEspera };
       }
     }
 
@@ -224,7 +231,7 @@ export class AuthService {
       )
       .execute();
 
-    const token = generarCodigoRecuperacion();
+    const token = generarCodigoNumerico();
     await this.passwordResetRepo.save(
       this.passwordResetRepo.create({
         Token: token,
@@ -234,11 +241,21 @@ export class AuthService {
       }),
     );
 
-    await this.emailService.enviarCodigoRecuperacion(
+    const emailEnviado = await this.emailService.enviarCodigoRecuperacion(
       usuario.Correo,
       usuario.Nombre,
       token,
     );
+    if (!emailEnviado) {
+      await this.passwordResetRepo
+        .createQueryBuilder()
+        .delete()
+        .where('LOWER(Correo) = :correo AND Usado = false', {
+          correo: usuario.Correo.toLowerCase(),
+        })
+        .execute();
+      throw new Error(MENSAJE_CORREO_NO_ENVIADO);
+    }
     return { Mensaje: MENSAJE_RECUPERACION_GENERICO };
   }
 

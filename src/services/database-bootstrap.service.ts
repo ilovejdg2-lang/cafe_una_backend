@@ -200,6 +200,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.asegurarTraduccionesInglesVacias();
       await this.asegurarTablaAuditoria();
       await this.asegurarTriggersAuditoria();
+      await this.asegurarTablasDonaciones();
       this.logger.log(
         `Conexión a PostgreSQL establecida (${postgres.host}/${postgres.database} como ${postgres.user}).`,
       );
@@ -450,6 +451,115 @@ export class DatabaseBootstrapService implements OnModuleInit {
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS "IDX_movimientos_inventario_UbicacionId"
         ON movimientos_inventario ("UbicacionId");
+    `);
+    await this.asegurarHistorialMovimientosP06();
+  }
+
+  /** INV-P06: origen/destino, índice por tipo y bitácora append-only. */
+  private async asegurarHistorialMovimientosP06(): Promise<void> {
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "UbicacionOrigenId" integer NULL;
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario
+        ADD COLUMN IF NOT EXISTS "UbicacionDestinoId" integer NULL;
+    `);
+
+    await this.dataSource.query(`
+      ALTER TABLE movimientos_inventario DISABLE TRIGGER USER;
+    `);
+    try {
+      await this.dataSource.query(`
+        UPDATE movimientos_inventario
+        SET "Tipo" = 'venta_presencial'
+        WHERE lower(replace(btrim("Tipo"), ' ', '_')) IN ('venta_presencial', 'venta');
+      `);
+      await this.dataSource.query(`
+        UPDATE movimientos_inventario
+        SET "Tipo" = 'venta_web'
+        WHERE lower(replace(btrim("Tipo"), ' ', '_')) = 'venta_web';
+      `);
+      await this.dataSource.query(`
+        UPDATE movimientos_inventario
+        SET "Tipo" = 'transferencia'
+        WHERE lower(btrim("Tipo")) = 'transferencia';
+      `);
+      await this.dataSource.query(`
+        UPDATE movimientos_inventario
+        SET "Tipo" = 'entrada'
+        WHERE "Tipo" IS NULL
+          OR btrim("Tipo") = ''
+          OR lower(btrim("Tipo")) = 'entrada'
+          OR "Tipo" NOT IN (
+            'entrada', 'transferencia', 'venta_presencial', 'venta_web'
+          );
+      `);
+      await this.dataSource.query(`
+        UPDATE movimientos_inventario
+        SET "UbicacionOrigenId" = COALESCE("UbicacionOrigenId", "UbicacionId")
+        WHERE "Tipo" IN ('venta_presencial', 'venta_web', 'transferencia')
+          AND "UbicacionOrigenId" IS NULL
+          AND "UbicacionId" IS NOT NULL;
+      `);
+      await this.dataSource.query(`
+        UPDATE movimientos_inventario
+        SET "UbicacionDestinoId" = COALESCE("UbicacionDestinoId", "UbicacionId")
+        WHERE "Tipo" IN ('entrada', 'transferencia')
+          AND "UbicacionDestinoId" IS NULL
+          AND "UbicacionId" IS NOT NULL;
+      `);
+    } finally {
+      await this.dataSource.query(`
+        ALTER TABLE movimientos_inventario ENABLE TRIGGER USER;
+      `);
+    }
+
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_movimientos_inventario_Tipo"
+        ON movimientos_inventario ("Tipo");
+    `);
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1 FROM pg_constraint
+          WHERE conname = 'CK_movimientos_inventario_tipo'
+        ) THEN
+          ALTER TABLE movimientos_inventario
+            ADD CONSTRAINT "CK_movimientos_inventario_tipo"
+            CHECK ("Tipo" IN ('entrada', 'transferencia', 'venta_presencial', 'venta_web'));
+        END IF;
+      END
+      $$;
+    `);
+    await this.dataSource.query(`
+      CREATE OR REPLACE FUNCTION fn_movimientos_inventario_append_only()
+      RETURNS trigger AS $$
+      BEGIN
+        RAISE EXCEPTION 'El historial de movimientos es de solo inserción.';
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
+    await this.dataSource.query(`
+      DROP TRIGGER IF EXISTS trg_movimientos_inventario_no_update
+        ON movimientos_inventario;
+    `);
+    await this.dataSource.query(`
+      CREATE TRIGGER trg_movimientos_inventario_no_update
+        BEFORE UPDATE ON movimientos_inventario
+        FOR EACH ROW
+        EXECUTE FUNCTION fn_movimientos_inventario_append_only();
+    `);
+    await this.dataSource.query(`
+      DROP TRIGGER IF EXISTS trg_movimientos_inventario_no_delete
+        ON movimientos_inventario;
+    `);
+    await this.dataSource.query(`
+      CREATE TRIGGER trg_movimientos_inventario_no_delete
+        BEFORE DELETE ON movimientos_inventario
+        FOR EACH ROW
+        EXECUTE FUNCTION fn_movimientos_inventario_append_only();
     `);
   }
 
@@ -759,6 +869,8 @@ export class DatabaseBootstrapService implements OnModuleInit {
       'permisos',
       'rol_permiso',
       'disponibilidad_grupos',
+      'donacion_necesidades',
+      'donacion_solicitudes',
     ];
     const tablasClave = ['textos_institucionales', 'tarjetas_inicio'];
 
@@ -791,5 +903,81 @@ export class DatabaseBootstrapService implements OnModuleInit {
         $$;
       `);
     }
+  }
+
+  private async asegurarTablasDonaciones(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS donacion_necesidades (
+        "Id" serial PRIMARY KEY,
+        "Uuid" uuid NOT NULL UNIQUE DEFAULT gen_random_uuid(),
+        "Titulo" varchar(200) NOT NULL,
+        "Descripcion" varchar(2000) NOT NULL,
+        "Prioridad" varchar(10) NOT NULL,
+        "CantidadRequerida" integer NULL,
+        "Estado" varchar(10) NOT NULL DEFAULT 'ACTIVA',
+        "CreatedAt" timestamptz NOT NULL DEFAULT NOW(),
+        "UpdatedAt" timestamptz NOT NULL DEFAULT NOW(),
+        "DeletedAt" timestamptz NULL,
+        CONSTRAINT "CK_donacion_necesidades_prioridad"
+          CHECK ("Prioridad" IN ('ALTA', 'MEDIA', 'BAJA')),
+        CONSTRAINT "CK_donacion_necesidades_estado"
+          CHECK ("Estado" IN ('ACTIVA', 'INACTIVA')),
+        CONSTRAINT "CK_donacion_necesidades_cantidad"
+          CHECK ("CantidadRequerida" IS NULL OR "CantidadRequerida" > 0)
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_donacion_necesidades_Estado"
+        ON donacion_necesidades ("Estado");
+    `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS donacion_solicitudes (
+        "Id" serial PRIMARY KEY,
+        "UsuarioId" integer NOT NULL,
+        "NecesidadId" integer NULL REFERENCES donacion_necesidades("Id") ON DELETE SET NULL,
+        "Tipo" varchar(200) NOT NULL,
+        "Descripcion" varchar(2000) NOT NULL,
+        "FechaPropuesta" date NOT NULL,
+        "Estado" varchar(20) NOT NULL DEFAULT 'Pendiente',
+        "CreatedAt" timestamptz NOT NULL DEFAULT NOW(),
+        CONSTRAINT "CK_donacion_solicitudes_estado"
+          CHECK ("Estado" IN ('Pendiente', 'Aceptada', 'Rechazada'))
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_donacion_solicitudes_UsuarioId"
+        ON donacion_solicitudes ("UsuarioId");
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_donacion_solicitudes_Estado"
+        ON donacion_solicitudes ("Estado");
+    `);
+    await this.dataSource.query(`
+      INSERT INTO donacion_necesidades ("Titulo", "Descripcion", "Prioridad", "CantidadRequerida", "Estado")
+      SELECT * FROM (VALUES
+        (
+          'Herramientas agrícolas',
+          'Palas, rastrillos y machetes para el mantenimiento de los cafetales de la finca experimental.',
+          'ALTA',
+          12,
+          'ACTIVA'
+        ),
+        (
+          'Materiales de empaque',
+          'Bolsas de papel y etiquetas para empacar café de especialidad en los puntos de venta.',
+          'MEDIA',
+          200,
+          'ACTIVA'
+        ),
+        (
+          'Insumos de limpieza',
+          'Jabón biodegradable y paños para las áreas de tostado y empaque.',
+          'BAJA',
+          20,
+          'ACTIVA'
+        )
+      ) AS semilla("Titulo", "Descripcion", "Prioridad", "CantidadRequerida", "Estado")
+      WHERE NOT EXISTS (SELECT 1 FROM donacion_necesidades LIMIT 1);
+    `);
   }
 }
