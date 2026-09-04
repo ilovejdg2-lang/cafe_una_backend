@@ -655,6 +655,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       'Sobre nosotros': 'About us',
       Productos: 'Products',
       Voluntariado: 'Volunteering',
+      Formularios: 'Forms',
       Donaciones: 'Donations',
       Visitas: 'Visits',
       Inicio: 'Home',
@@ -938,6 +939,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
         "Tipo" varchar(200) NOT NULL,
         "Descripcion" varchar(2000) NOT NULL,
         "FechaPropuesta" date NOT NULL,
+        "Detalles" jsonb NULL,
         "Estado" varchar(20) NOT NULL DEFAULT 'Pendiente',
         "CreatedAt" timestamptz NOT NULL DEFAULT NOW(),
         CONSTRAINT "CK_donacion_solicitudes_estado"
@@ -951,6 +953,27 @@ export class DatabaseBootstrapService implements OnModuleInit {
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS "IDX_donacion_solicitudes_Estado"
         ON donacion_solicitudes ("Estado");
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE donacion_solicitudes
+        ADD COLUMN IF NOT EXISTS "Detalles" jsonb NULL;
+    `);
+    await this.dataSource.query(`
+      UPDATE tarjetas_inicio
+      SET "Ruta" = '/donaciones/solicitar'
+      WHERE LOWER(TRIM("Clave")) = 'donaciones'
+        AND (
+          "Ruta" IS NULL
+          OR TRIM("Ruta") = ''
+          OR "Ruta" LIKE '/donaciones/necesidades%'
+        );
+    `);
+    await this.dataSource.query(`
+      UPDATE enlaces_sitio
+      SET "Etiqueta" = 'Formularios',
+          "EtiquetaEn" = 'Forms'
+      WHERE LOWER(TRIM("Seccion")) = 'navbar'
+        AND LOWER(TRIM("Etiqueta")) IN ('voluntariado', 'volunteering');
     `);
     await this.dataSource.query(`
       INSERT INTO donacion_necesidades ("Titulo", "Descripcion", "Prioridad", "CantidadRequerida", "Estado")

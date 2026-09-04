@@ -16,7 +16,7 @@ import { CedulaConsultaService } from '../services/cedula-consulta.service';
 
 @Controller('cedula')
 @UseGuards(JwtAuthGuard, PermisosGuard)
-@RequierePermiso('ingresar_solicitud_voluntariado')
+@RequierePermiso('ingresar_solicitud_voluntariado', 'hacer_solicitud_donacion')
 export class CedulaController {
   constructor(private readonly cedulaConsultaService: CedulaConsultaService) {}
 

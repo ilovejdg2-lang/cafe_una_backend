@@ -45,6 +45,9 @@ export class DonacionSolicitud {
   @Column({ name: 'FechaPropuesta', type: 'date' })
   FechaPropuesta: string;
 
+  @Column({ name: 'Detalles', type: 'jsonb', nullable: true })
+  Detalles: Record<string, unknown> | null;
+
   @Column({ name: 'Estado', type: 'varchar', length: 20, default: 'Pendiente' })
   Estado: EstadoSolicitudDonacion;
 
