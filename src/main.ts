@@ -2,6 +2,7 @@ import { NestFactory } from '@nestjs/core';
 import type { CustomOrigin } from '@nestjs/common/interfaces/external/cors-options.interface';
 import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
+import { json, urlencoded } from 'express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
 import { CamelCaseInterceptor } from './common/camel-case.interceptor';
@@ -31,7 +32,14 @@ const validarOrigen: CustomOrigin = (origen, callback) => {
 };
 
 async function bootstrap() {
-  const app = await NestFactory.create<NestExpressApplication>(AppModule);
+  const app = await NestFactory.create<NestExpressApplication>(AppModule, {
+    bodyParser: false,
+  });
+
+  // Las solicitudes de donación envían fotos como data URLs en JSON.
+  // El límite por defecto de Express (100kb) rechaza incluso 1–2 imágenes.
+  app.use(json({ limit: '10mb' }));
+  app.use(urlencoded({ extended: true, limit: '10mb' }));
 
   // Proformas y uploads solo por endpoints autenticados (no static público).
   app.setGlobalPrefix('api');
