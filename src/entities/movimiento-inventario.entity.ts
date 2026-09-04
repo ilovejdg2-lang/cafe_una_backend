@@ -6,6 +6,7 @@ import {
   ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { InventarioUbicacion } from './inventario-ubicacion.entity';
 import { Producto } from './producto.entity';
 import { SolicitudCompra } from './solicitud-compra.entity';
 import { Usuario } from './usuario.entity';
@@ -56,6 +57,20 @@ export class MovimientoInventario {
 
   @Column({ name: 'UbicacionId', type: 'integer', nullable: true })
   UbicacionId: number | null;
+
+  @Column({ name: 'UbicacionOrigenId', type: 'integer', nullable: true })
+  UbicacionOrigenId: number | null;
+
+  @ManyToOne(() => InventarioUbicacion, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'UbicacionOrigenId', referencedColumnName: 'Id' })
+  Origen?: InventarioUbicacion | null;
+
+  @Column({ name: 'UbicacionDestinoId', type: 'integer', nullable: true })
+  UbicacionDestinoId: number | null;
+
+  @ManyToOne(() => InventarioUbicacion, { onDelete: 'SET NULL', nullable: true })
+  @JoinColumn({ name: 'UbicacionDestinoId', referencedColumnName: 'Id' })
+  Destino?: InventarioUbicacion | null;
 
   @Column({
     name: 'Fecha',

@@ -7,11 +7,16 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
 import { tienePermiso } from '../common/permisos';
+import {
+  insertarMovimientoInventario,
+  TIPO_MOVIMIENTO,
+} from '../common/movimiento-inventario.util';
 import { CompraItem } from '../entities/compra-item.entity';
 import { Compra } from '../entities/compra.entity';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
+import { Usuario } from '../entities/usuario.entity';
 import { BODEGA_CENTRAL } from './inventario.service';
 
 type CompraBody = Record<string, unknown> | undefined | null;
@@ -319,9 +324,9 @@ export class ComprasService {
       const necesitaStock = stockYaDescontado(nuevoEstado);
 
       if (necesitaStock && !teniaStock) {
-        await this.descontarStockDeItems(queryRunner.manager, items);
+        await this.descontarStockDeItems(queryRunner.manager, items, compra);
       } else if (!necesitaStock && teniaStock) {
-        await this.restaurarStockDeItems(queryRunner.manager, items);
+        await this.restaurarStockDeItems(queryRunner.manager, items, compra);
       }
 
       compra.Estado = nuevoEstado;
@@ -473,6 +478,7 @@ export class ComprasService {
   private async descontarStockDeItems(
     manager: EntityManager,
     items: CompraItem[],
+    compra: Compra,
   ): Promise<void> {
     const central = await manager.findOne(InventarioUbicacion, {
       where: { Codigo: BODEGA_CENTRAL },
@@ -482,6 +488,9 @@ export class ComprasService {
         'La Bodega Central no está inicializada.',
       );
     }
+
+    const { responsableId, responsableNombre } =
+      await this.resolverResponsableCompra(manager, compra);
 
     for (const item of items) {
       const cantidad = Number(item.Cantidad) || 0;
@@ -528,12 +537,24 @@ export class ComprasService {
       producto.AlertaStock = producto.Stock <= (producto.StockMinimo ?? 0);
       await manager.save(balance);
       await manager.save(producto);
+
+      await insertarMovimientoInventario(manager, {
+        tipo: TIPO_MOVIMIENTO.VENTA_WEB,
+        productoId: String(producto.Id),
+        cantidad,
+        responsableId,
+        responsableNombre,
+        notas: `Venta web ${compra.Numero || `#${compra.Id}`}`,
+        ubicacionId: central.Id,
+        ubicacionOrigenId: central.Id,
+      });
     }
   }
 
   private async restaurarStockDeItems(
     manager: EntityManager,
     items: CompraItem[],
+    compra: Compra,
   ): Promise<void> {
     const central = await manager.findOne(InventarioUbicacion, {
       where: { Codigo: BODEGA_CENTRAL },
@@ -543,6 +564,9 @@ export class ComprasService {
         'La Bodega Central no está inicializada.',
       );
     }
+
+    const { responsableId, responsableNombre } =
+      await this.resolverResponsableCompra(manager, compra);
 
     for (const item of items) {
       const cantidad = Number(item.Cantidad) || 0;
@@ -581,7 +605,35 @@ export class ComprasService {
       producto.AlertaStock = producto.Stock <= (producto.StockMinimo ?? 0);
       await manager.save(balance);
       await manager.save(producto);
+
+      await insertarMovimientoInventario(manager, {
+        tipo: TIPO_MOVIMIENTO.ENTRADA,
+        productoId: String(producto.Id),
+        cantidad,
+        responsableId,
+        responsableNombre,
+        notas: `Reverso de venta web ${compra.Numero || `#${compra.Id}`}`,
+        ubicacionId: central.Id,
+        ubicacionDestinoId: central.Id,
+      });
     }
+  }
+
+  private async resolverResponsableCompra(
+    manager: EntityManager,
+    compra: Compra,
+  ): Promise<{ responsableId: number | null; responsableNombre: string }> {
+    const responsableId = compra.UsuarioId ?? null;
+    if (responsableId == null) {
+      return { responsableId: null, responsableNombre: '' };
+    }
+    const usuario = await manager.findOne(Usuario, { where: { Id: responsableId } });
+    return {
+      responsableId,
+      responsableNombre: usuario
+        ? String(usuario.Nombre || usuario.Correo || `usuario:${responsableId}`).slice(0, 200)
+        : `usuario:${responsableId}`,
+    };
   }
 
   private validarItemSolicitud(item: Record<string, unknown>) {

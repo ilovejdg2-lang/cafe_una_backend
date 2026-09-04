@@ -8,10 +8,13 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { basename } from 'path';
 import { DataSource, In, Repository } from 'typeorm';
 import { pickString } from '../common/body-fields';
+import {
+  insertarMovimientoInventario,
+  TIPO_MOVIMIENTO,
+} from '../common/movimiento-inventario.util';
 import { DetalleSolicitud } from '../entities/detalle-solicitud.entity';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
-import { MovimientoInventario } from '../entities/movimiento-inventario.entity';
 import { Producto } from '../entities/producto.entity';
 import { Proveedor } from '../entities/proveedor.entity';
 import {
@@ -394,19 +397,18 @@ export class SolicitudesCompraService {
           await queryRunner.manager.save(producto);
 
           const notaEntrada = `Entrada por solicitud #${solicitud.Id}`;
-          await queryRunner.manager.save(
-            queryRunner.manager.create(MovimientoInventario, {
-              Tipo: 'entrada',
-              ProductoId: String(producto.Id),
-              Cantidad: cantidadEntera,
-              ResponsableNombre: `usuario:${usuarioId}`,
-              ResponsableId: usuarioId,
-              Observaciones: notaEntrada,
-              Notas: notaEntrada,
-              SolicitudId: String(solicitud.Id),
-              Fecha: new Date(),
-            }),
-          );
+          await insertarMovimientoInventario(queryRunner.manager, {
+            tipo: TIPO_MOVIMIENTO.ENTRADA,
+            productoId: String(producto.Id),
+            cantidad: cantidadEntera,
+            responsableId: usuarioId,
+            responsableNombre: `usuario:${usuarioId}`,
+            notas: notaEntrada,
+            solicitudId: String(solicitud.Id),
+            ubicacionId: central.Id,
+            ubicacionDestinoId: central.Id,
+            fecha: new Date(),
+          });
 
           productosAfectados.push(String(producto.Id));
         }

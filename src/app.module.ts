@@ -7,6 +7,7 @@ import { construirConfigPostgres } from './config/postgres.config';
 import { HealthController } from './controllers/health.controller';
 import { ActivosFijosModule } from './modules/activos-fijos.module';
 import { ComprasModule } from './modules/compras.module';
+import { DonacionesModule } from './modules/donaciones.module';
 import { InventarioModule } from './modules/inventario.module';
 import { AuthModule } from './modules/auth.module';
 import { AuditoriaModule } from './modules/auditoria.module';
@@ -40,6 +41,7 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     InventarioModule,
     ActivosFijosModule,
     ComprasModule,
+    DonacionesModule,
     SolicitudesCompraModule,
     InformacionModule,
     VoluntariadoModule,

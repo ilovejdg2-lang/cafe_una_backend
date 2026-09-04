@@ -39,16 +39,18 @@ export class EmailService {
     nombre: string,
     codigo: string,
   ): Promise<boolean> {
+    const contenido = await this.buildCodeEmail(
+      nombre,
+      'Verifica tu cuenta',
+      'Usá este código para completar tu registro en Café UNA:',
+      codigo,
+      'El código vence en 30 minutos. Si no creaste esta cuenta, ignorá este correo.',
+    );
     return this.enviar(
       destinatario,
       'Código de verificación - Café UNA',
-      await this.buildCodeEmail(
-        nombre,
-        'Verifica tu cuenta',
-        'Usá este código para completar tu registro en Café UNA:',
-        codigo,
-        'El código vence en 30 minutos. Si no creaste esta cuenta, ignorá este correo.',
-      ),
+      contenido.html,
+      contenido.text,
     );
   }
 
@@ -57,16 +59,18 @@ export class EmailService {
     nombre: string,
     codigo: string,
   ): Promise<boolean> {
+    const contenido = await this.buildCodeEmail(
+      nombre,
+      'Recuperación de contraseña',
+      'Usá este código para restablecer tu contraseña:',
+      codigo,
+      'El código vence en 30 minutos. Si no solicitaste este cambio, ignorá este correo.',
+    );
     return this.enviar(
       destinatario,
       'Código de recuperación de contraseña - Café UNA',
-      await this.buildCodeEmail(
-        nombre,
-        'Recuperación de contraseña',
-        'Usá este código para restablecer tu contraseña:',
-        codigo,
-        'El código vence en 30 minutos. Si no solicitaste este cambio, ignorá este correo.',
-      ),
+      contenido.html,
+      contenido.text,
     );
   }
 
@@ -75,16 +79,18 @@ export class EmailService {
     nombre: string,
     codigo: string,
   ): Promise<boolean> {
+    const contenido = await this.buildCodeEmail(
+      nombre,
+      'Cambio de correo',
+      'Usá este código para confirmar tu nuevo correo en Café UNA:',
+      codigo,
+      'El código vence en 30 minutos. Si no solicitaste este cambio, ignorá este correo.',
+    );
     return this.enviar(
       destinatario,
       'Verifica tu nuevo correo - Café UNA',
-      await this.buildCodeEmail(
-        nombre,
-        'Cambio de correo',
-        'Usá este código para confirmar tu nuevo correo en Café UNA:',
-        codigo,
-        'El código vence en 30 minutos. Si no solicitaste este cambio, ignorá este correo.',
-      ),
+      contenido.html,
+      contenido.text,
     );
   }
 
@@ -431,41 +437,50 @@ export class EmailService {
     destinatario: string,
     subject: string,
     htmlBody: string,
+    textBody?: string,
   ): Promise<boolean> {
-    const host = this.config.get<string>('SMTP_HOST');
-    const fromEmail = this.config.get<string>('SMTP_FROM');
+    const host = this.config.get<string>('SMTP_HOST')?.trim();
+    const user = this.config.get<string>('SMTP_USER')?.trim();
+    const fromEmail =
+      this.config.get<string>('SMTP_FROM')?.trim() || user;
     if (!host || !fromEmail) {
       this.logger.warn(`SMTP no configurado. No se envió correo a ${destinatario}.`);
       return false;
     }
 
-    const port = Number(this.config.get<string>('SMTP_PORT') ?? 587);
-    const user = this.config.get<string>('SMTP_USER');
-    const pass = this.config.get<string>('SMTP_PASS');
-    const fromName = this.config.get<string>('SMTP_FROM_NAME') ?? 'Café UNA';
+    const port = Number(this.config.get<string>('SMTP_PORT')?.trim() || 587);
+    const pass = (this.config.get<string>('SMTP_PASS') ?? '').replace(/\s+/g, '');
+    const fromName = this.config.get<string>('SMTP_FROM_NAME')?.trim() || 'Café UNA';
 
     try {
       const transporter = nodemailer.createTransport({
         host,
         port,
         secure: port === 465,
+        requireTLS: port === 587,
         auth: user ? { user, pass } : undefined,
-        connectionTimeout: 10_000,
-        greetingTimeout: 10_000,
-        socketTimeout: 15_000,
+        connectionTimeout: 15_000,
+        greetingTimeout: 15_000,
+        socketTimeout: 20_000,
+        tls: {
+          minVersion: 'TLSv1.2',
+          servername: host,
+        },
       });
 
       await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
-        to: destinatario,
+        to: destinatario.trim(),
         subject,
         html: htmlBody,
+        text: textBody || undefined,
       });
 
       this.logger.log(`Correo enviado correctamente a ${destinatario}.`);
       return true;
     } catch (error) {
-      this.logger.error(`No se pudo enviar correo a ${destinatario}.`, error);
+      const detalle = error instanceof Error ? error.message : String(error);
+      this.logger.error(`No se pudo enviar correo a ${destinatario}: ${detalle}`);
       return false;
     }
   }
@@ -476,18 +491,43 @@ export class EmailService {
     mensaje: string,
     codigo: string,
     nota: string,
-  ): Promise<string> {
-    const saludo = nombre?.trim()
-      ? `Hola, ${this.escapeHtml(nombre)}`
-      : 'Hola';
-    const template = await fs.readFile(this.templatePath, 'utf8');
+  ): Promise<{ html: string; text: string }> {
+    const nombreLimpio = nombre?.trim() || '';
+    const saludo = nombreLimpio ? `Hola, ${nombreLimpio}` : 'Hola';
+    const text = [
+      saludo,
+      '',
+      titulo,
+      '',
+      mensaje,
+      '',
+      `Tu código: ${codigo}`,
+      '',
+      nota,
+      '',
+      'Café UNA — Universidad Nacional, Costa Rica',
+    ].join('\n');
 
-    return template
-      .replaceAll('{{saludo}}', saludo)
-      .replaceAll('{{titulo}}', this.escapeHtml(titulo))
-      .replaceAll('{{mensaje}}', this.escapeHtml(mensaje))
-      .replaceAll('{{codigo}}', this.escapeHtml(codigo))
-      .replaceAll('{{nota}}', this.escapeHtml(nota));
+    try {
+      const template = await fs.readFile(this.templatePath, 'utf8');
+      const html = template
+        .replaceAll('{{saludo}}', this.escapeHtml(saludo))
+        .replaceAll('{{titulo}}', this.escapeHtml(titulo))
+        .replaceAll('{{mensaje}}', this.escapeHtml(mensaje))
+        .replaceAll('{{codigo}}', this.escapeHtml(codigo))
+        .replaceAll('{{nota}}', this.escapeHtml(nota));
+      return { html, text };
+    } catch (error) {
+      this.logger.warn(
+        `No se leyó la plantilla de código. Se usa el correo sencillo. ${
+          error instanceof Error ? error.message : ''
+        }`,
+      );
+      return {
+        html: `<p>${this.escapeHtml(saludo)}</p><h1>${this.escapeHtml(titulo)}</h1><p>${this.escapeHtml(mensaje)}</p><p><strong>${this.escapeHtml(codigo)}</strong></p><p>${this.escapeHtml(nota)}</p>`,
+        text,
+      };
+    }
   }
 
   private async buildAlertaStockEmail(datos: {
