@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, Req, UseGuards } from '@nestjs/common';
+import { Body, Controller, Get, Param, Patch, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { JwtUsuario } from '../common/permisos';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
@@ -35,5 +35,17 @@ export class DonacionSolicitudesController {
     @Req() req: Request & { user: JwtUsuario },
   ) {
     return this.solicitudesService.crear(body ?? {}, req.user.userId);
+  }
+
+  @Patch(':id/estado')
+  @RequierePermiso(
+    'administrar_solicitudes_donaciones',
+    'actualizar_solicitud_donaciones',
+  )
+  actualizarEstado(
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.solicitudesService.actualizarEstado(id, body ?? {});
   }
 }
