@@ -1,7 +1,8 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { SolicitudVoluntariado } from '../entities/solicitud-voluntariado.entity';
+import { FechasVoluntariadoService } from './fechas-voluntariado.service';
 
 export type FiltrosSolicitudesVoluntariado = {
   nombre?: string;
@@ -15,6 +16,7 @@ export class VoluntariadoService {
   constructor(
     @InjectRepository(SolicitudVoluntariado)
     private readonly repo: Repository<SolicitudVoluntariado>,
+    private readonly fechasService: FechasVoluntariadoService,
   ) {}
 
   async obtenerSolicitudes(
@@ -75,6 +77,7 @@ export class VoluntariadoService {
     Area?: string | null;
     Descripcion?: string | null;
     Motivacion?: string | null;
+    DocumentoAdjunto?: string | null;
   }): Promise<SolicitudVoluntariado> {
     if (
       !request.UserId?.trim() ||
@@ -83,6 +86,23 @@ export class VoluntariadoService {
       throw new Error(
         'La solicitud de voluntariado debe estar asociada a un usuario.',
       );
+    }
+
+    // Validar fecha habilitada si se especifica en Dias
+    const diasStr = String(request.Dias || '').trim();
+    const matchFecha = diasStr.match(/\d{4}-\d{2}-\d{2}/);
+    if (matchFecha) {
+      const fechaSolicitada = matchFecha[0];
+      const disponibles = await this.fechasService.listarDisponibles();
+      // Si hay fechas configuradas en el sistema, la fecha solicitada DEBE estar habilitada
+      if (disponibles.length > 0) {
+        const estaHabilitada = disponibles.some((d) => String(d.Fecha).slice(0, 10) === fechaSolicitada);
+        if (!estaHabilitada) {
+          throw new BadRequestException(
+            `La fecha ${fechaSolicitada} no está habilitada para realizar voluntariados. Por favor seleccione una fecha disponible del calendario.`,
+          );
+        }
+      }
     }
 
     const hoy = new Date();
@@ -107,6 +127,7 @@ export class VoluntariadoService {
       Area: request.Area ?? null,
       Descripcion: request.Descripcion ?? null,
       Motivacion: request.Motivacion ?? null,
+      DocumentoAdjunto: request.DocumentoAdjunto ?? null,
     });
 
     return this.repo.save(solicitud);
@@ -146,8 +167,16 @@ export class VoluntariadoService {
     if (cambios.ObservacionesAdmin !== undefined) {
       actual.ObservacionesAdmin = cambios.ObservacionesAdmin;
     }
+    if (cambios.DocumentoAdjunto !== undefined) {
+      actual.DocumentoAdjunto = cambios.DocumentoAdjunto;
+    }
 
     return this.repo.save(actual);
+  }
+
+  async obtenerNombreArchivoDocumento(id: string): Promise<string | null> {
+    const solicitud = await this.repo.findOne({ where: { Id: id } });
+    return solicitud?.DocumentoAdjunto ?? null;
   }
 
   async eliminar(id: string): Promise<boolean> {

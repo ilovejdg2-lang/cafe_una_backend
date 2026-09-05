@@ -66,4 +66,12 @@ export class SolicitudVoluntariado {
     nullable: true,
   })
   ObservacionesAdmin: string | null;
+
+  @Column({
+    name: 'DocumentoAdjunto',
+    type: 'varchar',
+    length: 300,
+    nullable: true,
+  })
+  DocumentoAdjunto: string | null;
 }
