@@ -20,6 +20,21 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.dataSource.query(`
         ALTER TABLE solicitudes_voluntariado
         ADD COLUMN IF NOT EXISTS "ObservacionesAdmin" varchar(2000) NULL;
+        ALTER TABLE solicitudes_voluntariado
+        ADD COLUMN IF NOT EXISTS "DocumentoAdjunto" varchar(300) NULL;
+      `);
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS fechas_voluntariado (
+          "Id" serial PRIMARY KEY,
+          "Fecha" date NOT NULL UNIQUE,
+          "Habilitada" boolean NOT NULL DEFAULT true,
+          "CupoMaximo" int NULL,
+          "Observaciones" varchar(500) NOT NULL DEFAULT '',
+          "CreatedAt" timestamp NOT NULL DEFAULT NOW(),
+          "UpdatedAt" timestamp NOT NULL DEFAULT NOW()
+        );
+        CREATE INDEX IF NOT EXISTS "IDX_fechas_voluntariado_fecha"
+          ON fechas_voluntariado ("Fecha");
       `);
       await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS categorias (
@@ -872,6 +887,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       'disponibilidad_grupos',
       'donacion_necesidades',
       'donacion_solicitudes',
+      'fechas_voluntariado',
     ];
     const tablasClave = ['textos_institucionales', 'tarjetas_inicio'];
 

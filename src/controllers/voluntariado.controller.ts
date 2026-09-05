@@ -13,15 +13,31 @@ import {
   Put,
   Query,
   Req,
+  StreamableFile,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { Request } from 'express';
+import { createReadStream, existsSync, mkdirSync } from 'fs';
+import { diskStorage } from 'multer';
+import { extname, join, relative, resolve, sep } from 'path';
 
 import { EmailService } from '../common/email.service';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { VoluntariadoService } from '../services/voluntariado.service';
+
+const VOLUNTARIADO_DOCS_DIR = join(process.cwd(), 'uploads', 'voluntariado');
+const MAX_DOC_BYTES = 10 * 1024 * 1024; // 10 MB
+
+function asegurarDirectorioVoluntariado(): void {
+  if (!existsSync(VOLUNTARIADO_DOCS_DIR)) {
+    mkdirSync(VOLUNTARIADO_DOCS_DIR, { recursive: true });
+  }
+}
 
 @Controller('voluntariado/solicitudes')
 export class VoluntariadoController {
@@ -102,6 +118,22 @@ export class VoluntariadoController {
   @Post()
   @UseGuards(JwtAuthGuard, PermisosGuard)
   @RequierePermiso('ingresar_solicitud_voluntariado')
+  @UseInterceptors(
+    FileInterceptor('documento', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          asegurarDirectorioVoluntariado();
+          cb(null, VOLUNTARIADO_DOCS_DIR);
+        },
+        filename: (_req, file, cb) => {
+          const ext = extname(file.originalname).toLowerCase();
+          const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+          cb(null, `grupo-${unique}${ext || '.pdf'}`);
+        },
+      }),
+      limits: { fileSize: MAX_DOC_BYTES },
+    }),
+  )
   async crearSolicitud(
     @Req()
     req: Request & {
@@ -112,6 +144,13 @@ export class VoluntariadoController {
       };
     },
     @Body() body: Record<string, unknown>,
+    @UploadedFile()
+    file?: {
+      filename: string;
+      originalname?: string;
+      mimetype?: string;
+      size?: number;
+    },
   ) {
     try {
       /*
@@ -136,9 +175,9 @@ export class VoluntariadoController {
        */
       const nombreJwt = String(req.user.unique_name ?? '').trim();
       const nombreFormulario = [
-        body.Nombre,
-        body.PrimerApellido,
-        body.SegundoApellido,
+        body.Nombre ?? body.nombre,
+        body.PrimerApellido ?? body.primerApellido,
+        body.SegundoApellido ?? body.segundoApellido,
       ]
         .map((parte) => String(parte ?? '').trim())
         .filter(Boolean)
@@ -146,76 +185,47 @@ export class VoluntariadoController {
         .trim();
       const nombre = nombreFormulario || nombreJwt;
 
+      const getVal = (pascal: string, camel: string) => {
+        const v = body[pascal] !== undefined ? body[pascal] : body[camel];
+        return v !== undefined && v !== null ? String(v) : null;
+      };
+
+      const cantPartRaw =
+        body.CantidadParticipantes !== undefined
+          ? body.CantidadParticipantes
+          : body.cantidadParticipantes;
+      const cantPart =
+        cantPartRaw != null && !isNaN(Number(cantPartRaw))
+          ? Number(cantPartRaw)
+          : null;
+
       const solicitud = await this.voluntariadoService.crear({
         UserId: userId,
 
         Nombre: nombre || null,
         Email: email || null,
 
-        Telefono:
-          body.Telefono !== undefined
-            ? String(body.Telefono)
-            : null,
+        Telefono: getVal('Telefono', 'telefono'),
+        TipoVoluntariado: getVal('TipoVoluntariado', 'tipoVoluntariado'),
+        Identificacion: getVal('Identificacion', 'identificacion'),
+        Institucion: getVal('Institucion', 'institucion'),
+        Pais: getVal('Pais', 'pais'),
+        Modalidad: getVal('Modalidad', 'modalidad'),
+        CantidadParticipantes: cantPart,
+        Residencia: getVal('Residencia', 'residencia'),
+        Horario: getVal('Horario', 'horario'),
+        Dias: getVal('Dias', 'dias'),
+        Area: getVal('Area', 'area'),
+        Descripcion: getVal('Descripcion', 'descripcion'),
+        Motivacion: getVal('Motivacion', 'motivacion'),
 
-        TipoVoluntariado:
-          body.TipoVoluntariado !== undefined
-            ? String(body.TipoVoluntariado)
-            : null,
-
-        Identificacion:
-          body.Identificacion !== undefined
-            ? String(body.Identificacion)
-            : null,
-
-        Institucion:
-          body.Institucion !== undefined
-            ? String(body.Institucion)
-            : null,
-
-        Pais:
-          body.Pais !== undefined
-            ? String(body.Pais)
-            : null,
-
-        Modalidad:
-          body.Modalidad !== undefined
-            ? String(body.Modalidad)
-            : null,
-
-        CantidadParticipantes:
-          body.CantidadParticipantes != null
-            ? Number(body.CantidadParticipantes)
-            : null,
-
-        Residencia:
-          body.Residencia !== undefined
-            ? String(body.Residencia)
-            : null,
-
-        Horario:
-          body.Horario !== undefined
-            ? String(body.Horario)
-            : null,
-
-        Dias:
-          body.Dias !== undefined
-            ? String(body.Dias)
-            : null,
-
-        Area:
-          body.Area !== undefined
-            ? String(body.Area)
-            : null,
-
-        Descripcion:
-          body.Descripcion !== undefined
-            ? String(body.Descripcion)
-            : null,
-
-        Motivacion:
-          body.Motivacion !== undefined
-            ? String(body.Motivacion)
-            : null,
+        DocumentoAdjunto:
+          file?.filename ||
+          (body.DocumentoAdjunto !== undefined && body.DocumentoAdjunto !== null
+            ? String(body.DocumentoAdjunto)
+            : body.documentoAdjunto !== undefined && body.documentoAdjunto !== null
+              ? String(body.documentoAdjunto)
+              : null),
       });
 
       /*
@@ -347,5 +357,42 @@ export class VoluntariadoController {
     return {
       message: 'Solicitud de voluntariado inactivada correctamente.',
     };
+  }
+
+  /**
+   * Descargar documento adjunto con la lista de integrantes del grupo.
+   */
+  @Get(':id/documento')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ver_solicitudes_voluntariado')
+  async descargarDocumento(@Param('id') id: string): Promise<StreamableFile> {
+    const filename = await this.voluntariadoService.obtenerNombreArchivoDocumento(id);
+    if (!filename) {
+      throw new NotFoundException('Esta solicitud no tiene documento adjunto.');
+    }
+
+    const root = resolve(VOLUNTARIADO_DOCS_DIR);
+    const absolute = resolve(root, filename);
+    const rel = relative(root, absolute);
+    if (!rel || rel.startsWith('..') || rel.includes(`..${sep}`)) {
+      throw new BadRequestException('Ruta de archivo inválida.');
+    }
+    if (!existsSync(absolute)) {
+      throw new NotFoundException('No se encontró el archivo adjunto.');
+    }
+
+    const stream = createReadStream(absolute);
+    const ext = extname(filename).toLowerCase();
+    let contentType = 'application/octet-stream';
+    if (ext === '.pdf') contentType = 'application/pdf';
+    else if (ext === '.docx' || ext === '.doc') contentType = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    else if (ext === '.xlsx' || ext === '.xls') contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    else if (ext === '.csv') contentType = 'text/csv';
+    else if (ext === '.txt') contentType = 'text/plain';
+
+    return new StreamableFile(stream, {
+      type: contentType,
+      disposition: `inline; filename="${filename}"`,
+    });
   }
 }
