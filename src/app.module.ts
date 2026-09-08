@@ -11,9 +11,11 @@ import { CedulaModule } from './modules/cedula.module';
 import { DatabaseModule } from './modules/database.module';
 import { EmailModule } from './modules/email.module';
 import { InformacionModule } from './modules/informacion.module';
+import { InventarioModule } from './modules/inventario.module';
 import { PerfilModule } from './modules/perfil.module';
 import { ProductosModule } from './modules/productos.module';
 import { UsuariosModule } from './modules/usuarios.module';
+import { VisitasModule } from './modules/visitas.module';
 import { VoluntariadoModule } from './modules/voluntariado.module';
 
 @Module({
@@ -30,11 +32,14 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     forwardRef(() => PerfilModule),
     AuthModule,
     ProductosModule,
+    InventarioModule,
     InformacionModule,
     VoluntariadoModule,
+    VisitasModule,
     CedulaModule,
     AuditoriaModule,
   ],
+
   controllers: [HealthController],
   providers: [
     {

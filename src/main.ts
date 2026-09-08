@@ -70,3 +70,6 @@ async function bootstrap() {
 }
 
 bootstrap();
+// Force watch reload for VisitasModule routes
+
+

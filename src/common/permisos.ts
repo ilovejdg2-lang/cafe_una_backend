@@ -118,3 +118,11 @@ export function tieneAlgunPermiso(
 ): boolean {
   return codigos.some((codigo) => tienePermiso(roles, codigo));
 }
+
+export function reemplazarMatrizPermisos(nuevaMatriz: Record<string, string[]>): void {
+  if (!nuevaMatriz) return;
+  for (const [key, val] of Object.entries(nuevaMatriz)) {
+    PERMISOS_POR_ROL[key] = val;
+  }
+}
+

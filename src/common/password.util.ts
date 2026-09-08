@@ -18,3 +18,8 @@ export async function verificarContrasena(
   const sha = createHash('sha256').update(textoPlano, 'utf8').digest('hex');
   return sha === hashGuardado.toLowerCase() || textoPlano === hashGuardado;
 }
+
+export function necesitaRehash(hashGuardado: string): boolean {
+  return !hashGuardado || !hashGuardado.startsWith('$2');
+}
+

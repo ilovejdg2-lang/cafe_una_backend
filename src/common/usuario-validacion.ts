@@ -50,9 +50,17 @@ export class UsuarioValidacion {
   }
 }
 
-export function copiarUsuario(usuario: Usuario): Usuario {
-  return {
+export function copiarUsuario(
+  usuario: Usuario,
+  opciones?: { incluirPassword?: boolean },
+): Usuario {
+  const copia = {
     ...usuario,
-    Roles: [...usuario.Roles],
+    Roles: Array.isArray(usuario?.Roles) ? [...usuario.Roles] : [],
   };
+  if (!opciones?.incluirPassword) {
+    delete (copia as any).PasswordHash;
+  }
+  return copia;
 }
+
