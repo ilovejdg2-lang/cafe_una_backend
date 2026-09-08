@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { DisponibilidadVisita } from '../entities/disponibilidad-visita.entity';
 import { VisitaGrupal } from '../entities/visita-grupal.entity';
 
 @Injectable()
@@ -13,6 +14,8 @@ export class VisitasService {
   constructor(
     @InjectRepository(VisitaGrupal)
     private readonly repo: Repository<VisitaGrupal>,
+    @InjectRepository(DisponibilidadVisita)
+    private readonly disponibilidadRepo: Repository<DisponibilidadVisita>,
   ) {}
 
   async crear(datos: Partial<VisitaGrupal>): Promise<VisitaGrupal> {
@@ -43,17 +46,39 @@ export class VisitasService {
       );
     }
 
-    if (!datos.FechaVisita?.trim() || !datos.HoraPreferida?.trim()) {
+    const disponibilidadId = String(datos.DisponibilidadVisitaId ?? '').trim();
+    if (!/^\d+$/.test(disponibilidadId)) {
       throw new BadRequestException(
-        'La fecha solicitada y el bloque de hora son obligatorios.',
+        'Debe seleccionar un horario de visita disponible.',
       );
     }
 
     const hoy = new Date();
     const fechaSolicitud = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    const disponibilidad = await this.disponibilidadRepo.findOne({
+      where: { Id: disponibilidadId },
+    });
+    if (!disponibilidad) {
+      throw new BadRequestException(
+        'El horario de visita seleccionado no existe.',
+      );
+    }
+    if (!disponibilidad.Habilitada) {
+      throw new BadRequestException(
+        'El horario de visita seleccionado ya no está habilitado.',
+      );
+    }
+    if (disponibilidad.Fecha < fechaSolicitud) {
+      throw new BadRequestException(
+        'El horario de visita seleccionado está en el pasado.',
+      );
+    }
 
     const entidad = this.repo.create({
       ...datos,
+      DisponibilidadVisitaId: disponibilidad.Id,
+      FechaVisita: disponibilidad.Fecha,
+      HoraPreferida: `${disponibilidad.HoraInicio} - ${disponibilidad.HoraFin}`,
       FechaSolicitud: datos.FechaSolicitud || fechaSolicitud,
       Estado: 'Pendiente',
       TipoVisitante: tipoVisitante,

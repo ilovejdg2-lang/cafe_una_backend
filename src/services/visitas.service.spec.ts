@@ -3,6 +3,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { SelectQueryBuilder } from 'typeorm';
 
+import { DisponibilidadVisita } from '../entities/disponibilidad-visita.entity';
 import { VisitaGrupal } from '../entities/visita-grupal.entity';
 import { VisitasService } from './visitas.service';
 
@@ -11,6 +12,7 @@ describe('VisitasService', () => {
   let createMock: jest.Mock;
   let saveMock: jest.Mock;
   let findOneMock: jest.Mock;
+  let findAvailabilityMock: jest.Mock;
   let createQueryBuilderMock: jest.Mock;
 
   beforeEach(async () => {
@@ -19,6 +21,13 @@ describe('VisitasService', () => {
       Promise.resolve({ Id: '101', ...entidad }),
     );
     findOneMock = jest.fn();
+    findAvailabilityMock = jest.fn().mockResolvedValue({
+      Id: '9',
+      Fecha: '2099-10-15',
+      HoraInicio: '08:00:00',
+      HoraFin: '09:30:00',
+      Habilitada: true,
+    });
     createQueryBuilderMock = jest.fn();
 
     const module: TestingModule = await Test.createTestingModule({
@@ -33,6 +42,10 @@ describe('VisitasService', () => {
             find: jest.fn(),
             createQueryBuilder: createQueryBuilderMock,
           },
+        },
+        {
+          provide: getRepositoryToken(DisponibilidadVisita),
+          useValue: { findOne: findAvailabilityMock },
         },
       ],
     }).compile();
@@ -50,8 +63,9 @@ describe('VisitasService', () => {
       CiudadProvincia: 'Heredia',
       CantidadVisitantes: 5,
       TipoGrupo: 'Universidad',
-      FechaVisita: '2026-10-15',
-      HoraPreferida: 'Mañana',
+      DisponibilidadVisitaId: '9',
+      FechaVisita: '2000-01-01',
+      HoraPreferida: 'valor del cliente',
       MotivoVisita: 'Gira académica',
     });
 
@@ -61,10 +75,47 @@ describe('VisitasService', () => {
         CantidadVisitantes: 5,
         Estado: 'Pendiente',
         TipoVisitante: 'Nacional',
+        DisponibilidadVisitaId: '9',
+        FechaVisita: '2099-10-15',
+        HoraPreferida: '08:00:00 - 09:30:00',
       }),
     );
     expect(saveMock).toHaveBeenCalledTimes(1);
   });
+
+  it.each([
+    ['sin selección', undefined, undefined, 'seleccionar'],
+    ['inexistente', '404', null, 'no existe'],
+    [
+      'deshabilitada',
+      '9',
+      { Id: '9', Fecha: '2099-10-15', Habilitada: false },
+      'habilitado',
+    ],
+    [
+      'pasada',
+      '9',
+      { Id: '9', Fecha: '2020-01-01', Habilitada: true },
+      'pasado',
+    ],
+  ])(
+    'rechaza una disponibilidad %s sin guardar la solicitud',
+    async (_caso, id, disponibilidad, mensaje) => {
+      findAvailabilityMock.mockResolvedValueOnce(disponibilidad);
+
+      await expect(
+        service.crear({
+          EncargadoNombre: 'Persona Encargada',
+          EncargadoEmail: 'persona@ejemplo.com',
+          EncargadoTelefono: '8888-8888',
+          CantidadVisitantes: 3,
+          TipoVisitante: 'Nacional',
+          DisponibilidadVisitaId: id,
+        }),
+      ).rejects.toThrow(mensaje);
+      expect(saveMock).not.toHaveBeenCalled();
+    },
+  );
 
   it.each([
     [{ CantidadVisitantes: 1 }, 'mínimo 2 personas'],
