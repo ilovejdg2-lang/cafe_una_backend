@@ -123,6 +123,71 @@ export class EmailService {
     );
   }
 
+  async enviarConfirmacionVisitaGrupal(
+    destinatario: string,
+    datos: {
+      nombreEncargado: string;
+      fechaVisita: string;
+      cantidad: number;
+    },
+  ): Promise<boolean> {
+    const html = `<div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb;">
+      <h2 style="color: #286f54; margin-top: 0;">Solicitud de Visita Grupal Recibida</h2>
+      <p>Hola, <strong>${this.escapeHtml(datos.nombreEncargado)}</strong>:</p>
+      <p>Su solicitud para una visita grupal de <strong>${datos.cantidad} personas</strong> el día <strong>${this.escapeHtml(datos.fechaVisita)}</strong> ha sido recibida correctamente en <strong>Café UNA</strong>.</p>
+      <p style="background: #f0fdf4; padding: 12px; border-radius: 8px; border-left: 4px solid #286f54; color: #166534;">
+        Su registro se encuentra actualmente en <strong>Estado Pendiente</strong>. El equipo coordinador evaluará la disponibilidad de la finca experimental y se comunicará con usted.
+      </p>
+      <p style="font-size: 13px; color: #6b7280; margin-top: 24px;">Este es un mensaje automático de Café UNA - Universidad Nacional.</p>
+    </div>`;
+    return this.enviar(
+      destinatario,
+      'Solicitud de Visita Grupal recibida - Café UNA',
+      html,
+    );
+  }
+
+  async enviarActualizacionEstadoVisitaGrupal(
+    destinatario: string,
+    datos: {
+      nombreEncargado: string;
+      fechaVisita: string;
+      estado: string;
+      fechaActualizacion: string;
+      motivoRechazo?: string | null;
+    },
+  ): Promise<boolean> {
+    const estadoNormalizado = datos.estado.trim().toLowerCase();
+    const esRechazada = ['rechazada', 'rechazado'].includes(estadoNormalizado);
+    const esAprobada = ['aprobada', 'aprobado'].includes(estadoNormalizado);
+
+    const bloqueMotivo =
+      esRechazada && datos.motivoRechazo?.trim()
+        ? `<div style="margin: 16px 0; padding: 16px; background: #fef2f2; border-radius: 8px; border-left: 4px solid #dc2626; color: #991b1b;">
+            <strong>Motivo u observaciones:</strong><br>${this.escapeHtml(datos.motivoRechazo.trim())}
+          </div>`
+        : '';
+    const bloqueAprobada = esAprobada
+      ? `<div style="margin: 16px 0; padding: 16px; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #286f54; color: #166534;">
+          <strong>¡Visita aprobada!</strong><br>Por favor recuerde presentarse 10 minutos antes de la hora acordada.
+        </div>`
+      : '';
+
+    const html = `<div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb;">
+      <h2 style="color: #286f54; margin-top: 0;">Actualización de Solicitud de Visita Grupal</h2>
+      <p>Hola, <strong>${this.escapeHtml(datos.nombreEncargado)}</strong>:</p>
+      <p>Le informamos que su solicitud para la visita grupal programada para el <strong>${this.escapeHtml(datos.fechaVisita)}</strong> ha cambiado al estado: <strong style="text-transform: uppercase;">${this.escapeHtml(datos.estado)}</strong>.</p>
+      ${bloqueAprobada}
+      ${bloqueMotivo}
+      <p style="font-size: 13px; color: #6b7280; margin-top: 24px;">Fecha de actualización: ${this.escapeHtml(datos.fechaActualizacion)}<br>Café UNA - Universidad Nacional</p>
+    </div>`;
+    return this.enviar(
+      destinatario,
+      `Actualización de Visita Grupal (${datos.estado}) - Café UNA`,
+      html,
+    );
+  }
+
   async enviarAlertaStockBajo(
     destinatario: string,
     datos: {
