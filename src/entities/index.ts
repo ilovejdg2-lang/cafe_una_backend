@@ -32,6 +32,7 @@ import { DisponibilidadGrupo } from './disponibilidad-grupo.entity';
 import { DonacionNecesidad } from './donacion-necesidad.entity';
 import { DonacionSolicitud } from './donacion-solicitud.entity';
 import { FechaVoluntariado } from './fecha-voluntariado.entity';
+import { VisitaGrupal } from './visita-grupal.entity';
 
 export const entities = [
   Usuario,
@@ -68,6 +69,7 @@ export const entities = [
   DonacionNecesidad,
   DonacionSolicitud,
   FechaVoluntariado,
+  VisitaGrupal,
 ];
 
 export * from './usuario.entity';
@@ -104,3 +106,4 @@ export * from './ajuste-sistema.entity';
 export * from './donacion-necesidad.entity';
 export * from './donacion-solicitud.entity';
 export * from './fecha-voluntariado.entity';
+export * from './visita-grupal.entity';
