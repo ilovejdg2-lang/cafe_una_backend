@@ -38,41 +38,50 @@ export class HistorialMovimientosInventario20260904010000
       `ALTER TABLE ${TABLE} ADD COLUMN IF NOT EXISTS "UbicacionId" integer NULL;`,
     );
 
-    await queryRunner.query(`
-      UPDATE ${TABLE}
-      SET "Tipo" = 'venta_presencial'
-      WHERE lower(replace(btrim("Tipo"), ' ', '_')) IN ('venta_presencial', 'venta');
-    `);
-    await queryRunner.query(`
-      UPDATE ${TABLE}
-      SET "Tipo" = 'venta_web'
-      WHERE lower(replace(btrim("Tipo"), ' ', '_')) = 'venta_web';
-    `);
-    await queryRunner.query(`
-      UPDATE ${TABLE}
-      SET "Tipo" = 'transferencia'
-      WHERE lower(btrim("Tipo")) = 'transferencia';
-    `);
-    await queryRunner.query(`
-      UPDATE ${TABLE}
-      SET "Tipo" = 'entrada'
-      WHERE "Tipo" IS NULL OR btrim("Tipo") = '' OR lower(btrim("Tipo")) = 'entrada';
-    `);
+    await queryRunner.query(
+      `ALTER TABLE ${TABLE} DISABLE TRIGGER USER;`,
+    );
+    try {
+      await queryRunner.query(`
+        UPDATE ${TABLE}
+        SET "Tipo" = 'venta_presencial'
+        WHERE lower(replace(btrim("Tipo"), ' ', '_')) IN ('venta_presencial', 'venta');
+      `);
+      await queryRunner.query(`
+        UPDATE ${TABLE}
+        SET "Tipo" = 'venta_web'
+        WHERE lower(replace(btrim("Tipo"), ' ', '_')) = 'venta_web';
+      `);
+      await queryRunner.query(`
+        UPDATE ${TABLE}
+        SET "Tipo" = 'transferencia'
+        WHERE lower(btrim("Tipo")) = 'transferencia';
+      `);
+      await queryRunner.query(`
+        UPDATE ${TABLE}
+        SET "Tipo" = 'entrada'
+        WHERE "Tipo" IS NULL OR btrim("Tipo") = '' OR lower(btrim("Tipo")) = 'entrada';
+      `);
 
-    await queryRunner.query(`
-      UPDATE ${TABLE}
-      SET "UbicacionOrigenId" = COALESCE("UbicacionOrigenId", "UbicacionId")
-      WHERE "Tipo" IN ('venta_presencial', 'venta_web', 'transferencia')
-        AND "UbicacionOrigenId" IS NULL
-        AND "UbicacionId" IS NOT NULL;
-    `);
-    await queryRunner.query(`
-      UPDATE ${TABLE}
-      SET "UbicacionDestinoId" = COALESCE("UbicacionDestinoId", "UbicacionId")
-      WHERE "Tipo" IN ('entrada', 'transferencia')
-        AND "UbicacionDestinoId" IS NULL
-        AND "UbicacionId" IS NOT NULL;
-    `);
+      await queryRunner.query(`
+        UPDATE ${TABLE}
+        SET "UbicacionOrigenId" = COALESCE("UbicacionOrigenId", "UbicacionId")
+        WHERE "Tipo" IN ('venta_presencial', 'venta_web', 'transferencia')
+          AND "UbicacionOrigenId" IS NULL
+          AND "UbicacionId" IS NOT NULL;
+      `);
+      await queryRunner.query(`
+        UPDATE ${TABLE}
+        SET "UbicacionDestinoId" = COALESCE("UbicacionDestinoId", "UbicacionId")
+        WHERE "Tipo" IN ('entrada', 'transferencia')
+          AND "UbicacionDestinoId" IS NULL
+          AND "UbicacionId" IS NOT NULL;
+      `);
+    } finally {
+      await queryRunner.query(
+        `ALTER TABLE ${TABLE} ENABLE TRIGGER USER;`,
+      );
+    }
 
     await queryRunner.query(`
       CREATE INDEX IF NOT EXISTS "IDX_movimientos_inventario_ProductoId"
