@@ -21,6 +21,7 @@ import { ProductosModule } from './modules/productos.module';
 import { CategoriasModule } from './modules/categorias.module';
 import { SolicitudesCompraModule } from './modules/solicitudes-compra.module';
 import { UsuariosModule } from './modules/usuarios.module';
+import { VisitasModule } from './modules/visitas.module';
 import { VoluntariadoModule } from './modules/voluntariado.module';
 
 @Module({
@@ -45,6 +46,7 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     SolicitudesCompraModule,
     InformacionModule,
     VoluntariadoModule,
+    VisitasModule,
     CedulaModule,
     AuditoriaModule,
     AjustesModule,
