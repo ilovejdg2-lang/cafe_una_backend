@@ -18,13 +18,13 @@ describe('migration data source', () => {
     process.env = originalEnvironment;
   });
 
-  it('loads numbered migrations without loading colocated test files', () => {
+  it('loads migrations without loading colocated test files', () => {
     const { default: dataSource } = require('./migration-data-source') as {
       default: import('typeorm').DataSource;
     };
 
     expect(dataSource.options.migrations).toEqual([
-      expect.stringContaining(join('migrations', '[0-9]*.{ts,js}')),
+      expect.stringContaining(join('migrations', '!(*.spec).{ts,js}')),
     ]);
   });
 });
