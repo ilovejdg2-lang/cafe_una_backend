@@ -14,7 +14,12 @@ describe('InventarioService bulk location stock reads', () => {
   let service: InventarioService;
 
   beforeEach(() => {
-    jest.clearAllMocks();
+    jest.resetAllMocks();
+    locationsRepository.create.mockImplementation((row) => row);
+    locationsRepository.save.mockImplementation(async (row) => ({
+      Id: 9,
+      ...row,
+    }));
     service = new InventarioService(
       locationsRepository as never,
       stockRepository as never,
@@ -54,12 +59,14 @@ describe('InventarioService bulk location stock reads', () => {
     });
   });
 
-  it('rejects an invalid code before querying repositories', async () => {
+  it('rejects an unknown code before querying products or stock', async () => {
     await expect(
       service.obtenerStockPorUbicacion('POS_DESCONOCIDO'),
     ).rejects.toThrow('El código de ubicación no es válido.');
 
-    expect(locationsRepository.findOne).not.toHaveBeenCalled();
+    expect(locationsRepository.findOne).toHaveBeenCalledWith({
+      where: { Codigo: 'POS_DESCONOCIDO' },
+    });
     expect(productsRepository.find).not.toHaveBeenCalled();
     expect(stockRepository.find).not.toHaveBeenCalled();
   });
@@ -139,6 +146,7 @@ describe('InventarioService bulk location stock reads', () => {
     expect(locationsRepository.save).toHaveBeenCalledWith({
       Codigo: 'POS_FUNA_UNA',
       Nombre: 'FUNA-UNA',
+      Activo: true,
     });
   });
 });
