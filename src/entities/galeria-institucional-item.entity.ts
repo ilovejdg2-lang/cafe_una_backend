@@ -11,6 +11,9 @@ export class GaleriaInstitucionalItem {
   @Column({ name: 'Image', length: 2000 })
   Image: string;
 
+  @Column({ name: 'Categoria', length: 80, default: '' })
+  Categoria: string;
+
   @Column({ name: 'Orden', type: 'int' })
   Orden: number;
 }

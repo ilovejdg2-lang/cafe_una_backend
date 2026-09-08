@@ -8,6 +8,7 @@ import {
   mensajeEsperaCorreoPorMinutos,
 } from '../common/verificacion-correo.util';
 import { UsuarioValidacion } from '../common/usuario-validacion';
+import { hashearContrasena } from '../common/password.util';
 import { UsuarioCreacionPendiente } from '../entities/usuario-creacion-pendiente.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { UsuariosService } from './usuarios.service';
@@ -78,12 +79,13 @@ export class UsuariosAdminService {
       .execute();
 
     const token = generarCodigoNumerico();
+    const passwordHash = await hashearContrasena(password);
     await this.pendientesRepo.save(
       this.pendientesRepo.create({
         Token: token,
         Correo: correo,
         Nombre: nombre,
-        PasswordHash: password,
+        PasswordHash: passwordHash,
         Roles: roles,
         ExpiraEnUtc: new Date(now.getTime() + TOKEN_LIFETIME_MS),
         Usado: false,
@@ -129,10 +131,14 @@ export class UsuariosAdminService {
     entry.Usado = true;
     await this.pendientesRepo.save(entry);
 
+    const passwordHash = entry.PasswordHash.startsWith('$2')
+      ? entry.PasswordHash
+      : await hashearContrasena(entry.PasswordHash);
+
     return this.usuariosService.crear({
       Nombre: entry.Nombre,
       Correo: entry.Correo,
-      PasswordHash: entry.PasswordHash,
+      PasswordHash: passwordHash,
       Roles: entry.Roles,
     });
   }

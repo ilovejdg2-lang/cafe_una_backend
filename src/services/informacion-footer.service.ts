@@ -31,17 +31,21 @@ export class InformacionFooterService {
       'LogoUrl',
       'LogoClaroUrl',
       'FraseMarca',
+      'FraseMarcaEn',
       'Telefono',
       'Correo',
       'FacebookUrl',
       'InstagramUrl',
       'MapsUrl',
       'TextoCopyright',
+      'TextoCopyrightEn',
     ] as const;
 
     for (const field of fields) {
-      if (cambios[field] != null) {
-        footer[field] = String(cambios[field]).trim();
+      const camel = field.charAt(0).toLowerCase() + field.slice(1);
+      const valor = cambios[field] ?? (cambios as Record<string, unknown>)[camel];
+      if (valor != null) {
+        footer[field] = String(valor).trim();
       }
     }
 

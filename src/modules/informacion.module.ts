@@ -16,6 +16,7 @@ import { InformacionNavbarService } from '../services/informacion-navbar.service
 import { TarjetaInicioService } from '../services/tarjeta-inicio.service';
 import { TextoInstitucionalService } from '../services/texto-institucional.service';
 import { AuthModule } from './auth.module';
+import { CategoriasModule } from './categorias.module';
 
 @Module({
   imports: [
@@ -29,6 +30,7 @@ import { AuthModule } from './auth.module';
       TarjetaInicio,
     ]),
     AuthModule,
+    CategoriasModule,
   ],
   controllers: [InformacionController],
   providers: [

@@ -1,12 +1,16 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
-import { extractRoles, JwtPayload } from '../common/token-generator';
+import { JwtPayload } from '../common/token-generator';
+import { UsuariosService } from './usuarios.service';
 
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
-  constructor(config: ConfigService) {
+  constructor(
+    config: ConfigService,
+    private readonly usuariosService: UsuariosService,
+  ) {
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
@@ -16,13 +20,24 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  validate(payload: JwtPayload) {
+  async validate(payload: JwtPayload) {
+    const userId = Number.parseInt(payload.sub, 10);
+    if (!Number.isFinite(userId) || userId <= 0) {
+      throw new UnauthorizedException();
+    }
+
+    const usuario = await this.usuariosService.obtenerPorId(userId);
+    if (!usuario || (usuario.Estado ?? '').toLowerCase() !== 'activo') {
+      throw new UnauthorizedException();
+    }
+
+    const roles = Array.isArray(usuario.Roles) ? usuario.Roles : [];
     return {
-      userId: Number.parseInt(payload.sub, 10),
-      sub: payload.sub,
-      unique_name: payload.unique_name,
-      email: payload.email,
-      roles: extractRoles(payload),
+      userId,
+      sub: String(usuario.Id),
+      unique_name: usuario.Nombre,
+      email: usuario.Correo,
+      roles,
     };
   }
 }

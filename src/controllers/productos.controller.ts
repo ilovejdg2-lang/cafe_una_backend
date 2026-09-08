@@ -13,15 +13,43 @@ import {
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
+import { BODEGA_CENTRAL } from '../services/inventario.service';
+import { InventarioService } from '../services/inventario.service';
 import { ProductosService } from '../services/productos.service';
 
 @Controller('productos')
 export class ProductosController {
-  constructor(private readonly productosService: ProductosService) {}
+  constructor(
+    private readonly productosService: ProductosService,
+    private readonly inventarioService: InventarioService,
+  ) {}
 
   @Get()
-  obtenerProductos() {
-    return this.productosService.obtenerTodos();
+  async obtenerProductos() {
+    return this.productosService.obtenerTodosConStockTotal();
+  }
+
+  @Get('alertas-stock')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ver_inventario', 'ver_panel_administrativo')
+  listarAlertasStock() {
+    return this.productosService.listarAlertasStock();
+  }
+
+  @Get(':id/stock')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ver_inventario')
+  async obtenerStockDesglosado(@Param('id') id: string) {
+    const stock = await this.inventarioService.obtenerStockDesglosadoProducto(id);
+    if (!stock) throw new NotFoundException();
+    return stock;
+  }
+
+  @Get(':id')
+  async obtenerProducto(@Param('id') id: string) {
+    const producto = await this.productosService.obtenerPorId(id);
+    if (!producto) throw new NotFoundException();
+    return producto;
   }
 
   @Post()
@@ -32,16 +60,29 @@ export class ProductosController {
     request: {
       Nombre: string;
       Descripcion: string;
+      NombreEn?: string;
+      DescripcionEn?: string;
+      nombreEn?: string;
+      descripcionEn?: string;
       Imagen: string;
       PrecioNormal: number;
       Stock: number;
       Estado?: string;
       Peso: string;
+      Categoria?: string;
+      Subcategoria?: string;
       EsDestacado: boolean;
+      StockMinimo?: number;
+      stockMinimo?: number;
     },
   ) {
     try {
-      return await this.productosService.crear(request);
+      return await this.productosService.crear({
+        ...request,
+        NombreEn: request.NombreEn ?? request.nombreEn,
+        DescripcionEn: request.DescripcionEn ?? request.descripcionEn,
+        StockMinimo: request.StockMinimo ?? request.stockMinimo,
+      });
     } catch (error) {
       throw new BadRequestException({
         message: error instanceof Error ? error.message : 'Error.',
@@ -51,28 +92,37 @@ export class ProductosController {
 
   @Put(':id')
   @UseGuards(JwtAuthGuard, PermisosGuard)
-  @RequierePermiso(
-    'actualizar_productos',
-    'actualizar_stock_productos',
-    'inactivar_productos',
-  )
+  @RequierePermiso('actualizar_productos')
   async actualizarProducto(
     @Param('id') id: string,
     @Body()
     cambios: {
       Nombre?: string;
       Descripcion?: string;
+      NombreEn?: string;
+      DescripcionEn?: string;
+      nombreEn?: string;
+      descripcionEn?: string;
       Imagen?: string;
       PrecioNormal?: number;
       PrecioConIVA?: number;
       Stock?: number;
       Estado?: string;
       Peso?: string;
+      Categoria?: string;
+      Subcategoria?: string;
       EsDestacado?: boolean;
+      StockMinimo?: number;
+      stockMinimo?: number;
     },
   ) {
     try {
-      const actualizado = await this.productosService.actualizar(id, cambios);
+      const actualizado = await this.productosService.actualizar(id, {
+        ...cambios,
+        NombreEn: cambios.NombreEn ?? cambios.nombreEn,
+        DescripcionEn: cambios.DescripcionEn ?? cambios.descripcionEn,
+        StockMinimo: cambios.StockMinimo ?? cambios.stockMinimo,
+      });
       if (!actualizado) throw new NotFoundException();
       return actualizado;
     } catch (error) {
@@ -88,14 +138,33 @@ export class ProductosController {
   @RequierePermiso('actualizar_stock_productos')
   async actualizarStockCentral(
     @Param('id') id: string,
-    @Body() request: { stock?: unknown; Stock?: unknown },
+    @Body()
+    request: {
+      stock?: unknown;
+      Stock?: unknown;
+      locationCode?: unknown;
+      LocationCode?: unknown;
+    },
   ) {
     try {
+      const requestedLocation =
+        request && Object.prototype.hasOwnProperty.call(request, 'locationCode')
+          ? request.locationCode
+          : request?.LocationCode;
+      if (
+        requestedLocation !== undefined &&
+        requestedLocation !== BODEGA_CENTRAL
+      ) {
+        throw new BadRequestException(
+          'La ruta de stock central solo admite BODEGA_CENTRAL.',
+        );
+      }
+
       const stock =
         request && Object.prototype.hasOwnProperty.call(request, 'stock')
           ? request.stock
           : request?.Stock;
-      const actualizado = await this.productosService.actualizarStockCentral(
+      const actualizado = await this.inventarioService.actualizarStockCentral(
         id,
         stock,
       );
@@ -111,7 +180,7 @@ export class ProductosController {
 
   @Post('ajustar-stock')
   @UseGuards(JwtAuthGuard, PermisosGuard)
-  @RequierePermiso('comprar_productos', 'actualizar_stock_productos')
+  @RequierePermiso('actualizar_stock_productos')
   async ajustarStock(@Body() items: { Id: number | string; Units: number }[]) {
     try {
       return await this.productosService.ajustarStock(items);

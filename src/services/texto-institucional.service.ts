@@ -36,11 +36,15 @@ export class TextoInstitucionalService {
     clave: string,
     cambios: {
       Eyebrow?: string | null;
+      EyebrowEn?: string | null;
       Title?: string;
+      TitleEn?: string | null;
       Description?: string;
+      DescriptionEn?: string | null;
       Image?: string | null;
       LinkUrl?: string | null;
       LinkText?: string | null;
+      LinkTextEn?: string | null;
     },
   ): Promise<TextoInstitucional | null> {
     if (!this.esClaveValida(clave)) return null;
@@ -52,9 +56,18 @@ export class TextoInstitucionalService {
     }
 
     if (cambios.Title?.trim()) actual.Title = cambios.Title.trim();
+    if (cambios.TitleEn != null) actual.TitleEn = cambios.TitleEn.trim();
     if (cambios.Description?.trim()) actual.Description = cambios.Description.trim();
+    if (cambios.DescriptionEn != null) {
+      actual.DescriptionEn = cambios.DescriptionEn.trim();
+    }
     if (cambios.Eyebrow != null) {
       actual.Eyebrow = cambios.Eyebrow.trim() ? cambios.Eyebrow.trim() : null;
+    }
+    if (cambios.EyebrowEn != null) {
+      actual.EyebrowEn = cambios.EyebrowEn.trim()
+        ? cambios.EyebrowEn.trim()
+        : null;
     }
     if (cambios.Image != null) {
       actual.Image = cambios.Image.trim() ? cambios.Image.trim() : null;
@@ -64,6 +77,11 @@ export class TextoInstitucionalService {
     }
     if (cambios.LinkText != null) {
       actual.LinkText = cambios.LinkText.trim() ? cambios.LinkText.trim() : null;
+    }
+    if (cambios.LinkTextEn != null) {
+      actual.LinkTextEn = cambios.LinkTextEn.trim()
+        ? cambios.LinkTextEn.trim()
+        : null;
     }
 
     const saved = await this.repo.save(actual);

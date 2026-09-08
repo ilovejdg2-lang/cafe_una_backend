@@ -1,4 +1,4 @@
-import { Controller, Get, UseGuards } from '@nestjs/common';
+import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
@@ -11,7 +11,7 @@ export class AuditoriaController {
 
   @Get()
   @RequierePermiso('ver_auditoria')
-  obtenerAuditoria() {
-    return this.auditoriaService.obtenerTodas();
+  obtenerAuditoria(@Query() query: Record<string, string | undefined>) {
+    return this.auditoriaService.obtenerTodas(query);
   }
 }
