@@ -8,9 +8,21 @@ describe('ComprasService historial', () => {
     findOne: jest.fn(),
     createQueryBuilder: jest.fn(),
   };
-  const itemsRepository = {
-    create: jest.fn((row) => row),
-    save: jest.fn(async (rows) => rows),
+  const manager = {
+    findOne: jest.fn(),
+    create: jest.fn((_entity, row) => row),
+    save: jest.fn(),
+  };
+  const queryRunner = {
+    manager,
+    connect: jest.fn(),
+    startTransaction: jest.fn(),
+    commitTransaction: jest.fn(),
+    rollbackTransaction: jest.fn(),
+    release: jest.fn(),
+  };
+  const dataSource = {
+    createQueryRunner: jest.fn(() => queryRunner),
   };
 
   let service: ComprasService;
@@ -19,11 +31,25 @@ describe('ComprasService historial', () => {
     jest.clearAllMocks();
     service = new ComprasService(
       comprasRepository as never,
-      itemsRepository as never,
+      dataSource as never,
     );
   });
 
   it('registers a completed purchase with items', async () => {
+    manager.findOne
+      .mockResolvedValueOnce({ Id: 1, Codigo: 'BODEGA_CENTRAL' })
+      .mockResolvedValueOnce({
+        Id: '1',
+        Nombre: 'Café molido',
+        Estado: 'Habilitado',
+        PrecioNormal: '5309.73',
+        PrecioConIVA: '6000',
+        Stock: 10,
+      })
+      .mockResolvedValueOnce({ Stock: 10 });
+    manager.save
+      .mockImplementationOnce(async (row) => ({ Id: 11, ...row }))
+      .mockImplementationOnce(async (rows) => rows);
     comprasRepository.findOne.mockResolvedValue({
       Id: 11,
       Numero: 'C-11',
@@ -70,8 +96,9 @@ describe('ComprasService historial', () => {
       7,
     );
 
-    expect(comprasRepository.save).toHaveBeenCalled();
-    expect(itemsRepository.save).toHaveBeenCalled();
+    expect(manager.save).toHaveBeenCalledTimes(2);
+    expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(queryRunner.release).toHaveBeenCalledTimes(1);
     expect(detalle.clienteNombre).toBe('Ana Cliente');
     expect(detalle.total).toBe(6000);
     expect(detalle.items).toHaveLength(1);
@@ -173,8 +200,8 @@ describe('ComprasService historial', () => {
       { q: '%C-100%' },
     );
     expect(qb.andWhere).toHaveBeenCalledWith(
-      'compra.Estado ILIKE :estado',
-      { estado: 'Pagado' },
+      'compra.Estado IN (:...estados)',
+      { estados: ['Enviado', 'Enviada', 'Recibido', 'Pagado'] },
     );
   });
 
