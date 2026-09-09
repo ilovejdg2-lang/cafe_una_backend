@@ -187,24 +187,76 @@ export class EmailService {
 
     const bloqueMotivo =
       esRechazada && datos.motivoRechazo?.trim()
-        ? `<div style="margin: 16px 0; padding: 16px; background: #fef2f2; border-radius: 8px; border-left: 4px solid #dc2626; color: #991b1b;">
-            <strong>Motivo u observaciones:</strong><br>${this.escapeHtml(datos.motivoRechazo.trim())}
-          </div>`
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#fdf2f4;border:1px solid #f3d0d6;">
+            <tr>
+              <td style="padding:16px 20px;border-left:4px solid #C41E3A;">
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#0D1B3E;">
+                  <strong>Motivo u observaciones:</strong><br>${this.escapeHtml(datos.motivoRechazo.trim())}
+                </p>
+              </td>
+            </tr>
+          </table>`
         : '';
     const bloqueAprobada = esAprobada
-      ? `<div style="margin: 16px 0; padding: 16px; background: #f0fdf4; border-radius: 8px; border-left: 4px solid #286f54; color: #166534;">
-          <strong>¡Visita aprobada!</strong><br>Por favor recuerde presentarse 10 minutos antes de la hora acordada.
-        </div>`
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#f7f9fc;border:1px solid #dfe6f0;">
+            <tr>
+              <td style="padding:16px 20px;border-left:4px solid #0D1B3E;">
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;">
+                  <strong>¡Visita aprobada!</strong><br>Por favor recuerde presentarse 10 minutos antes de la hora acordada.
+                </p>
+              </td>
+            </tr>
+          </table>`
       : '';
 
-    const html = `<div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb;">
-      <h2 style="color: #286f54; margin-top: 0;">Actualización de Solicitud de Visita Grupal</h2>
-      <p>Hola, <strong>${this.escapeHtml(datos.nombreEncargado)}</strong>:</p>
-      <p>Le informamos que su solicitud para la visita grupal programada para el <strong>${this.escapeHtml(datos.fechaVisita)}</strong> ha cambiado al estado: <strong style="text-transform: uppercase;">${this.escapeHtml(datos.estado)}</strong>.</p>
-      ${bloqueAprobada}
-      ${bloqueMotivo}
-      <p style="font-size: 13px; color: #6b7280; margin-top: 24px;">Fecha de actualización: ${this.escapeHtml(datos.fechaActualizacion)}<br>Café UNA - Universidad Nacional</p>
-    </div>`;
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8" /></head>
+<body style="margin:0;padding:0;background-color:#f4f5f8;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f5f8" style="background-color:#f4f5f8;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #e6eaf2;">
+          <tr>
+            <td align="center" style="padding:28px 20px 16px;">
+              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#C41E3A" style="background-color:#C41E3A;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td style="padding:32px 28px 8px;">
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#5f6b82;">Hola, ${this.escapeHtml(datos.nombreEncargado)}</p>
+              <h1 style="margin:0 0 12px;font-size:24px;line-height:1.35;color:#0D1B3E;font-weight:700;">Actualización de Solicitud de Visita Grupal</h1>
+              <p style="margin:0;font-size:15px;line-height:1.7;color:#3a4a6b;">
+                Le informamos que su solicitud para la visita grupal programada para el <strong>${this.escapeHtml(datos.fechaVisita)}</strong> ha cambiado al estado: <strong style="text-transform: uppercase;">${this.escapeHtml(datos.estado)}</strong>.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px;">
+              ${bloqueAprobada}
+              ${bloqueMotivo}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px 24px;">
+              <p style="margin:0;font-size:13px;line-height:1.7;color:#6b7a99;">Fecha de actualización: ${this.escapeHtml(datos.fechaActualizacion)}</p>
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:16px 28px 28px;border-top:1px solid #e8edf5;">
+              <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#C41E3A;">Café UNA</p>
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#8a96ad;">Universidad Nacional, Costa Rica</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
     return this.enviar(
       destinatario,
       `Actualización de Visita Grupal (${datos.estado}) - Café UNA`,
@@ -700,21 +752,29 @@ export class EmailService {
 
     const bloqueMotivoRechazo =
       estadoNormalizado === 'rechazado' && motivo
-        ? `<div style="margin: 16px 0; padding: 16px; background: #fef2f2; border-radius: 8px; border-left: 3px solid #dc2626;">
-            <p style="margin: 0; font-size: 14px; color: #991b1b; line-height: 1.6;">
-              <strong>Motivo del rechazo:</strong><br>${this.escapeHtml(motivo)}
-            </p>
-          </div>`
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#fdf2f4;border:1px solid #f3d0d6;">
+            <tr>
+              <td style="padding:16px 20px;border-left:4px solid #C41E3A;">
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#0D1B3E;">
+                  <strong>Motivo del rechazo:</strong><br>${this.escapeHtml(motivo)}
+                </p>
+              </td>
+            </tr>
+          </table>`
         : '';
 
     const bloqueInstruccionesAprobacion =
       estadoNormalizado === 'aprobado'
-        ? `<div style="margin: 16px 0; padding: 16px; background: #f0fdf4; border-radius: 8px; border-left: 3px solid #286f54;">
-            <p style="margin: 0; font-size: 14px; color: #166534; line-height: 1.6;">
-              <strong>Próximos pasos</strong><br>
-              Su solicitud fue aprobada. Por favor comuníquese con el equipo de Café UNA para coordinar los detalles de inicio de su voluntariado.
-            </p>
-          </div>`
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#f7f9fc;border:1px solid #dfe6f0;">
+            <tr>
+              <td style="padding:16px 20px;border-left:4px solid #0D1B3E;">
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;">
+                  <strong>Próximos pasos</strong><br>
+                  Su solicitud fue aprobada. Por favor comuníquese con el equipo de Café UNA para coordinar los detalles de inicio de su voluntariado.
+                </p>
+              </td>
+            </tr>
+          </table>`
         : '';
 
     try {
@@ -747,17 +807,56 @@ export class EmailService {
 <!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8"></head>
-<body style="font-family: sans-serif; background: #f9fafb; padding: 40px 20px;">
-  <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 32px;">
-    <h2 style="color: #286f54;">${saludo}</h2>
-    <p style="color: #374151; line-height: 1.7;">Su solicitud de voluntariado ha sido actualizada.</p>
-    <p style="color: #374151; line-height: 1.7;"><strong>Tipo:</strong> ${this.escapeHtml(datos.tipoVoluntariado || 'No indicado')}</p>
-    <p style="color: #374151; line-height: 1.7;"><strong>Período:</strong> ${this.escapeHtml(datos.periodo || 'No indicado')}</p>
-    <p style="color: #374151; line-height: 1.7;"><strong>Estado:</strong> ${this.escapeHtml(datos.estado)}</p>
-    <p style="color: #374151; line-height: 1.7;"><strong>Fecha:</strong> ${this.escapeHtml(datos.fechaActualizacion)}</p>
-    ${bloqueMotivoRechazo}
-    ${bloqueInstruccionesAprobacion}
-  </div>
+<body style="margin:0;padding:0;background-color:#f4f5f8;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f5f8" style="background-color:#f4f5f8;padding:32px 16px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #e6eaf2;">
+          <tr>
+            <td align="center" style="padding:28px 20px 16px;">
+              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#C41E3A" style="background-color:#C41E3A;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td style="padding:32px 28px 8px;">
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#5f6b82;">${saludo}</p>
+              <h1 style="margin:0 0 12px;font-size:24px;line-height:1.35;color:#0D1B3E;font-weight:700;">Actualización de su solicitud de voluntariado</h1>
+              <p style="margin:0;font-size:15px;line-height:1.7;color:#3a4a6b;">Le informamos que su solicitud de voluntariado ha sido actualizada.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 28px 8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f7f9fc" style="background-color:#f7f9fc;border:1px solid #dfe6f0;">
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Tipo de voluntariado:</strong> ${this.escapeHtml(datos.tipoVoluntariado || 'No indicado')}</p>
+                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Período:</strong> ${this.escapeHtml(datos.periodo || 'No indicado')}</p>
+                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Nuevo estado:</strong> ${this.escapeHtml(datos.estado)}</p>
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Fecha de actualización:</strong> ${this.escapeHtml(datos.fechaActualizacion)}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px;">
+              ${bloqueMotivoRechazo}
+              ${bloqueInstruccionesAprobacion}
+            </td>
+          </tr>
+          <tr>
+            <td align="center" style="padding:16px 28px 28px;border-top:1px solid #e8edf5;">
+              <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#C41E3A;">Café UNA</p>
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#8a96ad;">Universidad Nacional, Costa Rica</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`;
     }
@@ -790,26 +889,38 @@ export class EmailService {
 
     const bloqueMotivoRechazo =
       esRechazada && motivo
-        ? `<div style="margin: 16px 0; padding: 16px; background: #fef2f2; border-radius: 8px; border-left: 3px solid #dc2626;">
-            <p style="margin: 0; font-size: 14px; color: #991b1b; line-height: 1.6;">
-              <strong>Motivo del rechazo:</strong><br>${this.escapeHtml(motivo)}
-            </p>
-          </div>`
+        ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#fdf2f4;border:1px solid #f3d0d6;">
+            <tr>
+              <td style="padding:16px 20px;border-left:4px solid #C41E3A;">
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#0D1B3E;">
+                  <strong>Motivo del rechazo:</strong><br>${this.escapeHtml(motivo)}
+                </p>
+              </td>
+            </tr>
+          </table>`
         : esRechazada
-          ? `<div style="margin: 16px 0; padding: 16px; background: #fef2f2; border-radius: 8px; border-left: 3px solid #dc2626;">
-            <p style="margin: 0; font-size: 14px; color: #991b1b; line-height: 1.6;">
-              Lamentamos informarle que, en esta ocasión, no es posible recibir la donación ofrecida. Agradecemos su interés en apoyar el proyecto.
-            </p>
-          </div>`
+          ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#fdf2f4;border:1px solid #f3d0d6;">
+            <tr>
+              <td style="padding:16px 20px;border-left:4px solid #C41E3A;">
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#0D1B3E;">
+                  Lamentamos informarle que, en esta ocasión, no es posible recibir la donación ofrecida. Agradecemos su interés en apoyar el proyecto.
+                </p>
+              </td>
+            </tr>
+          </table>`
           : '';
 
     const bloqueInstruccionesAceptacion = esAceptada
-      ? `<div style="margin: 16px 0; padding: 16px; background: #f0fdf4; border-radius: 8px; border-left: 3px solid #286f54;">
-            <p style="margin: 0; font-size: 14px; color: #166534; line-height: 1.6;">
-              <strong>Próximos pasos</strong><br>
-              Su solicitud de donación fue aceptada. El personal de Café UNA se comunicará para coordinar la entrega o recolección cuando corresponda.
-            </p>
-          </div>`
+      ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#f7f9fc;border:1px solid #dfe6f0;">
+            <tr>
+              <td style="padding:16px 20px;border-left:4px solid #0D1B3E;">
+                <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;">
+                  <strong>Próximos pasos</strong><br>
+                  Su solicitud de donación fue aceptada. El personal de Café UNA se comunicará para coordinar la entrega o recolección cuando corresponda.
+                </p>
+              </td>
+            </tr>
+          </table>`
       : '';
 
     try {
@@ -842,37 +953,50 @@ export class EmailService {
 <!DOCTYPE html>
 <html lang="es">
 <head><meta charset="UTF-8"></head>
-<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+<body style="margin:0;padding:0;background-color:#f4f5f8;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f5f8" style="background-color:#f4f5f8;padding:32px 16px;">
     <tr>
       <td align="center">
-        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width: 480px; width: 100%; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);">
+        <table role="presentation" width="560" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #e6eaf2;">
           <tr>
-            <td style="background: #286f54; padding: 28px 32px; text-align: center;">
-              <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 700;">Café UNA</h1>
+            <td align="center" style="padding:28px 20px 16px;">
+              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
             </td>
           </tr>
           <tr>
-            <td style="padding: 36px 32px 24px;">
-              <h2 style="margin: 0 0 20px; font-size: 20px; color: #1f2937; font-weight: 600;">${saludo}</h2>
-              <p style="margin: 0 0 16px; font-size: 15px; line-height: 1.7; color: #374151;">
-                Le informamos que su solicitud de donación material ha sido actualizada.
-              </p>
-              <div style="margin: 24px 0; padding: 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
-                <p style="margin: 0 0 8px; font-size: 14px; color: #475569;"><strong>Categoría:</strong> ${this.escapeHtml(datos.categoria || 'No indicado')}</p>
-                <p style="margin: 0 0 8px; font-size: 14px; color: #475569;"><strong>Material o artículo:</strong> ${this.escapeHtml(datos.material?.trim() || 'No indicado')}</p>
-                <p style="margin: 0 0 8px; font-size: 14px; color: #475569;"><strong>Nuevo estado:</strong> ${this.escapeHtml(datos.estado)}</p>
-                <p style="margin: 0; font-size: 14px; color: #475569;"><strong>Fecha de actualización:</strong> ${this.escapeHtml(datos.fechaActualizacion)}</p>
-              </div>
+            <td bgcolor="#C41E3A" style="background-color:#C41E3A;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td style="padding:32px 28px 8px;">
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#5f6b82;">${saludo}</p>
+              <h1 style="margin:0 0 12px;font-size:24px;line-height:1.35;color:#0D1B3E;font-weight:700;">Actualización de su solicitud de donación</h1>
+              <p style="margin:0;font-size:15px;line-height:1.7;color:#3a4a6b;">Le informamos que su solicitud de donación material ha sido actualizada.</p>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:24px 28px 8px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f7f9fc" style="background-color:#f7f9fc;border:1px solid #dfe6f0;">
+                <tr>
+                  <td style="padding:20px 24px;">
+                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Categoría:</strong> ${this.escapeHtml(datos.categoria || 'No indicado')}</p>
+                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Material o artículo:</strong> ${this.escapeHtml(datos.material?.trim() || 'No indicado')}</p>
+                    <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Nuevo estado:</strong> ${this.escapeHtml(datos.estado)}</p>
+                    <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Fecha de actualización:</strong> ${this.escapeHtml(datos.fechaActualizacion)}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding:8px 28px;">
               ${bloqueMotivoRechazo}
               ${bloqueInstruccionesAceptacion}
             </td>
           </tr>
           <tr>
-            <td style="padding: 20px 32px 28px; border-top: 1px solid #e5e7eb;">
-              <p style="margin: 0; font-size: 13px; color: #9ca3af; line-height: 1.5;">
-                Este es un correo automático de Café UNA. No es necesario responderlo.
-              </p>
+            <td align="center" style="padding:16px 28px 28px;border-top:1px solid #e8edf5;">
+              <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#C41E3A;">Café UNA</p>
+              <p style="margin:0;font-size:12px;line-height:1.6;color:#8a96ad;">Universidad Nacional, Costa Rica</p>
             </td>
           </tr>
         </table>
