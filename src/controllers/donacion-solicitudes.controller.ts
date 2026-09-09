@@ -28,6 +28,15 @@ export class DonacionSolicitudesController {
     return this.solicitudesService.listarPropias(req.user.userId);
   }
 
+  @Get(':id')
+  @RequierePermiso(
+    'ver_solicitudes_donacion',
+    'administrar_solicitudes_donaciones',
+  )
+  obtenerAdmin(@Param('id') id: string) {
+    return this.solicitudesService.obtenerAdmin(id);
+  }
+
   @Post()
   @RequierePermiso('hacer_solicitud_donacion')
   crear(

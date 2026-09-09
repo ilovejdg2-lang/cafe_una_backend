@@ -10,8 +10,13 @@ import {
 } from '@nestjs/common';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { CreateNecesidadDto, UpdateNecesidadDto } from '../dto/necesidad.dto';
+import {
+  CreateMaterialAceptadoDto,
+  UpdateMaterialAceptadoDto,
+} from '../dto/donacion-material.dto';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
+import { DonacionMaterialesService } from '../services/donacion-materiales.service';
 import { NecesidadesService } from '../services/necesidades.service';
 
 /**
@@ -21,7 +26,10 @@ import { NecesidadesService } from '../services/necesidades.service';
  */
 @Controller('v1/donaciones/necesidades')
 export class NecesidadesController {
-  constructor(private readonly necesidadesService: NecesidadesService) {}
+  constructor(
+    private readonly necesidadesService: NecesidadesService,
+    private readonly materialesService: DonacionMaterialesService,
+  ) {}
 
   /** Catálogo público. Sin autenticación. Solo estado ACTIVA. */
   @Get()
@@ -68,5 +76,56 @@ export class NecesidadesController {
   )
   inactivar(@Param('id') id: string) {
     return this.necesidadesService.inactivar(id);
+  }
+
+  @Get(':id/materiales')
+  listarMaterialesPublicos(@Param('id') id: string) {
+    return this.materialesService.listarPorCategoria(id, true);
+  }
+
+  @Get(':id/materiales/gestion')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso(
+    'administrar_solicitudes_donaciones',
+    'ver_solicitudes_donacion',
+  )
+  listarMaterialesAdmin(@Param('id') id: string) {
+    return this.materialesService.listarPorCategoria(id, false);
+  }
+
+  @Post(':id/materiales')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('administrar_solicitudes_donaciones')
+  crearMaterial(
+    @Param('id') id: string,
+    @Body() body: CreateMaterialAceptadoDto,
+  ) {
+    return this.materialesService.crear(id, (body ?? {}) as unknown as Record<string, unknown>);
+  }
+
+  @Put('materiales/:materialId')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso(
+    'administrar_solicitudes_donaciones',
+    'actualizar_solicitud_donaciones',
+  )
+  actualizarMaterial(
+    @Param('materialId') materialId: string,
+    @Body() body: UpdateMaterialAceptadoDto,
+  ) {
+    return this.materialesService.actualizar(
+      materialId,
+      (body ?? {}) as unknown as Record<string, unknown>,
+    );
+  }
+
+  @Patch('materiales/:materialId/inactivar')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso(
+    'administrar_solicitudes_donaciones',
+    'inactivar_donacion',
+  )
+  inactivarMaterial(@Param('materialId') materialId: string) {
+    return this.materialesService.inactivar(materialId);
   }
 }

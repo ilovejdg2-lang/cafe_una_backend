@@ -5,6 +5,7 @@ import { CamelCaseInterceptor } from '../common/camel-case.interceptor';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { NecesidadesService } from '../services/necesidades.service';
+import { DonacionMaterialesService } from '../services/donacion-materiales.service';
 import { NecesidadesController } from './necesidades.controller';
 
 describe('NecesidadesController', () => {
@@ -33,6 +34,15 @@ describe('NecesidadesController', () => {
       providers: [
         PermisosGuard,
         { provide: NecesidadesService, useValue: necesidadesService },
+        {
+          provide: DonacionMaterialesService,
+          useValue: {
+            listarPorCategoria: jest.fn().mockResolvedValue([]),
+            crear: jest.fn(),
+            actualizar: jest.fn(),
+            inactivar: jest.fn(),
+          },
+        },
       ],
     })
       .overrideGuard(JwtAuthGuard)
