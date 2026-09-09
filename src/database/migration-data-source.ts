@@ -28,7 +28,7 @@ const migrationDataSourceOptions: DataSourceOptions = {
   password: requiredEnvironment('SUPABASE_PASSWORD'),
   database: process.env.SUPABASE_DB?.trim() || 'postgres',
   entities,
-  migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
+  migrations: [join(__dirname, 'migrations', '!(*.spec).{ts,js}')],
   synchronize: false,
   ssl: { rejectUnauthorized: false },
 };
