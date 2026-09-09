@@ -88,21 +88,39 @@ export class VoluntariadoService {
       );
     }
 
-    // Validar fecha habilitada si se especifica en Dias
+    const tipo = String(request.TipoVoluntariado || '').trim();
+    if (!tipo) {
+      throw new BadRequestException('Debe indicar el tipo de voluntariado.');
+    }
+
+    // Validar disponibilidad de fechas para este tipo de voluntariado
+    const fechasDisponiblesTipo = await this.fechasService.listarDisponibles(tipo);
+    if (fechasDisponiblesTipo.length === 0) {
+      throw new BadRequestException(
+        `El tipo de voluntariado "${tipo}" no cuenta con fechas disponibles actualmente para recibir solicitudes.`,
+      );
+    }
+
+    // Validar fecha y horario especificados en la solicitud
     const diasStr = String(request.Dias || '').trim();
     const matchFecha = diasStr.match(/\d{4}-\d{2}-\d{2}/);
-    if (matchFecha) {
-      const fechaSolicitada = matchFecha[0];
-      const disponibles = await this.fechasService.listarDisponibles();
-      // Si hay fechas configuradas en el sistema, la fecha solicitada DEBE estar habilitada
-      if (disponibles.length > 0) {
-        const estaHabilitada = disponibles.some((d) => String(d.Fecha).slice(0, 10) === fechaSolicitada);
-        if (!estaHabilitada) {
-          throw new BadRequestException(
-            `La fecha ${fechaSolicitada} no está habilitada para realizar voluntariados. Por favor seleccione una fecha disponible del calendario.`,
-          );
-        }
-      }
+    if (!matchFecha) {
+      throw new BadRequestException(
+        'Debe seleccionar una fecha disponible del calendario para realizar el voluntariado.',
+      );
+    }
+    const fechaSolicitada = matchFecha[0];
+
+    const validacion = await this.fechasService.estaFechaYHorarioHabilitada(
+      tipo,
+      fechaSolicitada,
+      request.Horario || undefined,
+    );
+    if (!validacion.valida) {
+      throw new BadRequestException(
+        validacion.mensajeError ||
+          `La fecha ${fechaSolicitada} no está habilitada para el tipo de voluntariado "${tipo}".`,
+      );
     }
 
     const hoy = new Date();

@@ -26,15 +26,55 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS fechas_voluntariado (
           "Id" serial PRIMARY KEY,
-          "Fecha" date NOT NULL UNIQUE,
+          "TipoVoluntariado" varchar(100) NOT NULL DEFAULT 'General',
+          "Fecha" date NOT NULL,
           "Habilitada" boolean NOT NULL DEFAULT true,
+          "Horarios" jsonb NOT NULL DEFAULT '[]'::jsonb,
           "CupoMaximo" int NULL,
           "Observaciones" varchar(500) NOT NULL DEFAULT '',
           "CreatedAt" timestamp NOT NULL DEFAULT NOW(),
           "UpdatedAt" timestamp NOT NULL DEFAULT NOW()
         );
+        ALTER TABLE fechas_voluntariado
+          ADD COLUMN IF NOT EXISTS "TipoVoluntariado" varchar(100) NOT NULL DEFAULT 'General';
+        ALTER TABLE fechas_voluntariado
+          ADD COLUMN IF NOT EXISTS "Horarios" jsonb NOT NULL DEFAULT '[]'::jsonb;
+        DO $$
+        DECLARE
+          r RECORD;
+        BEGIN
+          FOR r IN (
+            SELECT conname
+            FROM pg_constraint
+            WHERE conrelid = 'fechas_voluntariado'::regclass
+              AND contype = 'u'
+              AND conname NOT LIKE '%tipo_fecha%'
+          ) LOOP
+            EXECUTE 'ALTER TABLE fechas_voluntariado DROP CONSTRAINT ' || quote_ident(r.conname);
+          END LOOP;
+        END $$;
+        DELETE FROM fechas_voluntariado f1
+        USING fechas_voluntariado f2
+        WHERE f1."TipoVoluntariado" = 'General'
+          AND f2."TipoVoluntariado" = 'Apoyo General'
+          AND f1."Fecha" = f2."Fecha";
+
+        UPDATE fechas_voluntariado
+          SET "TipoVoluntariado" = 'Apoyo General'
+          WHERE "TipoVoluntariado" = 'General';
+
+        DELETE FROM fechas_voluntariado a
+        USING fechas_voluntariado b
+        WHERE a."Id" > b."Id"
+          AND a."TipoVoluntariado" = b."TipoVoluntariado"
+          AND a."Fecha" = b."Fecha";
+
+        CREATE UNIQUE INDEX IF NOT EXISTS "UQ_fechas_voluntariado_tipo_fecha"
+          ON fechas_voluntariado ("TipoVoluntariado", "Fecha");
         CREATE INDEX IF NOT EXISTS "IDX_fechas_voluntariado_fecha"
           ON fechas_voluntariado ("Fecha");
+        CREATE INDEX IF NOT EXISTS "IDX_fechas_voluntariado_tipo"
+          ON fechas_voluntariado ("TipoVoluntariado");
       `);
       await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS categorias (
@@ -222,7 +262,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       );
     } catch (error) {
       this.logger.error(
-        'No se pudo conectar a Supabase. Revise SUPABASE_HOST, SUPABASE_PORT y credenciales.',
+        'Error durante el bootstrap o migración de la base de datos:',
         error instanceof Error ? error.stack : String(error),
       );
     }
