@@ -134,8 +134,9 @@ export class VisitasController {
           Number(body.CantidadVisitantes ?? body.cantidadVisitantes) || 0,
         TipoGrupo: texto(body.TipoGrupo ?? body.tipoGrupo),
         TipoGrupoOtro: textoOpcional(body.TipoGrupoOtro),
-        FechaVisita: texto(body.FechaVisita ?? body.fechaVisita),
-        HoraPreferida: texto(body.HoraPreferida ?? body.horaPreferida),
+        DisponibilidadVisitaId: texto(
+          body.DisponibilidadVisitaId ?? body.disponibilidadVisitaId,
+        ),
         FechaAlternativa: textoOpcional(body.FechaAlternativa),
         DuracionEstimada: textoOpcional(body.DuracionEstimada),
         AreaVisita: textoOpcional(body.AreaVisita),

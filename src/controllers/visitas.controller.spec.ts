@@ -31,7 +31,7 @@ describe('VisitasController', () => {
         Estado: 'Pendiente',
         EncargadoNombre: 'María Rodríguez',
         EncargadoEmail: 'maria@ejemplo.com',
-        FechaVisita: '2026-11-20',
+        FechaVisita: '2099-11-20',
         CantidadVisitantes: 10,
       }),
       obtenerSolicitudes: jest.fn().mockResolvedValue([]),
@@ -81,8 +81,9 @@ describe('VisitasController', () => {
         CiudadProvincia: 'San José',
         CantidadVisitantes: 10,
         TipoGrupo: 'Empresa',
-        FechaVisita: '2026-11-20',
-        HoraPreferida: 'Tarde',
+        disponibilidadVisitaId: '9',
+        fechaVisita: '2000-01-01',
+        horaPreferida: 'valor del cliente',
         MotivoVisita: 'Capacitación',
       },
       { user: { userId: 7, roles: ['Usuario'] } } as never,
@@ -90,7 +91,13 @@ describe('VisitasController', () => {
 
     expect(resultado.Id).toBe('202');
     expect(service.crear).toHaveBeenCalledWith(
-      expect.objectContaining({ UserId: '7' }),
+      expect.objectContaining({ UserId: '7', DisponibilidadVisitaId: '9' }),
+    );
+    expect(service.crear).toHaveBeenCalledWith(
+      expect.not.objectContaining({ FechaVisita: '2000-01-01' }),
+    );
+    expect(service.crear).toHaveBeenCalledWith(
+      expect.not.objectContaining({ HoraPreferida: 'valor del cliente' }),
     );
     expect(email.enviarConfirmacionVisitaGrupal).toHaveBeenCalledWith(
       'maria@ejemplo.com',

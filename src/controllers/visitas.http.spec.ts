@@ -37,7 +37,8 @@ describe('VisitasController HTTP contract', () => {
       Estado: 'Pendiente',
       EncargadoNombre: 'Ana López',
       EncargadoEmail: 'ana@ejemplo.com',
-      FechaVisita: '2026-12-01',
+      DisponibilidadVisitaId: '9',
+      FechaVisita: '2099-12-01',
       CantidadVisitantes: 4,
     });
     visitasService.obtenerSolicitudes.mockResolvedValue([]);
@@ -91,8 +92,9 @@ describe('VisitasController HTTP contract', () => {
         CiudadProvincia: 'Madrid',
         CantidadVisitantes: 4,
         TipoGrupo: 'Universidad',
-        FechaVisita: '2026-12-01',
-        HoraPreferida: 'Mañana',
+        disponibilidadVisitaId: '9',
+        fechaVisita: '2000-01-01',
+        horaPreferida: 'valor del cliente',
         MotivoVisita: 'Investigación',
       })
       .expect(201)
@@ -102,7 +104,8 @@ describe('VisitasController HTTP contract', () => {
         estado: 'Pendiente',
         encargadoNombre: 'Ana López',
         encargadoEmail: 'ana@ejemplo.com',
-        fechaVisita: '2026-12-01',
+        disponibilidadVisitaId: '9',
+        fechaVisita: '2099-12-01',
         cantidadVisitantes: 4,
       });
 
@@ -111,7 +114,14 @@ describe('VisitasController HTTP contract', () => {
         UserId: '7',
         EncargadoNombre: 'Ana López',
         CantidadVisitantes: 4,
+        DisponibilidadVisitaId: '9',
       }),
+    );
+    expect(visitasService.crear).toHaveBeenCalledWith(
+      expect.not.objectContaining({ FechaVisita: '2000-01-01' }),
+    );
+    expect(visitasService.crear).toHaveBeenCalledWith(
+      expect.not.objectContaining({ HoraPreferida: 'valor del cliente' }),
     );
   });
 
