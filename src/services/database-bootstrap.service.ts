@@ -256,6 +256,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.asegurarTablaAuditoria();
       await this.asegurarTriggersAuditoria();
       await this.asegurarTablasDonaciones();
+      await this.asegurarFechasRecepcionDonaciones();
       await this.asegurarTablaVisitasGrupales();
       this.logger.log(
         `Conexión a PostgreSQL establecida (${postgres.host}/${postgres.database} como ${postgres.user}).`,
@@ -927,7 +928,9 @@ export class DatabaseBootstrapService implements OnModuleInit {
       'rol_permiso',
       'disponibilidad_grupos',
       'donacion_necesidades',
+      'donacion_materiales_aceptados',
       'donacion_solicitudes',
+      'fechas_recepcion_donaciones',
       'fechas_voluntariado',
       'solicitudes_visitas_grupales',
     ];
@@ -1060,6 +1063,104 @@ export class DatabaseBootstrapService implements OnModuleInit {
       ) AS semilla("Titulo", "Descripcion", "Prioridad", "CantidadRequerida", "Estado")
       WHERE NOT EXISTS (SELECT 1 FROM donacion_necesidades LIMIT 1);
     `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS donacion_materiales_aceptados (
+        "Id" serial PRIMARY KEY,
+        "NecesidadId" integer NOT NULL REFERENCES donacion_necesidades("Id") ON DELETE RESTRICT,
+        "Nombre" varchar(200) NOT NULL,
+        "Descripcion" varchar(500) NOT NULL DEFAULT '',
+        "Estado" varchar(10) NOT NULL DEFAULT 'ACTIVA',
+        "CreatedAt" timestamptz NOT NULL DEFAULT NOW(),
+        "UpdatedAt" timestamptz NOT NULL DEFAULT NOW(),
+        CONSTRAINT "CK_donacion_materiales_estado"
+          CHECK ("Estado" IN ('ACTIVA', 'INACTIVA'))
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_donacion_materiales_NecesidadId"
+        ON donacion_materiales_aceptados ("NecesidadId");
+    `);
+    await this.dataSource.query(`
+      INSERT INTO donacion_materiales_aceptados ("NecesidadId", "Nombre", "Descripcion", "Estado")
+      SELECT n."Id", v."Nombre", v."Descripcion", 'ACTIVA'
+      FROM donacion_necesidades n
+      JOIN (
+        VALUES
+          ('Herramientas agrícolas', 'Palas', 'Palas para labores de campo'),
+          ('Herramientas agrícolas', 'Machetes', ''),
+          ('Herramientas agrícolas', 'Carretillos', ''),
+          ('Herramientas agrícolas', 'Tijeras de poda', ''),
+          ('Herramientas agrícolas', 'Herramientas agrícolas', 'Otras herramientas de uso agrícola'),
+          ('Materiales de empaque', 'Bolsas para café', ''),
+          ('Materiales de empaque', 'Válvulas desgasificadoras', ''),
+          ('Materiales de empaque', 'Cajas de cartón', ''),
+          ('Materiales de empaque', 'Etiquetas', ''),
+          ('Materiales de empaque', 'Empaques biodegradables', ''),
+          ('Insumos de limpieza', 'Jabón biodegradable', ''),
+          ('Insumos de limpieza', 'Paños de limpieza', '')
+      ) AS v("Titulo", "Nombre", "Descripcion")
+        ON n."Titulo" = v."Titulo"
+      WHERE NOT EXISTS (
+        SELECT 1 FROM donacion_materiales_aceptados m WHERE m."NecesidadId" = n."Id"
+      );
+    `);
+  }
+
+  private async asegurarFechasRecepcionDonaciones(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS fechas_recepcion_donaciones (
+        "Id" serial PRIMARY KEY,
+        "Fecha" date NOT NULL,
+        "Habilitada" boolean NOT NULL DEFAULT true,
+        "Horarios" jsonb NULL DEFAULT '[]'::jsonb,
+        "Observaciones" varchar(500) NOT NULL DEFAULT '',
+        "CreatedAt" timestamptz NOT NULL DEFAULT NOW(),
+        "UpdatedAt" timestamptz NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_fechas_recepcion_donaciones_Fecha"
+        ON fechas_recepcion_donaciones ("Fecha");
+    `);
+
+    const existentes: Array<{ count?: string }> = await this.dataSource.query(
+      `SELECT COUNT(*)::text AS count FROM fechas_recepcion_donaciones`,
+    );
+    if (Number(existentes?.[0]?.count || 0) > 0) return;
+
+    const horarios = JSON.stringify([
+      '8:00 a. m. – 12:00 m.',
+      '1:00 p. m. – 5:00 p. m.',
+    ]);
+    const fechas: string[] = [];
+    const cursor = new Date();
+    cursor.setHours(0, 0, 0, 0);
+    cursor.setDate(cursor.getDate() + 1);
+    while (fechas.length < 10) {
+      const dia = cursor.getDay();
+      if (dia !== 0 && dia !== 6) {
+        const yyyy = cursor.getFullYear();
+        const mm = String(cursor.getMonth() + 1).padStart(2, '0');
+        const dd = String(cursor.getDate()).padStart(2, '0');
+        fechas.push(`${yyyy}-${mm}-${dd}`);
+      }
+      cursor.setDate(cursor.getDate() + 1);
+    }
+
+    for (const fecha of fechas) {
+      await this.dataSource.query(
+        `
+        INSERT INTO fechas_recepcion_donaciones ("Fecha", "Habilitada", "Horarios", "Observaciones")
+        VALUES ($1, true, $2::jsonb, $3)
+        ON CONFLICT ("Fecha") DO NOTHING
+        `,
+        [
+          fecha,
+          horarios,
+          'Recepción de donaciones materiales en el centro de acopio.',
+        ],
+      );
+    }
   }
 
   private async asegurarTablaVisitasGrupales(): Promise<void> {

@@ -14,19 +14,29 @@ import type {
   INecesidadRepository,
 } from '../repositories/necesidad.repository.interface';
 import { NECESIDAD_REPOSITORY } from '../repositories/necesidad.repository.interface';
+import { DonacionMaterialesService } from './donacion-materiales.service';
 
-function mapearNecesidad(row: {
-  Id: number;
-  Uuid: string;
-  Titulo: string;
-  Descripcion: string;
-  Prioridad: string;
-  CantidadRequerida: number | null;
-  Estado: string;
-  CreatedAt: Date;
-  UpdatedAt: Date;
-  DeletedAt: Date | null;
-}) {
+function mapearNecesidad(
+  row: {
+    Id: number;
+    Uuid: string;
+    Titulo: string;
+    Descripcion: string;
+    Prioridad: string;
+    CantidadRequerida: number | null;
+    Estado: string;
+    CreatedAt: Date;
+    UpdatedAt: Date;
+    DeletedAt: Date | null;
+  },
+  materiales: Array<{
+    id: number;
+    necesidadId: number;
+    nombre: string;
+    descripcion: string;
+    estado: string;
+  }> = [],
+) {
   return {
     id: row.Id,
     uuid: row.Uuid,
@@ -37,6 +47,7 @@ function mapearNecesidad(row: {
     estado: row.Estado,
     createdAt: row.CreatedAt,
     updatedAt: row.UpdatedAt,
+    materiales,
   };
 }
 
@@ -45,16 +56,37 @@ export class NecesidadesService {
   constructor(
     @Inject(NECESIDAD_REPOSITORY)
     private readonly necesidades: INecesidadRepository,
+    private readonly materiales: DonacionMaterialesService,
   ) {}
 
   async listarPublicas() {
     const rows = await this.necesidades.listarActivas();
-    return rows.map(mapearNecesidad);
+    const agrupados = await this.materialesPorCategoria(rows.map((row) => row.Id));
+    return rows
+      .map((row) =>
+        mapearNecesidad(
+          row,
+          (agrupados.get(row.Id) ?? []).filter((item) => item.estado === 'ACTIVA'),
+        ),
+      )
+      .filter((row) => row.materiales.length > 0);
   }
 
   async listarAdmin() {
     const rows = await this.necesidades.listarTodas();
-    return rows.map(mapearNecesidad);
+    const agrupados = await this.materialesPorCategoria(rows.map((row) => row.Id));
+    return rows.map((row) => mapearNecesidad(row, agrupados.get(row.Id) ?? []));
+  }
+
+  private async materialesPorCategoria(ids: number[]) {
+    const items = await this.materiales.listarPorCategorias(ids);
+    const mapa = new Map<number, typeof items>();
+    for (const item of items) {
+      const lista = mapa.get(item.necesidadId) ?? [];
+      lista.push(item);
+      mapa.set(item.necesidadId, lista);
+    }
+    return mapa;
   }
 
   async crear(body: Record<string, unknown>) {

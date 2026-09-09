@@ -14,7 +14,9 @@ describe('NecesidadesService', () => {
 
   beforeEach(() => {
     jest.clearAllMocks();
-    service = new NecesidadesService(repo as never);
+    service = new NecesidadesService(repo as never, {
+      listarPorCategorias: jest.fn().mockResolvedValue([]),
+    } as never);
   });
 
   it('rejects a priority outside ALTA, MEDIA or BAJA', async () => {

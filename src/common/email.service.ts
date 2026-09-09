@@ -25,6 +25,12 @@ export class EmailService {
     'Email',
     'actualizacion-voluntariado.html',
   );
+  private readonly actualizacionDonacionTemplatePath = path.join(
+    process.cwd(),
+    'Templates',
+    'Email',
+    'actualizacion-donacion.html',
+  );
   private readonly alertaStockTemplatePath = path.join(
     process.cwd(),
     'Templates',
@@ -120,6 +126,24 @@ export class EmailService {
       destinatario,
       'Actualización de su solicitud de voluntariado - Café UNA',
       await this.buildActualizacionVoluntariadoEmail(datos),
+    );
+  }
+
+  async enviarActualizacionEstadoDonacion(
+    destinatario: string,
+    datos: {
+      nombre: string;
+      categoria: string;
+      material?: string;
+      estado: string;
+      fechaActualizacion: string;
+      motivoRechazo?: string | null;
+    },
+  ): Promise<boolean> {
+    return this.enviar(
+      destinatario,
+      'Actualización de su solicitud de donación - Café UNA',
+      await this.buildActualizacionDonacionEmail(datos),
     );
   }
 
@@ -734,6 +758,127 @@ export class EmailService {
     ${bloqueMotivoRechazo}
     ${bloqueInstruccionesAprobacion}
   </div>
+</body>
+</html>`;
+    }
+  }
+
+  private async buildActualizacionDonacionEmail(datos: {
+    nombre: string;
+    categoria: string;
+    material?: string;
+    estado: string;
+    fechaActualizacion: string;
+    motivoRechazo?: string | null;
+  }): Promise<string> {
+    const saludo = datos.nombre?.trim()
+      ? `Hola, ${this.escapeHtml(datos.nombre)}`
+      : 'Hola';
+    const estadoNormalizado = datos.estado
+      .trim()
+      .toLowerCase()
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '');
+    const esRechazada =
+      estadoNormalizado === 'rechazada' || estadoNormalizado === 'rechazado';
+    const esAceptada =
+      estadoNormalizado === 'aceptada' ||
+      estadoNormalizado === 'aceptado' ||
+      estadoNormalizado === 'aprobada' ||
+      estadoNormalizado === 'aprobado';
+    const motivo = datos.motivoRechazo?.trim();
+
+    const bloqueMotivoRechazo =
+      esRechazada && motivo
+        ? `<div style="margin: 16px 0; padding: 16px; background: #fef2f2; border-radius: 8px; border-left: 3px solid #dc2626;">
+            <p style="margin: 0; font-size: 14px; color: #991b1b; line-height: 1.6;">
+              <strong>Motivo del rechazo:</strong><br>${this.escapeHtml(motivo)}
+            </p>
+          </div>`
+        : esRechazada
+          ? `<div style="margin: 16px 0; padding: 16px; background: #fef2f2; border-radius: 8px; border-left: 3px solid #dc2626;">
+            <p style="margin: 0; font-size: 14px; color: #991b1b; line-height: 1.6;">
+              Lamentamos informarle que, en esta ocasión, no es posible recibir la donación ofrecida. Agradecemos su interés en apoyar el proyecto.
+            </p>
+          </div>`
+          : '';
+
+    const bloqueInstruccionesAceptacion = esAceptada
+      ? `<div style="margin: 16px 0; padding: 16px; background: #f0fdf4; border-radius: 8px; border-left: 3px solid #286f54;">
+            <p style="margin: 0; font-size: 14px; color: #166534; line-height: 1.6;">
+              <strong>Próximos pasos</strong><br>
+              Su solicitud de donación fue aceptada. El personal de Café UNA se comunicará para coordinar la entrega o recolección cuando corresponda.
+            </p>
+          </div>`
+      : '';
+
+    try {
+      const template = await fs.readFile(
+        this.actualizacionDonacionTemplatePath,
+        'utf8',
+      );
+      return template
+        .replaceAll('{{saludo}}', saludo)
+        .replaceAll(
+          '{{categoria}}',
+          this.escapeHtml(datos.categoria || 'No indicado'),
+        )
+        .replaceAll(
+          '{{material}}',
+          this.escapeHtml(datos.material?.trim() || 'No indicado'),
+        )
+        .replaceAll('{{estado}}', this.escapeHtml(datos.estado))
+        .replaceAll(
+          '{{fechaActualizacion}}',
+          this.escapeHtml(datos.fechaActualizacion),
+        )
+        .replaceAll('{{bloqueMotivoRechazo}}', bloqueMotivoRechazo)
+        .replaceAll(
+          '{{bloqueInstruccionesAceptacion}}',
+          bloqueInstruccionesAceptacion,
+        );
+    } catch {
+      return `
+<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="UTF-8"></head>
+<body style="margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background-color: #f3f4f6;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" style="background-color: #f3f4f6; padding: 40px 20px;">
+    <tr>
+      <td align="center">
+        <table role="presentation" width="480" cellpadding="0" cellspacing="0" style="max-width: 480px; width: 100%; background: #ffffff; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.06);">
+          <tr>
+            <td style="background: #286f54; padding: 28px 32px; text-align: center;">
+              <h1 style="margin: 0; color: #ffffff; font-size: 20px; font-weight: 700;">Café UNA</h1>
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 36px 32px 24px;">
+              <h2 style="margin: 0 0 20px; font-size: 20px; color: #1f2937; font-weight: 600;">${saludo}</h2>
+              <p style="margin: 0 0 16px; font-size: 15px; line-height: 1.7; color: #374151;">
+                Le informamos que su solicitud de donación material ha sido actualizada.
+              </p>
+              <div style="margin: 24px 0; padding: 16px; background: #f8fafc; border-radius: 8px; border: 1px solid #e2e8f0;">
+                <p style="margin: 0 0 8px; font-size: 14px; color: #475569;"><strong>Categoría:</strong> ${this.escapeHtml(datos.categoria || 'No indicado')}</p>
+                <p style="margin: 0 0 8px; font-size: 14px; color: #475569;"><strong>Material o artículo:</strong> ${this.escapeHtml(datos.material?.trim() || 'No indicado')}</p>
+                <p style="margin: 0 0 8px; font-size: 14px; color: #475569;"><strong>Nuevo estado:</strong> ${this.escapeHtml(datos.estado)}</p>
+                <p style="margin: 0; font-size: 14px; color: #475569;"><strong>Fecha de actualización:</strong> ${this.escapeHtml(datos.fechaActualizacion)}</p>
+              </div>
+              ${bloqueMotivoRechazo}
+              ${bloqueInstruccionesAceptacion}
+            </td>
+          </tr>
+          <tr>
+            <td style="padding: 20px 32px 28px; border-top: 1px solid #e5e7eb;">
+              <p style="margin: 0; font-size: 13px; color: #9ca3af; line-height: 1.5;">
+                Este es un correo automático de Café UNA. No es necesario responderlo.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
 </body>
 </html>`;
     }
