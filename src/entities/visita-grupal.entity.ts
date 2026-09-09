@@ -1,4 +1,12 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import {
+  Column,
+  Entity,
+  JoinColumn,
+  ManyToOne,
+  PrimaryGeneratedColumn,
+} from 'typeorm';
+
+import { DisponibilidadVisita } from './disponibilidad-visita.entity';
 
 @Entity('solicitudes_visitas_grupales')
 export class VisitaGrupal {
@@ -7,6 +15,20 @@ export class VisitaGrupal {
 
   @Column({ name: 'UserId', type: 'varchar', length: 100, nullable: true })
   UserId: string | null;
+
+  @Column({
+    name: 'DisponibilidadVisitaId',
+    type: 'bigint',
+    nullable: true,
+  })
+  DisponibilidadVisitaId: string | null;
+
+  @ManyToOne(() => DisponibilidadVisita, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'DisponibilidadVisitaId' })
+  DisponibilidadVisita: DisponibilidadVisita | null;
 
   @Column({ name: 'FechaSolicitud', type: 'varchar', length: 20 })
   FechaSolicitud: string;
