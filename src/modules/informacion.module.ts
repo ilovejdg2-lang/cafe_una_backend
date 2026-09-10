@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InformacionController } from '../controllers/informacion.controller';
 import { EnlaceSitio } from '../entities/enlace-sitio.entity';
+import { FaqInicio } from '../entities/faq-inicio.entity';
 import { GaleriaInstitucionalItem } from '../entities/galeria-institucional-item.entity';
 import { HeroPrincipal } from '../entities/hero-principal.entity';
 import { InformacionFooter } from '../entities/informacion-footer.entity';
@@ -9,6 +10,7 @@ import { InformacionNavbar } from '../entities/informacion-navbar.entity';
 import { TarjetaInicio } from '../entities/tarjeta-inicio.entity';
 import { TextoInstitucional } from '../entities/texto-institucional.entity';
 import { EnlaceSitioService } from '../services/enlace-sitio.service';
+import { FaqInicioService } from '../services/faq-inicio.service';
 import { GaleriaInstitucionalService } from '../services/galeria-institucional.service';
 import { HeroService } from '../services/hero.service';
 import { InformacionFooterService } from '../services/informacion-footer.service';
@@ -27,6 +29,7 @@ import { CategoriasModule } from './categorias.module';
       InformacionFooter,
       InformacionNavbar,
       EnlaceSitio,
+      FaqInicio,
       TarjetaInicio,
     ]),
     AuthModule,
@@ -40,6 +43,7 @@ import { CategoriasModule } from './categorias.module';
     InformacionFooterService,
     InformacionNavbarService,
     EnlaceSitioService,
+    FaqInicioService,
     TarjetaInicioService,
   ],
 })

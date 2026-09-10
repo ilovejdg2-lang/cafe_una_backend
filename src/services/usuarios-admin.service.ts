@@ -44,10 +44,13 @@ export class UsuariosAdminService {
       throw new Error('Ya existe una cuenta con ese nombre de usuario.');
     }
 
-    const roles =
+    let roles =
       !request.Roles || request.Roles.length === 0
         ? ['Usuario']
-        : [...request.Roles];
+        : request.Roles.filter(
+            (rol) => String(rol).toLowerCase() !== 'cliente',
+          );
+    if (roles.length === 0) roles = ['Usuario'];
     const now = new Date();
 
     const pendienteActivo = await this.pendientesRepo

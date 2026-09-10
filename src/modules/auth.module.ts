@@ -9,6 +9,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { AuthService } from '../services/auth.service';
 import { JwtStrategy } from '../services/jwt.strategy';
+import { EmailModule } from './email.module';
 import { UsuariosModule } from './usuarios.module';
 
 @Module({
@@ -16,6 +17,7 @@ import { UsuariosModule } from './usuarios.module';
     PassportModule.register({ defaultStrategy: 'jwt' }),
     JwtModule.register({}),
     TypeOrmModule.forFeature([RegistroPendiente, PasswordResetEntry]),
+    EmailModule,
     forwardRef(() => UsuariosModule),
   ],
   controllers: [AuthController],

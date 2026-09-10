@@ -17,6 +17,7 @@ import { TextoInstitucional } from '../entities/texto-institucional.entity';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { EnlaceSitioService } from '../services/enlace-sitio.service';
+import { FaqInicioService } from '../services/faq-inicio.service';
 import { GaleriaInstitucionalService } from '../services/galeria-institucional.service';
 import { HeroService } from '../services/hero.service';
 import { InformacionFooterService } from '../services/informacion-footer.service';
@@ -33,6 +34,7 @@ export class InformacionController {
     private readonly footerService: InformacionFooterService,
     private readonly navbarService: InformacionNavbarService,
     private readonly enlaceSitioService: EnlaceSitioService,
+    private readonly faqInicioService: FaqInicioService,
     private readonly tarjetaInicioService: TarjetaInicioService,
   ) {}
 
@@ -76,6 +78,11 @@ export class InformacionController {
   @Get('enlaces')
   obtenerEnlaces(@Query('seccion') seccion?: string) {
     return this.enlaceSitioService.obtenerTodos(seccion);
+  }
+
+  @Get('faq-inicio')
+  obtenerFaqInicio() {
+    return this.faqInicioService.obtenerTodos();
   }
 
   @Get(':seccion')
@@ -224,6 +231,49 @@ export class InformacionController {
   @RequierePermiso('inactivar_informacion')
   async eliminarEnlace(@Param('id') id: string) {
     const deleted = await this.enlaceSitioService.eliminar(id);
+    if (!deleted) throw new NotFoundException();
+  }
+
+  @Post('faq-inicio')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('actualizar_informacion')
+  crearFaqInicio(
+    @Body()
+    request: {
+      Pregunta: string;
+      PreguntaEn?: string;
+      Respuesta: string;
+      RespuestaEn?: string;
+      Orden?: number;
+    },
+  ) {
+    return this.faqInicioService.crear(request);
+  }
+
+  @Put('faq-inicio/:id')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('actualizar_informacion')
+  async actualizarFaqInicio(
+    @Param('id') id: string,
+    @Body()
+    cambios: {
+      Pregunta?: string;
+      PreguntaEn?: string;
+      Respuesta?: string;
+      RespuestaEn?: string;
+      Orden?: number;
+    },
+  ) {
+    const actualizado = await this.faqInicioService.actualizar(id, cambios);
+    if (!actualizado) throw new NotFoundException();
+    return actualizado;
+  }
+
+  @Delete('faq-inicio/:id')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('inactivar_informacion')
+  async eliminarFaqInicio(@Param('id') id: string) {
+    const deleted = await this.faqInicioService.eliminar(id);
     if (!deleted) throw new NotFoundException();
   }
 }

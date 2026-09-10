@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs/promises';
 import * as nodemailer from 'nodemailer';
 import * as path from 'path';
+import { resolverSedeFinca, type SedeFinca } from './sede-finca';
 
 @Injectable()
 export class EmailService {
@@ -44,13 +45,22 @@ export class EmailService {
     destinatario: string,
     nombre: string,
     codigo: string,
+    enlaceVerificacion?: string,
   ): Promise<boolean> {
+    const notaBase =
+      'El código vence en 30 minutos. Si no creaste esta cuenta, ignorá este correo.';
+    const nota = enlaceVerificacion
+      ? `${notaBase} También podés abrir este enlace: ${enlaceVerificacion}`
+      : notaBase;
+    const mensaje = enlaceVerificacion
+      ? 'Usá este código o abrí el enlace para activar tu cuenta de cliente en Café UNA:'
+      : 'Usá este código para completar tu registro en Café UNA:';
     const contenido = await this.buildCodeEmail(
       nombre,
       'Verifica tu cuenta',
-      'Usá este código para completar tu registro en Café UNA:',
+      mensaje,
       codigo,
-      'El código vence en 30 minutos. Si no creaste esta cuenta, ignorá este correo.',
+      nota,
     );
     return this.enviar(
       destinatario,
@@ -155,13 +165,18 @@ export class EmailService {
       cantidad: number;
     },
   ): Promise<boolean> {
+    const sede = this.sedeFinca();
     const html = `<div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb;">
       <h2 style="color: #286f54; margin-top: 0;">Solicitud de Visita Grupal Recibida</h2>
       <p>Hola, <strong>${this.escapeHtml(datos.nombreEncargado)}</strong>:</p>
       <p>Su solicitud para una visita grupal de <strong>${datos.cantidad} personas</strong> el día <strong>${this.escapeHtml(datos.fechaVisita)}</strong> ha sido recibida correctamente en <strong>Café UNA</strong>.</p>
       <p style="background: #f0fdf4; padding: 12px; border-radius: 8px; border-left: 4px solid #286f54; color: #166534;">
-        Su registro se encuentra actualmente en <strong>Estado Pendiente</strong>. El equipo coordinador evaluará la disponibilidad de la finca experimental y se comunicará con usted.
+        Su registro se encuentra actualmente en <strong>Estado Pendiente</strong>. El equipo coordinador evaluará la disponibilidad y se comunicará con usted.
       </p>
+      ${this.bloqueSedeHtml(
+        sede,
+        `Las visitas se realizan en <strong>${this.escapeHtml(sede.nombre)}</strong>.`,
+      )}
       <p style="font-size: 13px; color: #6b7280; margin-top: 24px;">Este es un mensaje automático de Café UNA - Universidad Nacional.</p>
     </div>`;
     return this.enviar(
@@ -197,12 +212,17 @@ export class EmailService {
             </tr>
           </table>`
         : '';
+    const sede = this.sedeFinca();
     const bloqueAprobada = esAprobada
       ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#f7f9fc;border:1px solid #dfe6f0;">
             <tr>
               <td style="padding:16px 20px;border-left:4px solid #0D1B3E;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;">
-                  <strong>¡Visita aprobada!</strong><br>Por favor recuerde presentarse 10 minutos antes de la hora acordada.
+                <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#3a4a6b;">
+                  <strong>¡Visita aprobada!</strong><br>
+                  Te esperamos en <strong>${this.escapeHtml(sede.nombre)}</strong>. Presentate 10 minutos antes de la hora acordada.
+                </p>
+                <p style="margin:0;font-size:14px;line-height:1.6;">
+                  <a href="${this.escapeHtml(sede.mapsUrl)}" style="color:#0D1B3E;font-weight:700;text-decoration:underline;" target="_blank" rel="noopener noreferrer">Ver ubicación en Google Maps</a>
                 </p>
               </td>
             </tr>
@@ -704,14 +724,32 @@ export class EmailService {
       .replaceAll("'", '&#39;');
   }
 
+  private sedeFinca(): SedeFinca {
+    return resolverSedeFinca(this.config);
+  }
+
+  private bloqueSedeHtml(sede: SedeFinca, mensajeHtml: string): string {
+    return `<p style="background: #f8fafc; padding: 12px; border-radius: 8px; border-left: 4px solid #0D1B3E; color: #334155; line-height: 1.6;">
+        ${mensajeHtml}<br>
+        <a href="${this.escapeHtml(sede.mapsUrl)}" style="color:#0D1B3E;font-weight:700;text-decoration:underline;" target="_blank" rel="noopener noreferrer">Ver ubicación en Google Maps</a>
+      </p>`;
+  }
+
   private async buildVoluntariadoEmail(nombre: string): Promise<string> {
     const saludo = nombre?.trim()
       ? `Hola, ${this.escapeHtml(nombre)}`
       : 'Hola';
+    const sede = this.sedeFinca();
+    const bloqueSede = this.bloqueSedeHtml(
+      sede,
+      `El voluntariado se realiza en <strong>${this.escapeHtml(sede.nombre)}</strong>.`,
+    );
 
     try {
       const template = await fs.readFile(this.voluntariadoTemplatePath, 'utf8');
-      return template.replaceAll('{{saludo}}', saludo);
+      return template
+        .replaceAll('{{saludo}}', saludo)
+        .replaceAll('{{bloqueSede}}', bloqueSede);
     } catch {
       // Fallback inline template if file doesn't exist
       return `
@@ -727,6 +765,7 @@ export class EmailService {
     <p style="color: #374151; line-height: 1.7; margin: 0 0 16px;">
       Recibirá información sobre el resultado de su solicitud en su correo electrónico.
     </p>
+    ${bloqueSede}
     <p style="color: #6b7280; font-size: 14px; margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #e5e7eb;">
       Este es un correo automático de Café UNA. No es necesario responderlo.
     </p>
@@ -763,14 +802,18 @@ export class EmailService {
           </table>`
         : '';
 
+    const sede = this.sedeFinca();
     const bloqueInstruccionesAprobacion =
       estadoNormalizado === 'aprobado'
         ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#f7f9fc;border:1px solid #dfe6f0;">
             <tr>
               <td style="padding:16px 20px;border-left:4px solid #0D1B3E;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;">
+                <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#3a4a6b;">
                   <strong>Próximos pasos</strong><br>
-                  Su solicitud fue aprobada. Por favor comuníquese con el equipo de Café UNA para coordinar los detalles de inicio de su voluntariado.
+                  Su solicitud fue aprobada. Te esperamos en <strong>${this.escapeHtml(sede.nombre)}</strong>. El equipo de Café UNA coordinará los detalles de inicio.
+                </p>
+                <p style="margin:0;font-size:14px;line-height:1.6;">
+                  <a href="${this.escapeHtml(sede.mapsUrl)}" style="color:#0D1B3E;font-weight:700;text-decoration:underline;" target="_blank" rel="noopener noreferrer">Ver ubicación en Google Maps</a>
                 </p>
               </td>
             </tr>
@@ -910,13 +953,17 @@ export class EmailService {
           </table>`
           : '';
 
+    const sede = this.sedeFinca();
     const bloqueInstruccionesAceptacion = esAceptada
       ? `<table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="margin:16px 0;background-color:#f7f9fc;border:1px solid #dfe6f0;">
             <tr>
               <td style="padding:16px 20px;border-left:4px solid #0D1B3E;">
-                <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;">
+                <p style="margin:0 0 10px;font-size:14px;line-height:1.6;color:#3a4a6b;">
                   <strong>Próximos pasos</strong><br>
-                  Su solicitud de donación fue aceptada. El personal de Café UNA se comunicará para coordinar la entrega o recolección cuando corresponda.
+                  Su solicitud de donación fue aceptada. Si la entrega es presencial, te esperamos en <strong>${this.escapeHtml(sede.nombre)}</strong>. Si solicitaste recolección, el personal coordinará el retiro.
+                </p>
+                <p style="margin:0;font-size:14px;line-height:1.6;">
+                  <a href="${this.escapeHtml(sede.mapsUrl)}" style="color:#0D1B3E;font-weight:700;text-decoration:underline;" target="_blank" rel="noopener noreferrer">Ver ubicación en Google Maps</a>
                 </p>
               </td>
             </tr>

@@ -1,10 +1,17 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  DatosClienteRegistro,
+  TipoCliente,
+  validarDatosClienteEdicion,
+} from '../common/cliente-registro.util';
+import { esRolCliente, esRolSuperAdmin } from '../common/roles.util';
 import { tienePermiso } from '../common/permisos';
 import { Usuario } from '../entities/usuario.entity';
 import { hashearContrasena, verificarContrasena } from '../common/password.util';
 import { UsuarioValidacion, copiarUsuario } from '../common/usuario-validacion';
+import { ClientesService } from './clientes.service';
 
 export interface UsuarioPerfilResponse {
   Id: number;
@@ -16,6 +23,20 @@ export interface UsuarioPerfilResponse {
   FotoBannerUrl: string | null;
   FotoPerfilPosicion: string | null;
   FotoBannerPosicion: string | null;
+  TipoCliente: string | null;
+  Telefono: string | null;
+  Apellidos: string | null;
+  Identificacion: string | null;
+  NombreLegal: string | null;
+  TipoDocumento: string | null;
+  RazonSocial: string | null;
+  NombreComercial: string | null;
+  RepresentanteLegal: string | null;
+  CedulaJuridica: string | null;
+  DireccionFiscal: string | null;
+  TelefonoOficina: string | null;
+  FechaRegistroCliente: Date | null;
+  FechaVerificacionCliente: Date | null;
 }
 
 @Injectable()
@@ -26,21 +47,42 @@ export class UsuariosService {
   constructor(
     @InjectRepository(Usuario)
     private readonly repo: Repository<Usuario>,
+    private readonly clientesService: ClientesService,
   ) {}
 
-  async obtenerTodos(): Promise<Usuario[]> {
+  async obtenerTodos(): Promise<Record<string, unknown>[]> {
     const usuarios = await this.repo.find({ order: { Id: 'ASC' } });
-    return usuarios.map((u) => copiarUsuario(u));
+    const fichas = await this.clientesService.mapFichasPorUsuarioIds(
+      usuarios.map((u) => u.Id),
+    );
+    return usuarios.map((u) => {
+      const base = copiarUsuario(u) as unknown as Record<string, unknown>;
+      const ficha = fichas.get(u.Id) || this.clientesService.fichaVacia();
+      return { ...base, ...ficha };
+    });
   }
 
   async obtenerActivos(): Promise<Usuario[]> {
-    const usuarios = await this.obtenerTodos();
-    return usuarios.filter((u) => this.esActivo(u.Estado));
+    const usuarios = await this.repo.find({ order: { Id: 'ASC' } });
+    return usuarios
+      .filter((u) => this.esActivo(u.Estado))
+      .map((u) => copiarUsuario(u));
   }
 
   async obtenerPorId(id: number): Promise<Usuario | null> {
     const usuario = await this.repo.findOne({ where: { Id: id } });
     return usuario ? copiarUsuario(usuario) : null;
+  }
+
+  async obtenerPorIdConCliente(
+    id: number,
+  ): Promise<Record<string, unknown> | null> {
+    const usuario = await this.obtenerPorId(id);
+    if (!usuario) return null;
+    const ficha =
+      (await this.clientesService.obtenerFichaPorUsuarioId(id)) ||
+      this.clientesService.fichaVacia();
+    return { ...(usuario as unknown as Record<string, unknown>), ...ficha };
   }
 
   async obtenerPorCorreo(correo: string): Promise<Usuario | null> {
@@ -105,7 +147,9 @@ export class UsuariosService {
 
   async actualizarConActor(
     id: number,
-    cambios: Partial<Usuario>,
+    cambios: Partial<Usuario> & {
+      DatosCliente?: Record<string, unknown> | null;
+    },
     actorId?: number | null,
     actorRoles?: string[] | null,
     passwordActual?: string | null,
@@ -151,16 +195,64 @@ export class UsuariosService {
       actual.Estado = cambios.Estado;
     }
     if (puedeAsignarRoles && cambios.Roles && cambios.Roles.length > 0) {
-      actual.Roles = [...cambios.Roles];
+      const rolesAnteriores = (actual.Roles ?? []).map(String);
+      const rolesNuevos = cambios.Roles.map(String);
+      const teniaCliente = rolesAnteriores.some(esRolCliente);
+      const tieneCliente = rolesNuevos.some(esRolCliente);
+      const teniaSuperAdmin = rolesAnteriores.some(esRolSuperAdmin);
+      const tieneSuperAdmin = rolesNuevos.some(esRolSuperAdmin);
+
+      if (esMismoUsuario && teniaSuperAdmin && !tieneSuperAdmin) {
+        throw new Error('No puede quitarse a sí mismo el rol SuperAdmin.');
+      }
+
+      if (tieneCliente && !teniaCliente) {
+        const rawCliente = cambios.DatosCliente;
+        if (!rawCliente || typeof rawCliente !== 'object') {
+          throw new Error(
+            'Para asignar el rol Cliente debe completar la información de cliente.',
+          );
+        }
+        const tipoRaw = String(
+          (rawCliente as Record<string, unknown>).tipo ??
+            (rawCliente as Record<string, unknown>).Tipo ??
+            '',
+        )
+          .trim()
+          .toLowerCase();
+        const tipo: TipoCliente =
+          tipoRaw === 'empresa' || tipoRaw === 'juridica' || tipoRaw === 'jurídica'
+            ? 'empresa'
+            : tipoRaw === 'persona' || tipoRaw === 'natural'
+              ? 'persona'
+              : ('' as TipoCliente);
+        if (tipo !== 'persona' && tipo !== 'empresa') {
+          throw new Error(
+            'Para asignar el rol Cliente debe indicar si es persona o empresa y completar los datos.',
+          );
+        }
+        const datos = validarDatosClienteEdicion(
+          tipo,
+          rawCliente as Record<string, unknown>,
+        );
+        await this.clientesService.guardarDesdeDatos(id, datos);
+      }
+
+      if (teniaCliente && !tieneCliente) {
+        await this.clientesService.eliminarPorUsuarioId(id);
+      }
+
+      actual.Roles = [...rolesNuevos];
     }
 
     const saved = await this.repo.save(actual);
-    return copiarUsuario(saved);
+    return (await this.obtenerPorIdConCliente(saved.Id)) as unknown as Usuario;
   }
 
   async obtenerPerfil(id: number): Promise<UsuarioPerfilResponse | null> {
     const usuario = await this.repo.findOne({ where: { Id: id } });
-    return usuario ? this.toPerfilResponse(usuario) : null;
+    if (!usuario) return null;
+    return this.toPerfilResponse(usuario);
   }
 
   async actualizarPerfil(
@@ -267,7 +359,50 @@ export class UsuariosService {
     return copiarUsuario(saved);
   }
 
-  private toPerfilResponse(usuario: Usuario): UsuarioPerfilResponse {
+  async aplicarPerfilCliente(
+    id: number,
+    datos: DatosClienteRegistro,
+    opciones?: { Nombre?: string },
+  ): Promise<Usuario | null> {
+    const actual = await this.repo.findOne({ where: { Id: id } });
+    if (!actual) return null;
+
+    if (opciones?.Nombre?.trim()) actual.Nombre = opciones.Nombre.trim();
+
+    await this.clientesService.guardarDesdeDatos(id, datos);
+
+    const roles = new Set((actual.Roles ?? []).map(String));
+    roles.add('Cliente');
+    actual.Roles = [...roles];
+
+    const saved = await this.repo.save(actual);
+    return copiarUsuario(saved);
+  }
+
+  async actualizarPerfilCliente(
+    id: number,
+    datos: DatosClienteRegistro,
+  ): Promise<UsuarioPerfilResponse | null> {
+    const actual = await this.repo.findOne({ where: { Id: id } });
+    if (!actual) return null;
+
+    const esCliente = (actual.Roles ?? []).some(
+      (r) => String(r).toLowerCase() === 'cliente',
+    );
+    if (!esCliente) {
+      throw new Error('Esta cuenta no tiene ficha de cliente para editar.');
+    }
+
+    await this.clientesService.actualizarDesdeDatos(id, datos);
+    return this.toPerfilResponse(actual);
+  }
+
+  private async toPerfilResponse(
+    usuario: Usuario,
+  ): Promise<UsuarioPerfilResponse> {
+    const ficha =
+      (await this.clientesService.obtenerFichaPorUsuarioId(usuario.Id)) ||
+      this.clientesService.fichaVacia();
     return {
       Id: usuario.Id,
       Nombre: usuario.Nombre,
@@ -278,6 +413,20 @@ export class UsuariosService {
       FotoBannerUrl: usuario.FotoBannerUrl,
       FotoPerfilPosicion: usuario.FotoPerfilPosicion,
       FotoBannerPosicion: usuario.FotoBannerPosicion,
+      TipoCliente: ficha.TipoCliente,
+      Telefono: ficha.Telefono,
+      Apellidos: ficha.Apellidos,
+      Identificacion: ficha.Identificacion,
+      NombreLegal: ficha.NombreLegal,
+      TipoDocumento: ficha.TipoDocumento,
+      RazonSocial: ficha.RazonSocial,
+      NombreComercial: ficha.NombreComercial,
+      RepresentanteLegal: ficha.RepresentanteLegal,
+      CedulaJuridica: ficha.CedulaJuridica,
+      DireccionFiscal: ficha.DireccionFiscal,
+      TelefonoOficina: ficha.TelefonoOficina,
+      FechaRegistroCliente: ficha.FechaRegistroCliente,
+      FechaVerificacionCliente: ficha.FechaVerificacionCliente,
     };
   }
 

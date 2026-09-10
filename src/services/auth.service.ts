@@ -1,6 +1,13 @@
 import { Injectable } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  DatosClienteRegistro,
+  validarCorreoCliente,
+  validarDatosCliente,
+  validarPasswordCliente,
+} from '../common/cliente-registro.util';
 import { EmailService } from '../common/email.service';
 import { MENSAJE_CORREO_NO_ENVIADO } from '../common/respuesta-verificacion';
 import {
@@ -31,6 +38,7 @@ export class AuthService {
     @InjectRepository(PasswordResetEntry)
     private readonly passwordResetRepo: Repository<PasswordResetEntry>,
     private readonly emailService: EmailService,
+    private readonly config: ConfigService,
   ) {}
 
   async autenticar(
@@ -71,21 +79,90 @@ export class AuthService {
     UsuarioValidacion.validarPassword(password);
 
     if (await this.usuariosService.existeCorreo(correo)) {
-      throw new Error('Ya existe una cuenta con ese correo.');
+      throw new Error('El correo ya está registrado');
     }
     if (await this.usuariosService.existeNombre(nombre)) {
       throw new Error('Ya existe una cuenta con ese nombre de usuario.');
     }
 
+    return this.guardarPendienteYEnviar({
+      nombre,
+      correo,
+      password,
+      esCliente: false,
+      tipoCliente: null,
+      datosCliente: null,
+    });
+  }
+
+  async solicitarRegistroCliente(
+    body: Record<string, unknown>,
+  ): Promise<{ EmailEnviado: boolean; MensajeError?: string }> {
+    const correo = validarCorreoCliente(
+      String(body.correo ?? body.Correo ?? ''),
+    );
+    const password = String(body.password ?? body.Password ?? '');
+    const confirmPassword = String(
+      body.confirmPassword ?? body.ConfirmPassword ?? password,
+    );
+    if (password !== confirmPassword) {
+      throw new Error('Las contraseñas no coinciden.');
+    }
+    validarPasswordCliente(password);
+    const { nombre, datos } = validarDatosCliente(body);
+
+    if (await this.usuariosService.existeCorreo(correo)) {
+      throw new Error('El correo ya está registrado');
+    }
+
+    return this.guardarPendienteYEnviar({
+      nombre,
+      correo,
+      password,
+      esCliente: true,
+      tipoCliente: datos.tipo,
+      datosCliente: datos as unknown as Record<string, unknown>,
+    });
+  }
+
+  async completarCliente(
+    usuarioId: number,
+    body: Record<string, unknown>,
+  ): Promise<Usuario> {
+    const actual = await this.usuariosService.obtenerPorId(usuarioId);
+    if (!actual) throw new Error('Usuario no encontrado.');
+    if ((actual.Roles ?? []).some((r) => String(r).toLowerCase() === 'cliente')) {
+      throw new Error('Esta cuenta ya tiene rol de cliente.');
+    }
+
+    const { datos } = validarDatosCliente(body);
+    const actualizado = await this.usuariosService.aplicarPerfilCliente(
+      usuarioId,
+      datos,
+    );
+    if (!actualizado) throw new Error('No se pudo actualizar el perfil.');
+    return actualizado;
+  }
+
+  private async guardarPendienteYEnviar(params: {
+    nombre: string;
+    correo: string;
+    password: string;
+    esCliente: boolean;
+    tipoCliente: string | null;
+    datosCliente: Record<string, unknown> | null;
+  }): Promise<{ EmailEnviado: boolean; MensajeError?: string }> {
+    const { nombre, correo, password, esCliente, tipoCliente, datosCliente } =
+      params;
     const now = new Date();
     const nombreNormalizado = nombre.toLowerCase();
 
     const pendienteActivo = await this.registrosRepo
       .createQueryBuilder('r')
-      .where('r.Usado = false AND r.ExpiraEnUtc > :now AND LOWER(r.Correo) = :correo', {
-        now,
-        correo,
-      })
+      .where(
+        'r.Usado = false AND r.ExpiraEnUtc > :now AND LOWER(r.Correo) = :correo',
+        { now, correo },
+      )
       .orderBy('r.ExpiraEnUtc', 'DESC')
       .getOne();
 
@@ -118,13 +195,26 @@ export class AuthService {
         PasswordHash: passwordHash,
         ExpiraEnUtc: new Date(now.getTime() + TOKEN_LIFETIME_MS),
         Usado: false,
+        EsRegistroCliente: esCliente,
+        TipoCliente: tipoCliente,
+        DatosCliente: datosCliente,
       }),
     );
+
+    const frontBase = (
+      this.config.get<string>('FRONTEND_URL') ||
+      this.config.get<string>('CORS_ORIGINS')?.split(',')[0] ||
+      'http://localhost:5173'
+    ).replace(/\/$/, '');
+    const enlace = esCliente
+      ? `${frontBase}/verificar-cuenta?correo=${encodeURIComponent(correo)}&token=${encodeURIComponent(token)}`
+      : undefined;
 
     const emailEnviado = await this.emailService.enviarCodigoRegistro(
       correo,
       nombre,
       token,
+      enlace,
     );
     if (!emailEnviado) {
       await this.registrosRepo
@@ -160,36 +250,68 @@ export class AuthService {
       .getOne();
 
     if (!entry) throw new Error('Código inválido o expirado.');
-    if (await this.usuariosService.existeNombre(entry.Nombre)) {
-      throw new Error('Ya existe una cuenta con ese nombre de usuario.');
+
+    const esCliente = Boolean(entry.EsRegistroCliente);
+    let nombreFinal = entry.Nombre.trim();
+    if (await this.usuariosService.existeNombre(nombreFinal)) {
+      if (!esCliente) {
+        throw new Error('Ya existe una cuenta con ese nombre de usuario.');
+      }
+      const local = correo.split('@')[0] || 'cliente';
+      const base = `${nombreFinal.slice(0, 150)} (${local})`.slice(0, 190);
+      nombreFinal = base;
+      let n = 2;
+      while (await this.usuariosService.existeNombre(nombreFinal)) {
+        nombreFinal = `${base} ${n}`.slice(0, 200);
+        n += 1;
+      }
     }
 
-    const nombreNormalizado = entry.Nombre.toLowerCase();
-    const nombreOcupado = await this.registrosRepo
-      .createQueryBuilder('r')
-      .where(
-        'r.Usado = false AND r.ExpiraEnUtc > :now AND r.Id != :id AND LOWER(r.Nombre) = :nombre',
-        { now, id: entry.Id, nombre: nombreNormalizado },
-      )
-      .getCount();
-    if (nombreOcupado > 0) {
-      throw new Error('Ese nombre de usuario ya está en uso.');
+    if (!esCliente) {
+      const nombreNormalizado = entry.Nombre.toLowerCase();
+      const nombreOcupado = await this.registrosRepo
+        .createQueryBuilder('r')
+        .where(
+          'r.Usado = false AND r.ExpiraEnUtc > :now AND r.Id != :id AND LOWER(r.Nombre) = :nombre',
+          { now, id: entry.Id, nombre: nombreNormalizado },
+        )
+        .getCount();
+      if (nombreOcupado > 0) {
+        throw new Error('Ese nombre de usuario ya está en uso.');
+      }
     }
 
     const passwordHash = entry.PasswordHash.startsWith('$2')
       ? entry.PasswordHash
       : await hashearContrasena(entry.PasswordHash);
 
+    const datos = (entry.DatosCliente || {}) as DatosClienteRegistro;
+
     const usuario = await this.usuariosService.crear({
-      Nombre: entry.Nombre,
+      Nombre: nombreFinal,
       Correo: entry.Correo,
       PasswordHash: passwordHash,
-      Roles: ['Usuario'],
+      Roles: esCliente ? ['Cliente'] : ['Usuario'],
     });
+
+    if (esCliente) {
+      const tipo =
+        String(entry.TipoCliente || datos.tipo || 'persona').toLowerCase() ===
+        'empresa'
+          ? 'empresa'
+          : 'persona';
+      await this.usuariosService.aplicarPerfilCliente(usuario.Id, {
+        ...datos,
+        tipo,
+        telefono: datos.telefono || '',
+        aceptoTerminos: true,
+        aceptoPrivacidad: true,
+      });
+    }
 
     entry.Usado = true;
     await this.registrosRepo.save(entry);
-    return usuario;
+    return (await this.usuariosService.obtenerPorId(usuario.Id)) || usuario;
   }
 
   async solicitarRecuperacion(request: {

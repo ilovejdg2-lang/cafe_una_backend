@@ -258,6 +258,8 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.asegurarTablasDonaciones();
       await this.asegurarFechasRecepcionDonaciones();
       await this.asegurarTablaVisitasGrupales();
+      await this.asegurarPerfilClienteCliP01();
+      await this.asegurarFaqInicio();
       this.logger.log(
         `Conexión a PostgreSQL establecida (${postgres.host}/${postgres.database} como ${postgres.user}).`,
       );
@@ -786,6 +788,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
             WHEN "Clave" = 'homefeatured' THEN 'The best of our collection'
             WHEN "Clave" = 'homeiniciativas' THEN 'Every contribution, visit or collaboration leaves a special mark.'
             WHEN "Clave" = 'homelocation' THEN 'Visit us at the Santa Lucía Experimental Farm'
+            WHEN "Clave" = 'homefaq' THEN 'Get your questions about Café UNA answered'
             ELSE "Title"
           END ELSE "TitleEn" END,
         "DescriptionEn" = CASE WHEN TRIM(COALESCE("DescriptionEn", '')) = '' AND TRIM(COALESCE("Description", '')) <> '' THEN
@@ -794,12 +797,14 @@ export class DatabaseBootstrapService implements OnModuleInit {
             WHEN "Clave" = 'homefeatured' THEN 'Explore all our products and choose the coffee that best fits your taste, routine and way of enjoying it.'
             WHEN "Clave" = 'homeiniciativas' THEN 'Choose how you want to get involved with Café UNA and complete the corresponding form.'
             WHEN "Clave" = 'homelocation' THEN 'We are in Heredia, Barva. Open it in Google Maps to see the route and get here easily.'
+            WHEN "Clave" = 'homefaq' THEN 'Find quick answers about visits, donations, volunteering and how to reach us.'
             ELSE "Description"
           END ELSE "DescriptionEn" END,
         "EyebrowEn" = CASE WHEN TRIM(COALESCE("EyebrowEn", '')) = '' AND TRIM(COALESCE("Eyebrow", '')) <> '' THEN
           CASE
             WHEN "Clave" = 'homeiniciativas' THEN 'Get involved with us'
             WHEN "Clave" = 'homelocation' THEN 'Our location'
+            WHEN "Clave" = 'homefaq' THEN 'Frequently asked questions'
             ELSE "Eyebrow"
           END ELSE "EyebrowEn" END,
         "LinkTextEn" = CASE WHEN TRIM(COALESCE("LinkTextEn", '')) = '' AND TRIM(COALESCE("LinkText", '')) <> '' THEN
@@ -809,7 +814,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
             WHEN "Clave" = 'homelocation' THEN 'Open in Google Maps'
             ELSE "LinkText"
           END ELSE "LinkTextEn" END
-      WHERE "Clave" IN ('homespotlight', 'homefeatured', 'homeiniciativas', 'homelocation');
+      WHERE "Clave" IN ('homespotlight', 'homefeatured', 'homeiniciativas', 'homelocation', 'homefaq');
     `);
 
     this.logger.log('Traducciones EN vacías rellenadas (solo donde *En estaba vacío).');
@@ -933,6 +938,8 @@ export class DatabaseBootstrapService implements OnModuleInit {
       'fechas_recepcion_donaciones',
       'fechas_voluntariado',
       'solicitudes_visitas_grupales',
+      'disponibilidades_visitas',
+      'faq_inicio',
     ];
     const tablasClave = ['textos_institucionales', 'tarjetas_inicio'];
 
@@ -1203,6 +1210,173 @@ export class DatabaseBootstrapService implements OnModuleInit {
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS "IDX_visitas_Estado_FechaVisita"
         ON solicitudes_visitas_grupales ("Estado", "FechaVisita");
+    `);
+  }
+
+  /** CLI-P01: fichas de cliente (persona / jurídica) ligadas a usuarios. */
+  private async asegurarPerfilClienteCliP01(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS clientes (
+        "Id" serial PRIMARY KEY,
+        "UsuarioId" integer NOT NULL UNIQUE,
+        "Nombre" varchar(100) NOT NULL,
+        "Apellidos" varchar(100) NOT NULL,
+        "TipoDocumento" varchar(20) NOT NULL,
+        "Identificacion" varchar(40) NOT NULL,
+        "Telefono" varchar(40) NOT NULL,
+        "FechaRegistro" timestamptz NULL,
+        "FechaVerificacion" timestamptz NULL
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS clientes_juridicos (
+        "Id" serial PRIMARY KEY,
+        "UsuarioId" integer NOT NULL UNIQUE,
+        "RazonSocial" varchar(200) NOT NULL,
+        "NombreComercial" varchar(200) NOT NULL,
+        "RepresentanteLegal" varchar(200) NOT NULL,
+        "CedulaJuridica" varchar(40) NOT NULL,
+        "DireccionFiscal" varchar(300) NULL,
+        "Telefono" varchar(40) NOT NULL,
+        "TelefonoOficina" varchar(40) NULL,
+        "FechaRegistro" timestamptz NULL,
+        "FechaVerificacion" timestamptz NULL
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_clientes_UsuarioId" ON clientes ("UsuarioId");
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_clientes_juridicos_UsuarioId" ON clientes_juridicos ("UsuarioId");
+    `);
+
+    // Migración puntual desde columnas viejas en usuarios (si aún existen).
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (
+          SELECT 1 FROM information_schema.columns
+          WHERE table_name = 'usuarios' AND column_name = 'TipoCliente'
+        ) THEN
+          INSERT INTO clientes (
+            "UsuarioId", "Nombre", "Apellidos", "TipoDocumento", "Identificacion",
+            "Telefono", "FechaRegistro", "FechaVerificacion"
+          )
+          SELECT
+            u."Id",
+            u."Nombre",
+            COALESCE(u."Apellidos", ''),
+            'cedula',
+            COALESCE(u."Identificacion", ''),
+            COALESCE(u."Telefono", ''),
+            u."FechaRegistroCliente",
+            u."FechaVerificacionCliente"
+          FROM usuarios u
+          WHERE LOWER(COALESCE(u."TipoCliente", '')) = 'persona'
+            AND COALESCE(u."Identificacion", '') <> ''
+            AND NOT EXISTS (SELECT 1 FROM clientes c WHERE c."UsuarioId" = u."Id")
+            AND NOT EXISTS (SELECT 1 FROM clientes_juridicos j WHERE j."UsuarioId" = u."Id");
+
+          INSERT INTO clientes_juridicos (
+            "UsuarioId", "RazonSocial", "NombreComercial", "RepresentanteLegal",
+            "CedulaJuridica", "DireccionFiscal", "Telefono", "TelefonoOficina",
+            "FechaRegistro", "FechaVerificacion"
+          )
+          SELECT
+            u."Id",
+            COALESCE(u."RazonSocial", ''),
+            COALESCE(u."NombreComercial", ''),
+            COALESCE(u."RepresentanteLegal", ''),
+            COALESCE(u."CedulaJuridica", ''),
+            u."DireccionFiscal",
+            COALESCE(u."Telefono", ''),
+            u."TelefonoOficina",
+            u."FechaRegistroCliente",
+            u."FechaVerificacionCliente"
+          FROM usuarios u
+          WHERE LOWER(COALESCE(u."TipoCliente", '')) = 'empresa'
+            AND COALESCE(u."CedulaJuridica", '') <> ''
+            AND NOT EXISTS (SELECT 1 FROM clientes c WHERE c."UsuarioId" = u."Id")
+            AND NOT EXISTS (SELECT 1 FROM clientes_juridicos j WHERE j."UsuarioId" = u."Id");
+        END IF;
+      END $$;
+    `);
+
+    await this.dataSource.query(`
+      ALTER TABLE registros_pendientes
+        ADD COLUMN IF NOT EXISTS "EsRegistroCliente" boolean NOT NULL DEFAULT false,
+        ADD COLUMN IF NOT EXISTS "TipoCliente" varchar(20) NULL,
+        ADD COLUMN IF NOT EXISTS "DatosCliente" jsonb NULL;
+    `);
+  }
+
+  private async asegurarFaqInicio(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS faq_inicio (
+        "Id" bigserial PRIMARY KEY,
+        "Pregunta" varchar(500) NOT NULL,
+        "PreguntaEn" varchar(500) NOT NULL DEFAULT '',
+        "Respuesta" varchar(4000) NOT NULL,
+        "RespuestaEn" varchar(4000) NOT NULL DEFAULT '',
+        "Orden" integer NOT NULL DEFAULT 0
+      );
+    `);
+
+    await this.dataSource.query(`
+      INSERT INTO textos_institucionales (
+        "Clave", "Eyebrow", "Title", "Description",
+        "EyebrowEn", "TitleEn", "DescriptionEn"
+      )
+      SELECT
+        'homefaq',
+        'Preguntas frecuentes',
+        'Resolvé tus dudas sobre Café UNA',
+        'Encontrá respuestas rápidas sobre visitas, donaciones, voluntariado y cómo contactarnos.',
+        'Frequently asked questions',
+        'Get your questions about Café UNA answered',
+        'Find quick answers about visits, donations, volunteering and how to reach us.'
+      WHERE NOT EXISTS (
+        SELECT 1 FROM textos_institucionales WHERE LOWER("Clave") = 'homefaq'
+      );
+    `);
+
+    const countRows = await this.dataSource.query(
+      `SELECT COUNT(*)::int AS total FROM faq_inicio`,
+    );
+    const total = Number(countRows?.[0]?.total ?? 0);
+    if (total > 0) return;
+
+    await this.dataSource.query(`
+      INSERT INTO faq_inicio ("Pregunta", "PreguntaEn", "Respuesta", "RespuestaEn", "Orden")
+      VALUES
+        (
+          '¿Dónde está ubicado Café UNA?',
+          'Where is Café UNA located?',
+          'Las visitas, el voluntariado y la entrega presencial de donaciones se realizan en la Finca Experimental Santa Lucía, en Santa Lucía de Barva, Heredia.',
+          'Visits, volunteering and in-person donation drop-offs take place at the Santa Lucía Experimental Farm in Santa Lucía de Barva, Heredia.',
+          1
+        ),
+        (
+          '¿Puedo donar dinero?',
+          'Can I donate money?',
+          'Por ahora Café UNA recibe únicamente donaciones materiales: bienes, equipos, herramientas e insumos físicos. Podés revisar las necesidades publicadas y completar la solicitud de donación.',
+          'For now Café UNA only accepts material donations: goods, equipment, tools and physical supplies. You can review the published needs and complete the donation request.',
+          2
+        ),
+        (
+          '¿Cómo agendo una visita grupal?',
+          'How do I schedule a group visit?',
+          'Ingresá a la sección de visitas, elegí un horario habilitado por la administración y completá la solicitud. El equipo revisará la disponibilidad y te confirmará por correo.',
+          'Go to the visits section, choose a schedule enabled by the administration and complete the request. The team will review availability and confirm by email.',
+          3
+        ),
+        (
+          '¿Cómo me postulo al voluntariado?',
+          'How do I apply for volunteering?',
+          'Completá el formulario de voluntariado con tu modalidad, tipo de apoyo y fechas disponibles. Recibirás un correo cuando tu solicitud sea revisada.',
+          'Complete the volunteering form with your modality, type of support and available dates. You will receive an email when your request is reviewed.',
+          4
+        );
     `);
   }
 }
