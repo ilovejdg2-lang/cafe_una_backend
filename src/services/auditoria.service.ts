@@ -5,7 +5,16 @@ import { Auditoria } from '../entities/auditoria.entity';
 
 const MODULO_TABLAS: Record<string, string[]> = {
   usuario: ['usuarios'],
-  voluntariado: ['solicitudes_voluntariado'],
+  voluntariado: [
+    'solicitudes_voluntariado',
+    'fechas_voluntariado',
+    'solicitudes_visitas_grupales',
+    'disponibilidades_visitas',
+    'donacion_solicitudes',
+    'donacion_necesidades',
+    'donacion_materiales_aceptados',
+    'fechas_recepcion_donaciones',
+  ],
   inventario: [
     'inventario_stock_ubicaciones',
     'inventario_ubicaciones',
@@ -20,6 +29,7 @@ const MODULO_TABLAS: Record<string, string[]> = {
     'informacion_footer',
     'galeria_institucional',
     'enlaces_sitio',
+    'faq_inicio',
   ],
   compras: ['compras', 'compra_items'],
 };

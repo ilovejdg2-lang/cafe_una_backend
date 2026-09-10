@@ -11,6 +11,7 @@ const CLAVES_VALIDAS = new Set([
   'homeFeatured',
   'homeIniciativas',
   'homeLocation',
+  'homeFaq',
 ]);
 
 @Injectable()

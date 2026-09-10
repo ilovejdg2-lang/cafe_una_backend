@@ -53,7 +53,7 @@ export class UsuariosController {
     if (req.user.userId !== id && !tienePermiso(req.user.roles, 'editar_usuarios')) {
       throw new ForbiddenException('No tiene permiso para ver este usuario.');
     }
-    const usuario = await this.usuariosService.obtenerPorId(id);
+    const usuario = await this.usuariosService.obtenerPorIdConCliente(id);
     if (!usuario) throw new NotFoundException();
     return usuario;
   }
@@ -113,7 +113,7 @@ export class UsuariosController {
       request.NuevoCorreo,
       request.Token,
     );
-    const usuario = await this.usuariosService.obtenerPorId(id);
+    const usuario = await this.usuariosService.obtenerPorIdConCliente(id);
     if (!usuario) throw new NotFoundException();
     return usuario;
   }
@@ -131,6 +131,7 @@ export class UsuariosController {
       PasswordActual?: string;
       Estado?: string;
       Roles?: string[];
+      DatosCliente?: Record<string, unknown>;
     },
   ) {
     const actualizado = await this.usuariosService.actualizarConActor(
@@ -141,6 +142,7 @@ export class UsuariosController {
         PasswordHash: cambios.PasswordHash,
         Estado: cambios.Estado,
         Roles: cambios.Roles,
+        DatosCliente: cambios.DatosCliente,
       },
       req.user.userId,
       req.user.roles,

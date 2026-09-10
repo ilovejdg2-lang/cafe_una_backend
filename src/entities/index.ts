@@ -1,3 +1,5 @@
+import { Cliente } from './cliente.entity';
+import { ClienteJuridico } from './cliente-juridico.entity';
 import { ActivoFijo } from './activo-fijo.entity';
 import { Auditoria } from './auditoria.entity';
 import { CompraItem } from './compra-item.entity';
@@ -33,12 +35,15 @@ import { DisponibilidadVisita } from './disponibilidad-visita.entity';
 import { DonacionNecesidad } from './donacion-necesidad.entity';
 import { DonacionMaterialAceptado } from './donacion-material-aceptado.entity';
 import { DonacionSolicitud } from './donacion-solicitud.entity';
+import { FaqInicio } from './faq-inicio.entity';
 import { FechaRecepcionDonacion } from './fecha-recepcion-donacion.entity';
 import { FechaVoluntariado } from './fecha-voluntariado.entity';
 import { VisitaGrupal } from './visita-grupal.entity';
 
 export const entities = [
   Usuario,
+  Cliente,
+  ClienteJuridico,
   Producto,
   Categoria,
   HeroPrincipal,
@@ -48,6 +53,7 @@ export const entities = [
   InformacionFooter,
   EnlaceSitio,
   GaleriaInstitucionalItem,
+  FaqInicio,
   SolicitudVoluntariado,
   PasswordResetEntry,
   RegistroPendiente,
@@ -79,6 +85,8 @@ export const entities = [
 ];
 
 export * from './usuario.entity';
+export * from './cliente.entity';
+export * from './cliente-juridico.entity';
 export * from './producto.entity';
 export * from './categoria.entity';
 export * from './hero-principal.entity';
@@ -87,6 +95,7 @@ export * from './tarjeta-inicio.entity';
 export * from './informacion-navbar.entity';
 export * from './informacion-footer.entity';
 export * from './enlace-sitio.entity';
+export * from './faq-inicio.entity';
 export * from './galeria-institucional-item.entity';
 export * from './solicitud-voluntariado.entity';
 export * from './password-reset-entry.entity';
