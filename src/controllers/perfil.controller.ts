@@ -14,6 +14,10 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { MENSAJE_CORREO_NO_ENVIADO } from '../common/respuesta-verificacion';
+import {
+  TipoCliente,
+  validarDatosClienteEdicion,
+} from '../common/cliente-registro.util';
 import { PerfilService } from '../services/perfil.service';
 import { UsuariosService } from '../services/usuarios.service';
 
@@ -57,6 +61,45 @@ export class PerfilController {
       if (error instanceof NotFoundException) throw error;
       throw new BadRequestException({
         message: error instanceof Error ? error.message : 'Error.',
+      });
+    }
+  }
+
+  @Put('cliente')
+  @RequierePermiso('actualizar_perfil_propio')
+  async actualizarPerfilCliente(
+    @Req() req: Request & { user: { userId: number } },
+    @Body() body: Record<string, unknown>,
+  ) {
+    try {
+      const ficha = await this.usuariosService.obtenerPerfil(req.user.userId);
+      if (!ficha) throw new NotFoundException();
+      const tipoRaw = String(ficha.TipoCliente ?? '')
+        .trim()
+        .toLowerCase();
+      if (tipoRaw !== 'persona' && tipoRaw !== 'empresa') {
+        throw new BadRequestException({
+          message: 'Esta cuenta no tiene ficha de cliente para editar.',
+        });
+      }
+      const datos = validarDatosClienteEdicion(
+        tipoRaw as TipoCliente,
+        body ?? {},
+      );
+      const perfil = await this.usuariosService.actualizarPerfilCliente(
+        req.user.userId,
+        datos,
+      );
+      if (!perfil) throw new NotFoundException();
+      return perfil;
+    } catch (error) {
+      if (error instanceof NotFoundException) throw error;
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException({
+        message:
+          error instanceof Error
+            ? error.message
+            : 'No se pudo actualizar la ficha de cliente.',
       });
     }
   }

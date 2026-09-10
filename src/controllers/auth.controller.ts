@@ -92,6 +92,65 @@ export class AuthController {
     }
   }
 
+  @Post('register-cliente')
+  async registerCliente(@Body() body: Record<string, unknown>) {
+    try {
+      const result = await this.authService.solicitarRegistroCliente(body ?? {});
+      if (result.MensajeError) {
+        throw new BadRequestException({ message: result.MensajeError });
+      }
+      return {
+        message: result.EmailEnviado
+          ? 'Se envió el código de verificación al correo indicado. Revise también la carpeta de spam.'
+          : MENSAJE_CORREO_NO_ENVIADO,
+        emailSent: result.EmailEnviado,
+        requiresVerification: true,
+      };
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw new BadRequestException({
+        message:
+          error instanceof Error ? error.message : 'Error de registro de cliente.',
+      });
+    }
+  }
+
+  @Post('completar-cliente')
+  @UseGuards(JwtAuthGuard)
+  async completarCliente(
+    @Req() req: Request & { user: { userId: number } },
+    @Body() body: Record<string, unknown>,
+  ) {
+    try {
+      const usuario = await this.authService.completarCliente(
+        req.user.userId,
+        body ?? {},
+      );
+      const token = generateToken(
+        this.jwtService,
+        usuario,
+        this.config.get<string>('JWT_SECRET')!,
+        this.config.get<string>('JWT_ISSUER')!,
+        this.config.get<string>('JWT_AUDIENCE')!,
+      );
+      return {
+        message: 'Perfil de cliente activado. Ya podés comprar.',
+        token,
+        id: usuario.Id,
+        nombre: usuario.Nombre,
+        correo: usuario.Correo,
+        roles: usuario.Roles,
+      };
+    } catch (error) {
+      throw new BadRequestException({
+        message:
+          error instanceof Error
+            ? error.message
+            : 'No se pudo completar el perfil de cliente.',
+      });
+    }
+  }
+
   @Post('verify-registration')
   async verifyRegistration(@Body() body: Record<string, unknown>) {
     const { correo, token } = normalizeAuthBody(body);
@@ -101,8 +160,13 @@ export class AuthController {
         Correo: correo,
         Token: token,
       });
+      const esCliente = (usuario.Roles ?? []).some(
+        (r) => String(r).toLowerCase() === 'cliente',
+      );
       return {
-        message: 'Cuenta creada correctamente. Ya puede iniciar sesión.',
+        message: esCliente
+          ? '¡Cuenta verificada! Ya puedes iniciar sesión.'
+          : 'Cuenta creada correctamente. Ya puede iniciar sesión.',
         id: usuario.Id,
         nombre: usuario.Nombre,
         correo: usuario.Correo,

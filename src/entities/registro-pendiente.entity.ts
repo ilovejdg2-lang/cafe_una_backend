@@ -22,4 +22,13 @@ export class RegistroPendiente {
 
   @Column({ name: 'Usado', default: false })
   Usado: boolean;
+
+  @Column({ name: 'EsRegistroCliente', type: 'boolean', default: false })
+  EsRegistroCliente: boolean;
+
+  @Column({ name: 'TipoCliente', type: 'varchar', length: 20, nullable: true })
+  TipoCliente: string | null;
+
+  @Column({ name: 'DatosCliente', type: 'jsonb', nullable: true })
+  DatosCliente: Record<string, unknown> | null;
 }
