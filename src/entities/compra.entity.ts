@@ -6,8 +6,9 @@ import {
   OneToMany,
   PrimaryGeneratedColumn,
 } from 'typeorm';
-import { Usuario } from './usuario.entity';
 import { CompraItem } from './compra-item.entity';
+import { InventarioUbicacion } from './inventario-ubicacion.entity';
+import { Usuario } from './usuario.entity';
 
 @Entity('compras')
 export class Compra {
@@ -68,6 +69,21 @@ export class Compra {
 
   @Column({ name: 'FacturaId', type: 'varchar', length: 80, nullable: true })
   FacturaId: string | null;
+
+  @Column({ name: 'UbicacionId', type: 'int', nullable: true })
+  UbicacionId: number | null;
+
+  @ManyToOne(() => InventarioUbicacion, { nullable: true })
+  @JoinColumn({ name: 'UbicacionId' })
+  Ubicacion?: InventarioUbicacion | null;
+
+  @Column({
+    name: 'ComprobanteArchivo',
+    type: 'varchar',
+    length: 200,
+    nullable: true,
+  })
+  ComprobanteArchivo: string | null;
 
   @OneToMany(() => CompraItem, (item) => item.Compra, { cascade: true })
   Items?: CompraItem[];

@@ -3,9 +3,11 @@ import {
   ExecutionContext,
   Injectable,
   NestInterceptor,
+  StreamableFile,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
+import { Readable } from 'stream';
 
 function toCamelCaseKey(key: string): string {
   if (!key || key[0] === key[0].toLowerCase()) {
@@ -15,8 +17,22 @@ function toCamelCaseKey(key: string): string {
   return key[0].toLowerCase() + key.slice(1);
 }
 
+function esBinarioOStream(value: unknown): boolean {
+  if (value == null || typeof value !== 'object') return false;
+  if (value instanceof Date || value instanceof StreamableFile) return true;
+  if (typeof Buffer !== 'undefined' && Buffer.isBuffer(value)) return true;
+  if (value instanceof Readable || value instanceof Uint8Array) return true;
+  const ctor = (value as { constructor?: { name?: string } }).constructor?.name;
+  if (ctor === 'StreamableFile' || ctor === 'File' || ctor === 'Blob') return true;
+  const obj = value as { getStream?: unknown; pipe?: unknown; stream?: unknown };
+  if (typeof obj.getStream === 'function' || typeof obj.pipe === 'function') {
+    return true;
+  }
+  return false;
+}
+
 function toCamelCaseDeep(value: unknown): unknown {
-  if (value instanceof Date) {
+  if (esBinarioOStream(value)) {
     return value;
   }
 
@@ -39,6 +55,11 @@ function toCamelCaseDeep(value: unknown): unknown {
 @Injectable()
 export class CamelCaseInterceptor implements NestInterceptor {
   intercept(_context: ExecutionContext, next: CallHandler): Observable<unknown> {
-    return next.handle().pipe(map((data) => toCamelCaseDeep(data)));
+    return next.handle().pipe(
+      map((data) => {
+        if (esBinarioOStream(data)) return data;
+        return toCamelCaseDeep(data);
+      }),
+    );
   }
 }
