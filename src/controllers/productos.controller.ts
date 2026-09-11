@@ -8,6 +8,7 @@ import {
   Param,
   Post,
   Put,
+  Query,
   UseGuards,
 } from '@nestjs/common';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
@@ -34,6 +35,11 @@ export class ProductosController {
   @RequierePermiso('ver_inventario', 'ver_panel_administrativo')
   listarAlertasStock() {
     return this.productosService.listarAlertasStock();
+  }
+
+  @Get('disponibilidad-puntos-venta')
+  obtenerDisponibilidadPuntosVenta(@Query('ids') ids?: string) {
+    return this.inventarioService.obtenerDisponibilidadPuntosVenta(ids);
   }
 
   @Get(':id/stock')

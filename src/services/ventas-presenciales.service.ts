@@ -324,6 +324,7 @@ export class VentasPresencialesService {
           MetodoPago: metodoPago.slice(0, 50),
           Estado: 'Enviado',
           FacturaId: null,
+          UbicacionId: ubicacion.Id,
         }),
       );
 

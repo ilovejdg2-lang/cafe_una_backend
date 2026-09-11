@@ -24,20 +24,30 @@ describe('ComprasService historial', () => {
   const dataSource = {
     createQueryRunner: jest.fn(() => queryRunner),
   };
+  const clientesService = {
+    obtenerFichaPorUsuarioId: jest.fn().mockResolvedValue(null),
+  };
 
   let service: ComprasService;
 
   beforeEach(() => {
     jest.clearAllMocks();
+    clientesService.obtenerFichaPorUsuarioId.mockResolvedValue(null);
     service = new ComprasService(
       comprasRepository as never,
       dataSource as never,
+      clientesService as never,
     );
   });
 
   it('registers a completed purchase with items', async () => {
     manager.findOne
-      .mockResolvedValueOnce({ Id: 1, Codigo: 'BODEGA_CENTRAL' })
+      .mockResolvedValueOnce({
+        Id: 2,
+        Codigo: 'POS_FUNA_UNA',
+        Nombre: 'FUNA-UNA',
+        Activo: true,
+      })
       .mockResolvedValueOnce({
         Id: '1',
         Nombre: 'Café molido',
@@ -60,9 +70,12 @@ describe('ComprasService historial', () => {
       Subtotal: '5309.73',
       Impuestos: '690.27',
       Total: '6000',
-      MetodoPago: 'Tarjeta',
-      Estado: 'Pagado',
+      MetodoPago: 'Comprobante',
+      Estado: 'Pendiente',
       FacturaId: null,
+      UbicacionId: 2,
+      Ubicacion: { Id: 2, Codigo: 'POS_FUNA_UNA', Nombre: 'FUNA-UNA' },
+      ComprobanteArchivo: 'comprobante-test.jpg',
       Items: [
         {
           ProductoId: '1',
@@ -78,6 +91,8 @@ describe('ComprasService historial', () => {
       {
         clienteNombre: 'Ana Cliente',
         clienteCorreo: 'ana@una.cr',
+        ubicacionCodigo: 'POS_FUNA_UNA',
+        comprobanteArchivo: 'comprobante-test.jpg',
         items: [
           {
             id: '1',
@@ -87,11 +102,7 @@ describe('ComprasService historial', () => {
             subtotal: 6000,
           },
         ],
-        subtotal: 5309.73,
-        impuestos: 690.27,
-        total: 6000,
-        estado: 'Pagado',
-        metodoPago: 'Tarjeta',
+        metodoPago: 'Comprobante',
       },
       7,
     );
@@ -101,6 +112,7 @@ describe('ComprasService historial', () => {
     expect(queryRunner.release).toHaveBeenCalledTimes(1);
     expect(detalle.clienteNombre).toBe('Ana Cliente');
     expect(detalle.total).toBe(6000);
+    expect(detalle.ubicacionCodigo).toBe('POS_FUNA_UNA');
     expect(detalle.items).toHaveLength(1);
   });
 
@@ -201,7 +213,7 @@ describe('ComprasService historial', () => {
     );
     expect(qb.andWhere).toHaveBeenCalledWith(
       'compra.Estado IN (:...estados)',
-      { estados: ['Enviado', 'Enviada', 'Recibido', 'Pagado'] },
+      { estados: ['Entregado', 'Enviado', 'Enviada', 'Recibido', 'Pagado'] },
     );
   });
 

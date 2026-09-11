@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { getAuditoriaUserId } from '../common/auditoria-context';
 import { Auditoria } from '../entities/auditoria.entity';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
@@ -26,6 +26,33 @@ export const CANONICAL_LOCATIONS = [
 ] as const;
 
 export const BODEGA_CENTRAL = 'BODEGA_CENTRAL';
+
+const CODIGOS_EXCLUIDOS_VENTA_CLIENTE = new Set([
+  BODEGA_CENTRAL,
+  'PLATAFORMA_WEB',
+  'POS_WEB',
+  'WEB',
+]);
+
+export function esPuntoVentaCliente(codigo: unknown): boolean {
+  const code = String(codigo || '').trim().toUpperCase();
+  if (!code.startsWith('POS_')) return false;
+  return !CODIGOS_EXCLUIDOS_VENTA_CLIENTE.has(code);
+}
+
+export type DisponibilidadPuntoVenta = {
+  id: number;
+  code: string;
+  name: string;
+};
+
+export type DisponibilidadPuntosVentaResponse = {
+  puntosVenta: DisponibilidadPuntoVenta[];
+  porProducto: Array<{
+    productoId: string;
+    puntos: Array<{ code: string; name: string; stock: number }>;
+  }>;
+};
 
 const LOCATION_CODE_PATTERN = /^[A-Z][A-Z0-9_]{1,48}$/;
 
@@ -543,6 +570,66 @@ export class InventarioService {
       order: { Id: 'ASC' },
     });
     return ubicaciones.map((ubicacion) => this.mapearUbicacion(ubicacion));
+  }
+
+  async obtenerDisponibilidadPuntosVenta(
+    productIdsRaw: unknown,
+  ): Promise<DisponibilidadPuntosVentaResponse> {
+    const productIds = Array.from(
+      new Set(
+        (Array.isArray(productIdsRaw)
+          ? productIdsRaw
+          : String(productIdsRaw ?? '')
+              .split(',')
+              .map((id) => id.trim())
+        )
+          .map((id) => String(id || '').trim())
+          .filter((id) => /^\d+$/.test(id)),
+      ),
+    );
+
+    const ubicaciones = (
+      await this.locationsRepository.find({
+        where: { Activo: true },
+        order: { Nombre: 'ASC' },
+      })
+    ).filter((ubicacion) => esPuntoVentaCliente(ubicacion.Codigo));
+
+    const puntosVenta = ubicaciones.map((ubicacion) => ({
+      id: Number(ubicacion.Id),
+      code: ubicacion.Codigo,
+      name: ubicacion.Nombre,
+    }));
+
+    if (productIds.length === 0 || ubicaciones.length === 0) {
+      return { puntosVenta, porProducto: [] };
+    }
+
+    const balances = await this.stockRepository.find({
+      where: {
+        ProductoId: In(productIds),
+        UbicacionId: In(ubicaciones.map((ubicacion) => Number(ubicacion.Id))),
+      },
+    });
+    const stockPorClave = new Map(
+      balances.map((balance) => [
+        `${balance.ProductoId}:${Number(balance.UbicacionId)}`,
+        Number(balance.Stock) || 0,
+      ]),
+    );
+
+    return {
+      puntosVenta,
+      porProducto: productIds.map((productoId) => ({
+        productoId,
+        puntos: ubicaciones.map((ubicacion) => ({
+          code: ubicacion.Codigo,
+          name: ubicacion.Nombre,
+          stock:
+            stockPorClave.get(`${productoId}:${Number(ubicacion.Id)}`) ?? 0,
+        })),
+      })),
+    };
   }
 
   async crearUbicacion(body: {
