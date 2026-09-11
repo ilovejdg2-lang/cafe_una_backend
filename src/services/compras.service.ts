@@ -6,7 +6,6 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
-import { tienePermiso } from '../common/permisos';
 import {
   insertarMovimientoInventario,
   TIPO_MOVIMIENTO,
@@ -17,26 +16,35 @@ import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
 import { Usuario } from '../entities/usuario.entity';
-import { BODEGA_CENTRAL } from './inventario.service';
+import { ClientesService } from './clientes.service';
+import { BODEGA_CENTRAL, esPuntoVentaCliente } from './inventario.service';
 
 type CompraBody = Record<string, unknown> | undefined | null;
 
-/** Pedido: Pendiente → Aceptado|Rechazado; Aceptado → Enviado|Pendiente; Enviado cerrado. */
+/** Pedido: Pendiente → Aceptado|Rechazado; Aceptado → Entregado|Pendiente; Entregado cerrado. */
 export const ESTADOS_COMPRA = [
   'Pendiente',
   'Aceptado',
+  'Entregado',
   'Enviado',
   'Rechazado',
 ] as const;
 export type EstadoCompra = (typeof ESTADOS_COMPRA)[number];
 
-const ESTADOS_CERRADOS = new Set(['Enviado', 'Enviada', 'Recibido', 'Pagado']);
+const ESTADOS_CERRADOS = new Set([
+  'Entregado',
+  'Enviado',
+  'Enviada',
+  'Recibido',
+  'Pagado',
+]);
 
 /** Estados en los que el stock ya se bajó. */
 const ESTADOS_CON_STOCK = new Set([
   'Aceptado',
   'Aprobado',
   'Aprobada',
+  'Entregado',
   'Enviado',
   'Enviada',
   'Recibido',
@@ -46,8 +54,13 @@ const ESTADOS_CON_STOCK = new Set([
 function normalizarEstadoCompra(estadoRaw: string): string {
   const estado = (estadoRaw || '').trim();
   if (estado === 'Aprobado' || estado === 'Aprobada') return 'Aceptado';
-  if (estado === 'Recibido' || estado === 'Enviada' || estado === 'Pagado') {
-    return 'Enviado';
+  if (
+    estado === 'Recibido' ||
+    estado === 'Enviada' ||
+    estado === 'Enviado' ||
+    estado === 'Pagado'
+  ) {
+    return 'Entregado';
   }
   if (estado === 'Rechazada') return 'Rechazado';
   return estado || 'Pendiente';
@@ -63,7 +76,7 @@ function transicionPermitida(actual: string, nuevo: string): boolean {
     return nuevo === 'Aceptado' || nuevo === 'Rechazado';
   }
   if (actual === 'Aceptado') {
-    return nuevo === 'Enviado' || nuevo === 'Pendiente';
+    return nuevo === 'Entregado' || nuevo === 'Enviado' || nuevo === 'Pendiente';
   }
   if (actual === 'Rechazado') {
     return nuevo === 'Pendiente';
@@ -89,6 +102,26 @@ export type CompraResumen = {
   facturaId: string | null;
   editable: boolean;
   ganado: number | null;
+  ubicacionId: number | null;
+  ubicacionCodigo: string | null;
+  ubicacionNombre: string | null;
+  tieneComprobante: boolean;
+};
+
+export type CompraClienteInfo = {
+  tipo: string | null;
+  nombre: string | null;
+  apellidos: string | null;
+  correo: string;
+  telefono: string | null;
+  tipoDocumento: string | null;
+  identificacion: string | null;
+  razonSocial: string | null;
+  nombreComercial: string | null;
+  representanteLegal: string | null;
+  cedulaJuridica: string | null;
+  direccionFiscal: string | null;
+  telefonoOficina: string | null;
 };
 
 export type CompraDetalle = CompraResumen & {
@@ -99,6 +132,7 @@ export type CompraDetalle = CompraResumen & {
     precioUnitario: number;
     subtotal: number;
   }>;
+  cliente: CompraClienteInfo | null;
 };
 
 @Injectable()
@@ -107,14 +141,11 @@ export class ComprasService {
     @InjectRepository(Compra)
     private readonly comprasRepository: Repository<Compra>,
     private readonly dataSource: DataSource,
+    private readonly clientesService: ClientesService,
   ) {}
 
   async registrar(body: CompraBody, usuarioId: number | null): Promise<CompraDetalle> {
-    const itemsRaw = Array.isArray(body?.items)
-      ? body.items
-      : Array.isArray(body?.Items)
-        ? body.Items
-        : [];
+    const itemsRaw = this.extraerItemsRaw(body);
     if (itemsRaw.length === 0) {
       throw new BadRequestException('La compra debe incluir al menos un producto.');
     }
@@ -140,12 +171,21 @@ export class ComprasService {
     ).trim();
     const metodoPago =
       String(
-        body?.metodoPago ??
+          body?.metodoPago ??
           body?.MetodoPago ??
           body?.metodo ??
           body?.Metodo ??
-          'Tarjeta',
-      ).trim() || 'Tarjeta';
+          'Comprobante',
+      ).trim() || 'Comprobante';
+    const comprobanteArchivo =
+      String(
+        body?.comprobanteArchivo ?? body?.ComprobanteArchivo ?? '',
+      ).trim() || '';
+    if (!comprobanteArchivo) {
+      throw new BadRequestException(
+        'Debés adjuntar el comprobante de pago para completar la compra.',
+      );
+    }
     const estado: EstadoCompra = 'Pendiente';
     const numero =
       String(body?.numero ?? body?.Numero ?? '').trim() ||
@@ -167,14 +207,10 @@ export class ComprasService {
       let subtotal = 0;
       let total = 0;
 
-      const central = await queryRunner.manager.findOne(InventarioUbicacion, {
-        where: { Codigo: BODEGA_CENTRAL },
-      });
-      if (!central) {
-        throw new BadRequestException(
-          'La Bodega Central no está inicializada.',
-        );
-      }
+      const ubicacion = await this.resolverUbicacionCliente(
+        queryRunner.manager,
+        body,
+      );
 
       for (const solicitado of itemsSolicitados) {
         const producto = await queryRunner.manager.findOne(Producto, {
@@ -197,15 +233,15 @@ export class ComprasService {
           {
             where: {
               ProductoId: String(producto.Id),
-              UbicacionId: central.Id,
+              UbicacionId: ubicacion.Id,
             },
             lock: { mode: 'pessimistic_write' },
           },
         );
-        const stockUbicacion = Number(balance?.Stock ?? producto.Stock) || 0;
+        const stockUbicacion = Number(balance?.Stock) || 0;
         if (stockUbicacion < solicitado.cantidad) {
           throw new BadRequestException(
-            `No hay stock suficiente para ${producto.Nombre}.`,
+            `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}. Disponible: ${stockUbicacion}.`,
           );
         }
 
@@ -244,6 +280,8 @@ export class ComprasService {
           MetodoPago: metodoPago.slice(0, 50),
           Estado: estado,
           FacturaId: null,
+          UbicacionId: Number(ubicacion.Id),
+          ComprobanteArchivo: comprobanteArchivo.slice(0, 200),
         }),
       );
 
@@ -278,10 +316,15 @@ export class ComprasService {
     if (!Number.isFinite(compraId) || compraId <= 0) {
       throw new BadRequestException('El identificador de compra no es válido.');
     }
-    const nuevoEstado = String(estadoRaw ?? '').trim();
-    if (!ESTADOS_COMPRA.includes(nuevoEstado as EstadoCompra)) {
+    const nuevoEstado = normalizarEstadoCompra(String(estadoRaw ?? '').trim());
+    if (
+      nuevoEstado !== 'Pendiente' &&
+      nuevoEstado !== 'Aceptado' &&
+      nuevoEstado !== 'Entregado' &&
+      nuevoEstado !== 'Rechazado'
+    ) {
       throw new BadRequestException(
-        'El estado debe ser Pendiente, Aceptado, Enviado o Rechazado.',
+        'El estado debe ser Pendiente, Aceptado, Entregado o Rechazado.',
       );
     }
 
@@ -317,7 +360,7 @@ export class ComprasService {
 
       if (nuevoEstado === actual) {
         await queryRunner.commitTransaction();
-        return this.mapearDetalle({ ...compra, Items: items, Estado: actual });
+        return this.mapearDetalleCompleto({ ...compra, Items: items, Estado: actual });
       }
 
       const teniaStock = stockYaDescontado(actual);
@@ -333,10 +376,10 @@ export class ComprasService {
       await queryRunner.manager.save(compra);
       await queryRunner.commitTransaction();
 
-      return this.mapearDetalle(
+      return this.mapearDetalleCompleto(
         (await this.comprasRepository.findOne({
           where: { Id: compraId },
-          relations: ['Items'],
+          relations: ['Items', 'Usuario', 'Ubicacion'],
         })) as Compra,
       );
     } catch (error) {
@@ -364,6 +407,7 @@ export class ComprasService {
       .createQueryBuilder('compra')
       .leftJoinAndSelect('compra.Items', 'items')
       .leftJoinAndSelect('compra.Usuario', 'usuario')
+      .leftJoinAndSelect('compra.Ubicacion', 'ubicacion')
       .orderBy('compra.Fecha', 'DESC');
 
     if (query.usuarioId) {
@@ -395,9 +439,9 @@ export class ComprasService {
         qb.andWhere('compra.Estado IN (:...estados)', {
           estados: ['Aceptado', 'Aprobado', 'Aprobada'],
         });
-      } else if (estadoFiltro === 'Enviado') {
+      } else if (estadoFiltro === 'Entregado') {
         qb.andWhere('compra.Estado IN (:...estados)', {
-          estados: ['Enviado', 'Enviada', 'Recibido', 'Pagado'],
+          estados: ['Entregado', 'Enviado', 'Enviada', 'Recibido', 'Pagado'],
         });
       } else if (estadoFiltro === 'Rechazado') {
         qb.andWhere('compra.Estado IN (:...estados)', {
@@ -429,6 +473,18 @@ export class ComprasService {
         montoMax: Number(query.montoMax),
       });
     }
+    const ubicacionCodigo = String(
+      query.ubicacionCodigo ?? query.locationCode ?? '',
+    )
+      .trim()
+      .toUpperCase();
+    if (ubicacionCodigo) {
+      qb.andWhere('ubicacion.Codigo = :ubicacionCodigo', { ubicacionCodigo });
+    }
+    const ubicacionId = Number(query.ubicacionId);
+    if (Number.isFinite(ubicacionId) && ubicacionId > 0) {
+      qb.andWhere('compra.UbicacionId = :ubicacionId', { ubicacionId });
+    }
 
     const [rows, total] = await qb
       .skip((page - 1) * pageSize)
@@ -456,7 +512,7 @@ export class ComprasService {
     }
     const compra = await this.comprasRepository.findOne({
       where: { Id: compraId },
-      relations: ['Items', 'Usuario'],
+      relations: ['Items', 'Usuario', 'Ubicacion'],
     });
     if (!compra) throw new NotFoundException('La compra no existe.');
 
@@ -472,7 +528,24 @@ export class ComprasService {
       }
     }
 
-    return this.mapearDetalle(compra);
+    return this.mapearDetalleCompleto(compra);
+  }
+
+  async obtenerNombreArchivoComprobante(
+    id: number | string,
+    usuarioId: number | null,
+    roles: string[],
+  ): Promise<string> {
+    await this.obtenerDetalleAutorizado(id, usuarioId, roles);
+    const compraId = Number(id);
+    const compra = await this.comprasRepository.findOne({
+      where: { Id: compraId },
+    });
+    const filename = String(compra?.ComprobanteArchivo || '').trim();
+    if (!filename) {
+      throw new NotFoundException('Esta compra no tiene comprobante adjunto.');
+    }
+    return filename;
   }
 
   private async descontarStockDeItems(
@@ -480,15 +553,7 @@ export class ComprasService {
     items: CompraItem[],
     compra: Compra,
   ): Promise<void> {
-    const central = await manager.findOne(InventarioUbicacion, {
-      where: { Codigo: BODEGA_CENTRAL },
-    });
-    if (!central) {
-      throw new BadRequestException(
-        'La Bodega Central no está inicializada.',
-      );
-    }
-
+    const ubicacion = await this.resolverUbicacionStock(manager, compra);
     const { responsableId, responsableNombre } =
       await this.resolverResponsableCompra(manager, compra);
 
@@ -509,34 +574,27 @@ export class ComprasService {
       let balance = await manager.findOne(InventarioStockUbicacion, {
         where: {
           ProductoId: String(producto.Id),
-          UbicacionId: central.Id,
+          UbicacionId: ubicacion.Id,
         },
         lock: { mode: 'pessimistic_write' },
       });
-      const stockUbicacion = Number(balance?.Stock ?? producto.Stock) || 0;
+      const stockUbicacion = Number(balance?.Stock) || 0;
       if (stockUbicacion < cantidad) {
         throw new BadRequestException(
-          `No hay stock suficiente para ${producto.Nombre}.`,
+          `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}.`,
         );
       }
 
       if (!balance) {
         balance = manager.create(InventarioStockUbicacion, {
           ProductoId: String(producto.Id),
-          UbicacionId: central.Id,
+          UbicacionId: ubicacion.Id,
           Stock: stockUbicacion,
         });
       }
       balance.Stock = stockUbicacion - cantidad;
-      producto.Stock = balance.Stock;
-      if (producto.Stock <= 0) {
-        producto.Stock = 0;
-        producto.EsDestacado = false;
-        producto.Disponible = false;
-      }
-      producto.AlertaStock = producto.Stock <= (producto.StockMinimo ?? 0);
       await manager.save(balance);
-      await manager.save(producto);
+      await this.sincronizarProductoSiCentral(manager, producto, ubicacion, balance.Stock);
 
       await insertarMovimientoInventario(manager, {
         tipo: TIPO_MOVIMIENTO.VENTA_WEB,
@@ -544,9 +602,9 @@ export class ComprasService {
         cantidad,
         responsableId,
         responsableNombre,
-        notas: `Venta web ${compra.Numero || `#${compra.Id}`}`,
-        ubicacionId: central.Id,
-        ubicacionOrigenId: central.Id,
+        notas: `Venta web ${compra.Numero || `#${compra.Id}`} (${ubicacion.Nombre})`,
+        ubicacionId: ubicacion.Id,
+        ubicacionOrigenId: ubicacion.Id,
       });
     }
   }
@@ -556,15 +614,7 @@ export class ComprasService {
     items: CompraItem[],
     compra: Compra,
   ): Promise<void> {
-    const central = await manager.findOne(InventarioUbicacion, {
-      where: { Codigo: BODEGA_CENTRAL },
-    });
-    if (!central) {
-      throw new BadRequestException(
-        'La Bodega Central no está inicializada.',
-      );
-    }
-
+    const ubicacion = await this.resolverUbicacionStock(manager, compra);
     const { responsableId, responsableNombre } =
       await this.resolverResponsableCompra(manager, compra);
 
@@ -585,26 +635,23 @@ export class ComprasService {
       let balance = await manager.findOne(InventarioStockUbicacion, {
         where: {
           ProductoId: String(producto.Id),
-          UbicacionId: central.Id,
+          UbicacionId: ubicacion.Id,
         },
         lock: { mode: 'pessimistic_write' },
       });
-      const stockUbicacion = Number(balance?.Stock ?? producto.Stock) || 0;
+      const stockUbicacion = Number(balance?.Stock) || 0;
       if (!balance) {
         balance = manager.create(InventarioStockUbicacion, {
           ProductoId: String(producto.Id),
-          UbicacionId: central.Id,
+          UbicacionId: ubicacion.Id,
           Stock: stockUbicacion,
         });
       }
       balance.Stock = stockUbicacion + cantidad;
-      producto.Stock = balance.Stock;
-      if (producto.Stock > 0) {
-        producto.Disponible = true;
-      }
-      producto.AlertaStock = producto.Stock <= (producto.StockMinimo ?? 0);
       await manager.save(balance);
-      await manager.save(producto);
+      await this.sincronizarProductoSiCentral(manager, producto, ubicacion, balance.Stock, {
+        restaurar: true,
+      });
 
       await insertarMovimientoInventario(manager, {
         tipo: TIPO_MOVIMIENTO.ENTRADA,
@@ -612,11 +659,125 @@ export class ComprasService {
         cantidad,
         responsableId,
         responsableNombre,
-        notas: `Reverso de venta web ${compra.Numero || `#${compra.Id}`}`,
-        ubicacionId: central.Id,
-        ubicacionDestinoId: central.Id,
+        notas: `Reverso de venta web ${compra.Numero || `#${compra.Id}`} (${ubicacion.Nombre})`,
+        ubicacionId: ubicacion.Id,
+        ubicacionDestinoId: ubicacion.Id,
       });
     }
+  }
+
+  private async sincronizarProductoSiCentral(
+    manager: EntityManager,
+    producto: Producto,
+    ubicacion: InventarioUbicacion,
+    stockUbicacion: number,
+    opciones: { restaurar?: boolean } = {},
+  ): Promise<void> {
+    if (ubicacion.Codigo !== BODEGA_CENTRAL) return;
+    producto.Stock = Math.max(0, stockUbicacion);
+    if (producto.Stock <= 0) {
+      producto.EsDestacado = false;
+      producto.Disponible = false;
+    } else if (opciones.restaurar) {
+      producto.Disponible = true;
+    }
+    producto.AlertaStock = producto.Stock <= (producto.StockMinimo ?? 0);
+    await manager.save(producto);
+  }
+
+  private tomarCampoBody(body: CompraBody, ...claves: string[]): unknown {
+    if (!body) return '';
+    for (const clave of claves) {
+      const valor = body[clave];
+      if (valor === undefined || valor === null || valor === '') continue;
+      return Array.isArray(valor) ? valor[0] : valor;
+    }
+    return '';
+  }
+
+  private async resolverUbicacionStock(
+    manager: EntityManager,
+    compra: Compra,
+  ): Promise<InventarioUbicacion> {
+    const ubicacionId = Number(compra.UbicacionId);
+    if (Number.isFinite(ubicacionId) && ubicacionId > 0) {
+      const ubicacion = await manager.findOne(InventarioUbicacion, {
+        where: { Id: ubicacionId },
+      });
+      if (!ubicacion) {
+        throw new BadRequestException(
+          'El punto de venta de esta compra ya no existe.',
+        );
+      }
+      return ubicacion;
+    }
+
+    if (String(compra.ComprobanteArchivo || '').trim()) {
+      throw new BadRequestException(
+        'Esta compra no tiene un punto de venta asociado. No se puede ajustar el stock.',
+      );
+    }
+
+    const central = await manager.findOne(InventarioUbicacion, {
+      where: { Codigo: BODEGA_CENTRAL },
+    });
+    if (!central) {
+      throw new BadRequestException('La Bodega Central no está inicializada.');
+    }
+    return central;
+  }
+
+  private async resolverUbicacionCliente(
+    manager: EntityManager,
+    body: CompraBody,
+  ): Promise<InventarioUbicacion> {
+    const idRaw = this.tomarCampoBody(
+      body,
+      'ubicacionId',
+      'UbicacionId',
+    );
+    const codigoRaw = String(
+      this.tomarCampoBody(
+        body,
+        'ubicacionCodigo',
+        'UbicacionCodigo',
+        'ubicacion',
+        'Ubicacion',
+      ) || '',
+    )
+      .trim()
+      .toUpperCase();
+    let ubicacion: InventarioUbicacion | null = null;
+    const id = Number(idRaw);
+    if (Number.isFinite(id) && id > 0) {
+      ubicacion = await manager.findOne(InventarioUbicacion, { where: { Id: id } });
+    }
+    if (!ubicacion && codigoRaw) {
+      ubicacion = await manager.findOne(InventarioUbicacion, {
+        where: { Codigo: codigoRaw },
+      });
+    }
+    if (!ubicacion || !esPuntoVentaCliente(ubicacion.Codigo)) {
+      throw new BadRequestException('Seleccioná un punto de venta válido.');
+    }
+    if (ubicacion.Activo === false) {
+      throw new BadRequestException(
+        'El punto de venta seleccionado está inactivo.',
+      );
+    }
+    return ubicacion;
+  }
+
+  private extraerItemsRaw(body: CompraBody): unknown[] {
+    let raw: unknown = body?.items ?? body?.Items;
+    if (typeof raw === 'string') {
+      try {
+        raw = JSON.parse(raw);
+      } catch {
+        throw new BadRequestException('Los productos de la compra no son válidos.');
+      }
+    }
+    return Array.isArray(raw) ? raw : [];
   }
 
   private async resolverResponsableCompra(
@@ -660,7 +821,7 @@ export class ComprasService {
   private mapearResumen(compra: Compra): CompraResumen {
     const items = compra.Items || [];
     const estado = normalizarEstadoCompra(compra.Estado || '');
-    const esGanada = estado === 'Enviado';
+    const esGanada = estado === 'Entregado';
     const total = Number(compra.Total) || 0;
     const usuario = compra.Usuario;
     const vendedorNombre = String(usuario?.Nombre || usuario?.Correo || '').trim();
@@ -683,6 +844,10 @@ export class ComprasService {
       facturaId: compra.FacturaId,
       editable: estado === 'Pendiente' || estado === 'Aceptado' || estado === 'Rechazado',
       ganado: esGanada ? total : null,
+      ubicacionId: compra.UbicacionId ? Number(compra.UbicacionId) : null,
+      ubicacionCodigo: compra.Ubicacion?.Codigo || null,
+      ubicacionNombre: compra.Ubicacion?.Nombre || null,
+      tieneComprobante: Boolean(String(compra.ComprobanteArchivo || '').trim()),
     };
   }
 
@@ -696,6 +861,33 @@ export class ComprasService {
         precioUnitario: Number(item.PrecioUnitario) || 0,
         subtotal: Number(item.Subtotal) || 0,
       })),
+      cliente: null,
+    };
+  }
+
+  private async mapearDetalleCompleto(compra: Compra): Promise<CompraDetalle> {
+    const detalle = this.mapearDetalle(compra);
+    const usuarioId = compra.UsuarioId ? Number(compra.UsuarioId) : null;
+    if (!usuarioId) return detalle;
+    const ficha = await this.clientesService.obtenerFichaPorUsuarioId(usuarioId);
+    if (!ficha) return detalle;
+    return {
+      ...detalle,
+      cliente: {
+        tipo: ficha.TipoCliente || null,
+        nombre: ficha.NombreLegal,
+        apellidos: ficha.Apellidos,
+        correo: compra.ClienteCorreo,
+        telefono: ficha.Telefono,
+        tipoDocumento: ficha.TipoDocumento,
+        identificacion: ficha.Identificacion,
+        razonSocial: ficha.RazonSocial,
+        nombreComercial: ficha.NombreComercial,
+        representanteLegal: ficha.RepresentanteLegal,
+        cedulaJuridica: ficha.CedulaJuridica,
+        direccionFiscal: ficha.DireccionFiscal,
+        telefonoOficina: ficha.TelefonoOficina,
+      },
     };
   }
 }

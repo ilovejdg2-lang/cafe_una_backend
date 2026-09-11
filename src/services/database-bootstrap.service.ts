@@ -248,6 +248,18 @@ export class DatabaseBootstrapService implements OnModuleInit {
           "Subtotal" numeric(14,2) NOT NULL DEFAULT 0
         );
       `);
+      await this.dataSource.query(`
+        ALTER TABLE compras
+        ADD COLUMN IF NOT EXISTS "UbicacionId" integer NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE compras
+        ADD COLUMN IF NOT EXISTS "ComprobanteArchivo" varchar(200) NULL;
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS "IDX_compras_UbicacionId"
+          ON compras ("UbicacionId");
+      `);
       await this.asegurarTablasSolicitudesCompra();
       await this.asegurarTablasRolesPermisos();
       await this.asegurarTablaDisponibilidadGrupos();
