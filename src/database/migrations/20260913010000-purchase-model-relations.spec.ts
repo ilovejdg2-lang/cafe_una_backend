@@ -18,6 +18,8 @@ describe('PurchaseModelRelations20260913010000', () => {
     expect(sql).toContain('FK_compra_items_ProductoId');
     expect(sql).toContain('compra_items_producto_id_legacy');
     expect(sql).toContain('ALTER COLUMN "ProductoId" TYPE bigint');
+    expect(sql).toContain('btrim("ProductoId") ~ \'^[0-9]+$\'');
+    expect(sql).toContain('9223372036854775807');
     expect(sql).toContain('SET "ProductoId" = NULL');
   });
 

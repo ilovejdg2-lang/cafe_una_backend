@@ -55,8 +55,14 @@ export class PurchaseModelRelations20260913010000
       ALTER COLUMN "ProductoId" DROP NOT NULL,
       ALTER COLUMN "ProductoId" TYPE bigint
       USING CASE
-        WHEN btrim("ProductoId") ~ '^(0|[1-9][0-9]{0,17})$'
-          THEN btrim("ProductoId")::bigint
+        WHEN btrim("ProductoId") ~ '^[0-9]+$' THEN
+          CASE
+            WHEN length(ltrim(btrim("ProductoId"), '0')) <= 19
+              AND COALESCE(NULLIF(ltrim(btrim("ProductoId"), '0'), ''), '0')::numeric
+                <= 9223372036854775807
+              THEN COALESCE(NULLIF(ltrim(btrim("ProductoId"), '0'), ''), '0')::bigint
+            ELSE NULL
+          END
         ELSE NULL
       END;
     `);
