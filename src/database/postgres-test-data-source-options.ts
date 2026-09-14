@@ -5,6 +5,7 @@ import {
   resolveTestDatabaseUrl,
   TestDatabaseEnvironment,
 } from './test-database-url';
+import { LegacyCommerceSchemaBootstrap20260824000000 } from './test-migrations/20260824000000-legacy-commerce-schema-bootstrap';
 
 export function buildPostgresTestDataSourceOptions(
   environment: TestDatabaseEnvironment = process.env,
@@ -13,7 +14,10 @@ export function buildPostgresTestDataSourceOptions(
     type: 'postgres',
     url: resolveTestDatabaseUrl(environment),
     entities,
-    migrations: [join(__dirname, 'migrations', '*.{ts,js}')],
+    migrations: [
+      LegacyCommerceSchemaBootstrap20260824000000,
+      join(__dirname, 'migrations', '!(*.spec).{ts,js}'),
+    ],
     synchronize: false,
     ssl: false,
   };
