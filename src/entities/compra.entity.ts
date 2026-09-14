@@ -7,7 +7,9 @@ import {
   PrimaryGeneratedColumn,
 } from 'typeorm';
 import { CompraItem } from './compra-item.entity';
+import { Factura } from './factura.entity';
 import { InventarioUbicacion } from './inventario-ubicacion.entity';
+import { Pago } from './pago.entity';
 import { Usuario } from './usuario.entity';
 
 @Entity('compras')
@@ -34,31 +36,13 @@ export class Compra {
   @Column({ name: 'Fecha', type: 'timestamptz' })
   Fecha: Date;
 
-  @Column({
-    name: 'Subtotal',
-    type: 'numeric',
-    precision: 14,
-    scale: 2,
-    default: 0,
-  })
+  @Column({ name: 'Subtotal', type: 'numeric', precision: 14, scale: 2, default: 0 })
   Subtotal: string;
 
-  @Column({
-    name: 'Impuestos',
-    type: 'numeric',
-    precision: 14,
-    scale: 2,
-    default: 0,
-  })
+  @Column({ name: 'Impuestos', type: 'numeric', precision: 14, scale: 2, default: 0 })
   Impuestos: string;
 
-  @Column({
-    name: 'Total',
-    type: 'numeric',
-    precision: 14,
-    scale: 2,
-    default: 0,
-  })
+  @Column({ name: 'Total', type: 'numeric', precision: 14, scale: 2, default: 0 })
   Total: string;
 
   @Column({ name: 'MetodoPago', type: 'varchar', length: 50, default: 'Tarjeta' })
@@ -70,6 +54,13 @@ export class Compra {
   @Column({ name: 'FacturaId', type: 'varchar', length: 80, nullable: true })
   FacturaId: string | null;
 
+  @ManyToOne(() => Factura, (factura) => factura.Compras, {
+    nullable: true,
+    onDelete: 'SET NULL',
+  })
+  @JoinColumn({ name: 'FacturaId', referencedColumnName: 'Id' })
+  Factura?: Factura | null;
+
   @Column({ name: 'UbicacionId', type: 'int', nullable: true })
   UbicacionId: number | null;
 
@@ -77,14 +68,12 @@ export class Compra {
   @JoinColumn({ name: 'UbicacionId' })
   Ubicacion?: InventarioUbicacion | null;
 
-  @Column({
-    name: 'ComprobanteArchivo',
-    type: 'varchar',
-    length: 200,
-    nullable: true,
-  })
+  @Column({ name: 'ComprobanteArchivo', type: 'varchar', length: 200, nullable: true })
   ComprobanteArchivo: string | null;
 
   @OneToMany(() => CompraItem, (item) => item.Compra, { cascade: true })
   Items?: CompraItem[];
+
+  @OneToMany(() => Pago, (pago) => pago.Compra)
+  Pagos?: Pago[];
 }
