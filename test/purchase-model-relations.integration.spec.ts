@@ -17,6 +17,14 @@ interface LegacyProductReferenceRow {
   ProductoId: string;
 }
 
+interface InvoiceRow {
+  Id: string | null;
+}
+
+interface IndexRow {
+  indexname: string;
+}
+
 describeIntegration('purchase model relations migration', () => {
   let dataSource: DataSource;
   let queryRunner: QueryRunner;
@@ -72,8 +80,32 @@ describeIntegration('purchase model relations migration', () => {
     if (dataSource?.isInitialized) await dataSource.destroy();
   });
 
-  it('preserves valid references, clears orphans, enforces the FK, and restores legacy values on rollback', async () => {
+  it('preserves legacy data and enforces indexed invoice, product, and payment relations', async () => {
     await migration.up(queryRunner);
+
+    const indexes = (await queryRunner.query(`
+      SELECT indexname
+      FROM pg_indexes
+      WHERE schemaname = current_schema()
+        AND indexname IN ('IDX_compras_FacturaId', 'IDX_compra_items_ProductoId')
+      ORDER BY indexname
+    `)) as IndexRow[];
+    expect(indexes).toEqual([
+      { indexname: 'IDX_compra_items_ProductoId' },
+      { indexname: 'IDX_compras_FacturaId' },
+    ]);
+
+    const invoices = (await queryRunner.query(
+      'SELECT "Id" FROM facturas ORDER BY "Id"',
+    )) as InvoiceRow[];
+    expect(invoices).toEqual([{ Id: 'INV-001' }]);
+
+    await expect(
+      queryRunner.query(
+        'INSERT INTO compras ("Id", "FacturaId") VALUES ($1, $2)',
+        [3, 'UNKNOWN-INVOICE'],
+      ),
+    ).rejects.toThrow();
 
     const converted = (await queryRunner.query(`
       SELECT "Id", "ProductoId"::text AS "ProductoId"
@@ -95,6 +127,24 @@ describeIntegration('purchase model relations migration', () => {
         [7, 1, 404],
       ),
     ).rejects.toThrow();
+
+    await queryRunner.query('DELETE FROM facturas WHERE "Id" = $1', ['INV-001']);
+    await expect(
+      queryRunner.query('SELECT "FacturaId" AS "Id" FROM compras WHERE "Id" = $1', [1]),
+    ).resolves.toEqual([{ Id: null }]);
+
+    await queryRunner.query(
+      'INSERT INTO compras ("Id", "FacturaId") VALUES ($1, $2)',
+      [3, null],
+    );
+    await queryRunner.query(
+      'INSERT INTO pagos ("CompraId", "Monto", "Metodo") VALUES ($1, $2, $3)',
+      [3, '25.00', 'Tarjeta'],
+    );
+    await queryRunner.query('DELETE FROM compras WHERE "Id" = $1', [3]);
+    await expect(
+      queryRunner.query('SELECT count(*)::int AS "count" FROM pagos WHERE "CompraId" = $1', [3]),
+    ).resolves.toEqual([{ count: 0 }]);
 
     await migration.down(queryRunner);
 

@@ -16,6 +16,8 @@ describe('PurchaseModelRelations20260913010000', () => {
     expect(sql).toContain('"CompraId" integer NOT NULL REFERENCES compras("Id") ON DELETE CASCADE');
     expect(sql).toContain('FK_compras_FacturaId');
     expect(sql).toContain('FK_compra_items_ProductoId');
+    expect(sql).toContain('IDX_compras_FacturaId');
+    expect(sql).toContain('IDX_compra_items_ProductoId');
     expect(sql).toContain('compra_items_producto_id_legacy');
     expect(sql).toContain('ALTER COLUMN "ProductoId" TYPE bigint');
     expect(sql).toContain('btrim("ProductoId") ~ \'^[0-9]+$\'');
@@ -29,7 +31,9 @@ describe('PurchaseModelRelations20260913010000', () => {
 
     const sql = query.mock.calls.map(([statement]) => String(statement)).join('\n');
     expect(sql).toContain('DROP TABLE pagos');
+    expect(sql).toContain('DROP INDEX "IDX_compra_items_ProductoId"');
     expect(sql).toContain('DROP CONSTRAINT "FK_compra_items_ProductoId"');
+    expect(sql).toContain('DROP INDEX "IDX_compras_FacturaId"');
     expect(sql).toContain('DROP CONSTRAINT "FK_compras_FacturaId"');
     expect(sql).toContain('DROP TABLE facturas');
     expect(sql).toContain('DROP TABLE compra_items_producto_id_legacy');

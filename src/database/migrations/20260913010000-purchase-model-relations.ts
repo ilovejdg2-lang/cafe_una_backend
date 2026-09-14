@@ -83,10 +83,16 @@ export class PurchaseModelRelations20260913010000
       ON DELETE SET NULL;
     `);
     await queryRunner.query(`
+      CREATE INDEX "IDX_compras_FacturaId" ON compras ("FacturaId");
+    `);
+    await queryRunner.query(`
       ALTER TABLE compra_items
       ADD CONSTRAINT "FK_compra_items_ProductoId"
       FOREIGN KEY ("ProductoId") REFERENCES productos("Id")
       ON DELETE RESTRICT;
+    `);
+    await queryRunner.query(`
+      CREATE INDEX "IDX_compra_items_ProductoId" ON compra_items ("ProductoId");
     `);
 
     await queryRunner.query(`
@@ -106,6 +112,7 @@ export class PurchaseModelRelations20260913010000
 
   async down(queryRunner: QueryRunner): Promise<void> {
     await queryRunner.query('DROP TABLE pagos;');
+    await queryRunner.query('DROP INDEX "IDX_compra_items_ProductoId";');
     await queryRunner.query(
       'ALTER TABLE compra_items DROP CONSTRAINT "FK_compra_items_ProductoId";',
     );
@@ -128,6 +135,7 @@ export class PurchaseModelRelations20260913010000
       ALTER COLUMN "ProductoId" SET NOT NULL;
     `);
     await queryRunner.query('DROP TABLE compra_items_producto_id_legacy;');
+    await queryRunner.query('DROP INDEX "IDX_compras_FacturaId";');
     await queryRunner.query(
       'ALTER TABLE compras DROP CONSTRAINT "FK_compras_FacturaId";',
     );
