@@ -3,9 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailService } from '../common/email.service';
 import {
-  TOKEN_LIFETIME_MS,
+  codigoVerificacionValido,
+  expiraEnUtcDesdeAhora,
   generarCodigoNumerico,
-  mensajeEsperaCorreoPorMinutos,
+  mensajeEsperaCorreo,
+  normalizarCodigoVerificacion,
 } from '../common/verificacion-correo.util';
 import { UsuarioValidacion } from '../common/usuario-validacion';
 import { hashearContrasena } from '../common/password.util';
@@ -66,7 +68,7 @@ export class UsuariosAdminService {
       if (pendienteActivo.Nombre.toLowerCase() !== nombre.toLowerCase()) {
         throw new Error('Ese correo ya tiene una creación en proceso.');
       }
-      const mensajeEspera = mensajeEsperaCorreoPorMinutos(pendienteActivo.ExpiraEnUtc);
+      const mensajeEspera = mensajeEsperaCorreo(pendienteActivo.ExpiraEnUtc);
       if (mensajeEspera) {
         return { EmailEnviado: false, MensajeError: mensajeEspera };
       }
@@ -90,7 +92,7 @@ export class UsuariosAdminService {
         Nombre: nombre,
         PasswordHash: passwordHash,
         Roles: roles,
-        ExpiraEnUtc: new Date(now.getTime() + TOKEN_LIFETIME_MS),
+        ExpiraEnUtc: expiraEnUtcDesdeAhora(),
         Usado: false,
       }),
     );
@@ -108,10 +110,13 @@ export class UsuariosAdminService {
     Token: string;
   }): Promise<Usuario> {
     const correo = request.Correo.trim().toLowerCase();
-    const codigo = request.Token.trim();
+    const codigo = normalizarCodigoVerificacion(request.Token);
 
     if (!correo || !codigo) {
       throw new Error('Correo y código son obligatorios.');
+    }
+    if (!codigoVerificacionValido(codigo)) {
+      throw new Error('El código debe tener 5 dígitos.');
     }
 
     const now = new Date();

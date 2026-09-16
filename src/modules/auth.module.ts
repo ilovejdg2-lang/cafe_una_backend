@@ -1,4 +1,5 @@
 import { Module, forwardRef } from '@nestjs/common';
+import { ConfigModule, ConfigService } from '@nestjs/config';
 import { JwtModule } from '@nestjs/jwt';
 import { PassportModule } from '@nestjs/passport';
 import { TypeOrmModule } from '@nestjs/typeorm';
@@ -15,7 +16,28 @@ import { UsuariosModule } from './usuarios.module';
 @Module({
   imports: [
     PassportModule.register({ defaultStrategy: 'jwt' }),
-    JwtModule.register({}),
+    JwtModule.registerAsync({
+      imports: [ConfigModule],
+      inject: [ConfigService],
+      useFactory: (config: ConfigService) => {
+        const secret = config.get<string>('JWT_SECRET')?.trim();
+        if (!secret || secret.length < 32) {
+          throw new Error(
+            'JWT_SECRET debe existir y tener al menos 32 caracteres.',
+          );
+        }
+        const issuer = config.get<string>('JWT_ISSUER')?.trim();
+        const audience = config.get<string>('JWT_AUDIENCE')?.trim();
+        return {
+          secret,
+          signOptions: {
+            ...(issuer ? { issuer } : {}),
+            ...(audience ? { audience } : {}),
+            expiresIn: '1h',
+          },
+        };
+      },
+    }),
     TypeOrmModule.forFeature([RegistroPendiente, PasswordResetEntry]),
     EmailModule,
     forwardRef(() => UsuariosModule),

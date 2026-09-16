@@ -3,9 +3,11 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailService } from '../common/email.service';
 import {
-  TOKEN_LIFETIME_MS,
+  codigoVerificacionValido,
+  expiraEnUtcDesdeAhora,
   generarCodigoNumerico,
-  mensajeEsperaCorreoPorMinutos,
+  mensajeEsperaCorreo,
+  normalizarCodigoVerificacion,
 } from '../common/verificacion-correo.util';
 import { UsuarioValidacion } from '../common/usuario-validacion';
 import { CambioCorreoPendiente } from '../entities/cambio-correo-pendiente.entity';
@@ -54,7 +56,7 @@ export class PerfilService {
       .getOne();
 
     if (pendienteActivo) {
-      const mensajeEspera = mensajeEsperaCorreoPorMinutos(pendienteActivo.ExpiraEnUtc);
+      const mensajeEspera = mensajeEsperaCorreo(pendienteActivo.ExpiraEnUtc);
       if (mensajeEspera) {
         return { EmailEnviado: false, MensajeError: mensajeEspera };
       }
@@ -75,7 +77,7 @@ export class PerfilService {
         UsuarioId: usuarioId,
         NuevoCorreo: correo,
         Token: token,
-        ExpiraEnUtc: new Date(now.getTime() + TOKEN_LIFETIME_MS),
+        ExpiraEnUtc: expiraEnUtcDesdeAhora(),
         Usado: false,
       }),
     );
@@ -94,10 +96,13 @@ export class PerfilService {
     token: string,
   ): Promise<UsuarioPerfilResponse> {
     const correo = nuevoCorreo.trim().toLowerCase();
-    const codigo = token.trim();
+    const codigo = normalizarCodigoVerificacion(token);
 
     if (!correo || !codigo) {
       throw new Error('Correo y código son obligatorios.');
+    }
+    if (!codigoVerificacionValido(codigo)) {
+      throw new Error('El código debe tener 5 dígitos.');
     }
 
     const now = new Date();

@@ -4,6 +4,10 @@ import * as fs from 'fs/promises';
 import * as nodemailer from 'nodemailer';
 import * as path from 'path';
 import { resolverSedeFinca, type SedeFinca } from './sede-finca';
+import {
+  CODIGO_DIGITOS,
+  TOKEN_LIFETIME_MINUTES,
+} from './verificacion-correo.util';
 
 @Injectable()
 export class EmailService {
@@ -48,7 +52,7 @@ export class EmailService {
     enlaceVerificacion?: string,
   ): Promise<boolean> {
     const notaBase =
-      'El código vence en 30 minutos. Si no creaste esta cuenta, ignorá este correo.';
+      `El código tiene ${CODIGO_DIGITOS} dígitos y vence en ${TOKEN_LIFETIME_MINUTES} minutos. Si no creaste esta cuenta, ignorá este correo.`;
     const nota = enlaceVerificacion
       ? `${notaBase} También podés abrir este enlace: ${enlaceVerificacion}`
       : notaBase;
@@ -80,7 +84,7 @@ export class EmailService {
       'Recuperación de contraseña',
       'Usá este código para restablecer tu contraseña:',
       codigo,
-      'El código vence en 30 minutos. Si no solicitaste este cambio, ignorá este correo.',
+      `El código tiene ${CODIGO_DIGITOS} dígitos y vence en ${TOKEN_LIFETIME_MINUTES} minutos. Si no solicitaste este cambio, ignorá este correo.`,
     );
     return this.enviar(
       destinatario,
@@ -100,7 +104,7 @@ export class EmailService {
       'Cambio de correo',
       'Usá este código para confirmar tu nuevo correo en Café UNA:',
       codigo,
-      'El código vence en 30 minutos. Si no solicitaste este cambio, ignorá este correo.',
+      `El código tiene ${CODIGO_DIGITOS} dígitos y vence en ${TOKEN_LIFETIME_MINUTES} minutos. Si no solicitaste este cambio, ignorá este correo.`,
     );
     return this.enviar(
       destinatario,
