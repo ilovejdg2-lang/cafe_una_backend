@@ -11,9 +11,11 @@ import {
 import { EmailService } from '../common/email.service';
 import { MENSAJE_CORREO_NO_ENVIADO } from '../common/respuesta-verificacion';
 import {
-  TOKEN_LIFETIME_MS,
+  codigoVerificacionValido,
+  expiraEnUtcDesdeAhora,
   generarCodigoNumerico,
   mensajeEsperaCorreo,
+  normalizarCodigoVerificacion,
 } from '../common/verificacion-correo.util';
 import { UsuarioValidacion, copiarUsuario } from '../common/usuario-validacion';
 import { PasswordResetEntry } from '../entities/password-reset-entry.entity';
@@ -193,7 +195,7 @@ export class AuthService {
         Correo: correo,
         Nombre: nombre,
         PasswordHash: passwordHash,
-        ExpiraEnUtc: new Date(now.getTime() + TOKEN_LIFETIME_MS),
+        ExpiraEnUtc: expiraEnUtcDesdeAhora(),
         Usado: false,
         EsRegistroCliente: esCliente,
         TipoCliente: tipoCliente,
@@ -231,10 +233,13 @@ export class AuthService {
     Token: string;
   }): Promise<Usuario> {
     const correo = request.Correo.trim().toLowerCase();
-    const token = request.Token.trim().toUpperCase();
+    const token = normalizarCodigoVerificacion(request.Token);
 
     if (!correo || !token) {
       throw new Error('Correo y código son obligatorios.');
+    }
+    if (!codigoVerificacionValido(token)) {
+      throw new Error('El código debe tener 5 dígitos.');
     }
     if (await this.usuariosService.existeCorreo(correo)) {
       throw new Error('Ya existe una cuenta con ese correo.');
@@ -244,7 +249,7 @@ export class AuthService {
     const entry = await this.registrosRepo
       .createQueryBuilder('r')
       .where(
-        'r.Usado = false AND LOWER(r.Correo) = :correo AND UPPER(r.Token) = :token AND r.ExpiraEnUtc > :now',
+        'r.Usado = false AND LOWER(r.Correo) = :correo AND r.Token = :token AND r.ExpiraEnUtc > :now',
         { correo, token, now },
       )
       .getOne();
@@ -340,7 +345,7 @@ export class AuthService {
     if (recuperacionActiva) {
       const mensajeEspera = mensajeEsperaCorreo(recuperacionActiva.ExpiraEnUtc);
       if (mensajeEspera) {
-        return { Mensaje: mensajeEspera };
+        throw new Error(mensajeEspera);
       }
     }
 
@@ -358,7 +363,7 @@ export class AuthService {
       this.passwordResetRepo.create({
         Token: token,
         Correo: usuario.Correo,
-        ExpiraEnUtc: new Date(now.getTime() + TOKEN_LIFETIME_MS),
+        ExpiraEnUtc: expiraEnUtcDesdeAhora(),
         Usado: false,
       }),
     );
@@ -386,10 +391,10 @@ export class AuthService {
     NuevaPassword: string;
     Identifier?: string;
   }): Promise<boolean> {
-    const token = request.Token.trim().toUpperCase();
+    const token = normalizarCodigoVerificacion(request.Token);
     const nuevaPassword = request.NuevaPassword;
     const identifier = (request.Identifier ?? '').trim();
-    if (!token || !identifier) return false;
+    if (!token || !identifier || !codigoVerificacionValido(token)) return false;
 
     UsuarioValidacion.validarPassword(nuevaPassword);
 
@@ -397,7 +402,7 @@ export class AuthService {
     const entry = await this.passwordResetRepo
       .createQueryBuilder('p')
       .where(
-        'p.Usado = false AND UPPER(p.Token) = :token AND p.ExpiraEnUtc > :now',
+        'p.Usado = false AND p.Token = :token AND p.ExpiraEnUtc > :now',
         { token, now },
       )
       .getOne();

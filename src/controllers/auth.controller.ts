@@ -40,9 +40,9 @@ export class AuthController {
     const token = generateToken(
       this.jwtService,
       usuario,
-      this.config.get<string>('JWT_SECRET')!,
-      this.config.get<string>('JWT_ISSUER')!,
-      this.config.get<string>('JWT_AUDIENCE')!,
+      this.config.get<string>('JWT_SECRET')?.trim() || '',
+      this.config.get<string>('JWT_ISSUER')?.trim() || '',
+      this.config.get<string>('JWT_AUDIENCE')?.trim() || '',
     );
     return { token };
   }
@@ -58,9 +58,9 @@ export class AuthController {
     const token = generateToken(
       this.jwtService,
       usuario,
-      this.config.get<string>('JWT_SECRET')!,
-      this.config.get<string>('JWT_ISSUER')!,
-      this.config.get<string>('JWT_AUDIENCE')!,
+      this.config.get<string>('JWT_SECRET')?.trim() || '',
+      this.config.get<string>('JWT_ISSUER')?.trim() || '',
+      this.config.get<string>('JWT_AUDIENCE')?.trim() || '',
     );
     return { token };
   }
@@ -129,9 +129,9 @@ export class AuthController {
       const token = generateToken(
         this.jwtService,
         usuario,
-        this.config.get<string>('JWT_SECRET')!,
-        this.config.get<string>('JWT_ISSUER')!,
-        this.config.get<string>('JWT_AUDIENCE')!,
+        this.config.get<string>('JWT_SECRET')?.trim() || '',
+        this.config.get<string>('JWT_ISSUER')?.trim() || '',
+        this.config.get<string>('JWT_AUDIENCE')?.trim() || '',
       );
       return {
         message: 'Perfil de cliente activado. Ya podés comprar.',
