@@ -394,9 +394,17 @@ export class ComprasService {
     usuarioId: number,
     query: Record<string, string | undefined>,
   ) {
+    const id = Number(usuarioId);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new ForbiddenException(
+        'Debés iniciar sesión para ver tus compras.',
+      );
+    }
+    // CLI-P03: siempre fuerza el usuario del JWT; ignora usuarioId del query.
+    const { usuarioId: _ignorado, ...filtros } = query ?? {};
     return this.listar({
-      ...query,
-      usuarioId: String(usuarioId),
+      ...filtros,
+      usuarioId: String(id),
     });
   }
 

@@ -109,12 +109,18 @@ export class ComprasController {
     );
   }
 
+  /** CLI-P03: historial propio — Pendiente | Aceptado | Entregado | Rechazado. */
   @Get('mias')
   @RequierePermiso('ver_historial_compras_propio')
   listarMias(
     @Req() req: Request & { user: JwtUsuario },
     @Query() query: Record<string, string | undefined>,
   ) {
+    if (req.user?.userId == null) {
+      throw new BadRequestException(
+        'Debés iniciar sesión para ver tus compras.',
+      );
+    }
     return this.comprasService.listarPropias(req.user.userId, query);
   }
 
