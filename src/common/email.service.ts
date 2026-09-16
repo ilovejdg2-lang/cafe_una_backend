@@ -288,6 +288,104 @@ export class EmailService {
     );
   }
 
+  async enviarConfirmacionSolicitudDocumento(
+    destinatario: string,
+    datos: {
+      nombreSolicitante: string;
+      tituloDocumento: string;
+    },
+  ): Promise<boolean> {
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:24px;background:#f4f6fa;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
+    <tr><td style="padding:24px 28px;background:#286f54;color:#fff;">
+      <h1 style="margin:0;font-size:20px;font-weight:700;">Café UNA · Repositorio</h1>
+    </td></tr>
+    <tr><td style="padding:28px;">
+      <h2 style="margin:0 0 12px;color:#1e293b;font-size:18px;">Solicitud de documento recibida</h2>
+      <p style="margin:0 0 16px;color:#475569;font-size:15px;line-height:1.6;">Hola, <strong>${this.escapeHtml(datos.nombreSolicitante)}</strong>:</p>
+      <p style="margin:0 0 16px;color:#475569;font-size:15px;line-height:1.6;">Hemos recibido correctamente tu solicitud para el siguiente material:</p>
+      <div style="background:#f8fafc;border-left:4px solid #286f54;padding:14px 16px;border-radius:4px;margin-bottom:16px;">
+        <span style="font-size:15px;font-weight:600;color:#0f172a;">📄 ${this.escapeHtml(datos.tituloDocumento)}</span>
+      </div>
+      <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6;">
+        Tu solicitud ha quedado en estado <strong>Pendiente</strong>. El equipo administrativo revisará la disponibilidad del documento y te notificaremos cuando sea atendida.
+      </p>
+      <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:16px;">
+        Repositorio institucional Café-UNA · Universidad Nacional de Costa Rica
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    return this.enviar(
+      destinatario,
+      'Solicitud de documentación recibida - Café UNA',
+      html,
+    );
+  }
+
+  async enviarActualizacionSolicitudDocumento(
+    destinatario: string,
+    datos: {
+      nombreSolicitante: string;
+      tituloDocumento: string;
+      estado: string;
+      notasRespuesta?: string | null;
+      tieneArchivoAdjunto?: boolean;
+    },
+  ): Promise<boolean> {
+    const estadoNorm = datos.estado.trim().toLowerCase();
+    const esAtendida = estadoNorm === 'atendida';
+    const esRechazada = estadoNorm === 'rechazada';
+    const colorBorde = esAtendida ? '#166534' : esRechazada ? '#991b1b' : '#d97706';
+    const fondoBadge = esAtendida ? '#f0fdf4' : esRechazada ? '#fef2f2' : '#fffbeb';
+
+    const html = `<!DOCTYPE html>
+<html lang="es">
+<head><meta charset="utf-8"/></head>
+<body style="margin:0;padding:24px;background:#f4f6fa;font-family:Arial,sans-serif;">
+  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
+    <tr><td style="padding:24px 28px;background:#286f54;color:#fff;">
+      <h1 style="margin:0;font-size:20px;font-weight:700;">Café UNA · Repositorio</h1>
+    </td></tr>
+    <tr><td style="padding:28px;">
+      <h2 style="margin:0 0 12px;color:#1e293b;font-size:18px;">Actualización de tu solicitud</h2>
+      <p style="margin:0 0 16px;color:#475569;font-size:15px;line-height:1.6;">Hola, <strong>${this.escapeHtml(datos.nombreSolicitante)}</strong>:</p>
+      <p style="margin:0 0 16px;color:#475569;font-size:15px;line-height:1.6;">Tu solicitud referente al documento:</p>
+      <div style="background:#f8fafc;border-left:4px solid #64748b;padding:12px 16px;border-radius:4px;margin-bottom:16px;">
+        <span style="font-size:15px;font-weight:600;color:#0f172a;">📄 ${this.escapeHtml(datos.tituloDocumento)}</span>
+      </div>
+      <div style="background:${fondoBadge};border-left:4px solid ${colorBorde};padding:14px 16px;border-radius:4px;margin-bottom:16px;color:${colorBorde};font-weight:600;">
+        Estado actual: ${this.escapeHtml(datos.estado)}
+      </div>
+      ${datos.notasRespuesta ? `
+      <div style="margin-bottom:16px;">
+        <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#334155;">Observaciones o respuesta institucional:</p>
+        <p style="margin:0;font-size:14px;color:#475569;background:#f8fafc;padding:12px;border-radius:6px;font-style:italic;">
+          "${this.escapeHtml(datos.notasRespuesta)}"
+        </p>
+      </div>` : ''}
+      ${datos.tieneArchivoAdjunto ? `
+      <p style="margin:16px 0;font-size:14px;color:#166534;font-weight:600;">
+        📎 Se ha adjuntado el archivo solicitado a tu solicitud en la plataforma institucional de Café-UNA.
+      </p>` : ''}
+      <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:16px;">
+        Repositorio institucional Café-UNA · Universidad Nacional de Costa Rica
+      </p>
+    </td></tr>
+  </table>
+</body>
+</html>`;
+    return this.enviar(
+      destinatario,
+      `Actualización de solicitud de documento (${datos.estado}) - Café UNA`,
+      html,
+    );
+  }
+
   async enviarAlertaStockBajo(
     destinatario: string,
     datos: {
