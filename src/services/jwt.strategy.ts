@@ -11,12 +11,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     config: ConfigService,
     private readonly usuariosService: UsuariosService,
   ) {
+    const secret = config.get<string>('JWT_SECRET')?.trim();
+    if (!secret || secret.length < 32) {
+      throw new Error('JWT_SECRET debe existir y tener al menos 32 caracteres.');
+    }
+    const issuer = config.get<string>('JWT_ISSUER')?.trim();
+    const audience = config.get<string>('JWT_AUDIENCE')?.trim();
+
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       ignoreExpiration: false,
-      secretOrKey: config.get<string>('JWT_SECRET')!,
-      issuer: config.get<string>('JWT_ISSUER'),
-      audience: config.get<string>('JWT_AUDIENCE'),
+      secretOrKey: secret,
+      ...(issuer ? { issuer } : {}),
+      ...(audience ? { audience } : {}),
     });
   }
 

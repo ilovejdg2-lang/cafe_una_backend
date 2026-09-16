@@ -394,9 +394,17 @@ export class ComprasService {
     usuarioId: number,
     query: Record<string, string | undefined>,
   ) {
+    const id = Number(usuarioId);
+    if (!Number.isFinite(id) || id <= 0) {
+      throw new ForbiddenException(
+        'Debés iniciar sesión para ver tus compras.',
+      );
+    }
+    // CLI-P03: siempre fuerza el usuario del JWT; ignora usuarioId del query.
+    const { usuarioId: _ignorado, ...filtros } = query ?? {};
     return this.listar({
-      ...query,
-      usuarioId: String(usuarioId),
+      ...filtros,
+      usuarioId: String(id),
     });
   }
 
@@ -561,8 +569,15 @@ export class ComprasService {
       const cantidad = Number(item.Cantidad) || 0;
       if (cantidad <= 0) continue;
 
+      const productoId = item.ProductoId;
+      if (!productoId) {
+        throw new BadRequestException(
+          `No se encontró el producto ${item.Nombre || '(sin referencia)'}.`,
+        );
+      }
+
       const producto = await manager.findOne(Producto, {
-        where: { Id: item.ProductoId },
+        where: { Id: productoId },
         lock: { mode: 'pessimistic_write' },
       });
       if (!producto) {
@@ -622,8 +637,15 @@ export class ComprasService {
       const cantidad = Number(item.Cantidad) || 0;
       if (cantidad <= 0) continue;
 
+      const productoId = item.ProductoId;
+      if (!productoId) {
+        throw new BadRequestException(
+          `No se encontró el producto ${item.Nombre || '(sin referencia)'}.`,
+        );
+      }
+
       const producto = await manager.findOne(Producto, {
-        where: { Id: item.ProductoId },
+        where: { Id: productoId },
         lock: { mode: 'pessimistic_write' },
       });
       if (!producto) {
@@ -855,7 +877,9 @@ export class ComprasService {
     return {
       ...this.mapearResumen(compra),
       items: (compra.Items || []).map((item) => ({
-        productoId: item.ProductoId,
+        // Historical items without a valid product FK still need to be shown
+        // without weakening the public detail contract.
+        productoId: item.ProductoId ?? '',
         nombre: item.Nombre,
         cantidad: Number(item.Cantidad) || 0,
         precioUnitario: Number(item.PrecioUnitario) || 0,

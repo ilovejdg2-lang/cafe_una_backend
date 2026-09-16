@@ -60,6 +60,6 @@ describe('createPostgresTestDataSource', () => {
       synchronize: false,
       ssl: false,
     });
-    expect(dataSource.options.migrations).toHaveLength(1);
+    expect(dataSource.options.migrations).toHaveLength(2);
   });
 });

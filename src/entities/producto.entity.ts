@@ -1,4 +1,5 @@
-import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
+import { Column, Entity, OneToMany, PrimaryGeneratedColumn } from 'typeorm';
+import { CompraItem } from './compra-item.entity';
 
 @Entity('productos')
 export class Producto {
@@ -52,4 +53,7 @@ export class Producto {
 
   @Column({ name: 'Disponible', type: 'boolean', default: true })
   Disponible: boolean;
+
+  @OneToMany(() => CompraItem, (item) => item.Producto)
+  CompraItems?: CompraItem[];
 }

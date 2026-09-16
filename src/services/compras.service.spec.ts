@@ -136,6 +136,43 @@ describe('ComprasService historial', () => {
     });
   });
 
+  it('rejects listarPropias without a valid usuarioId', async () => {
+    await expect(service.listarPropias(0, {})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.listarPropias(Number.NaN, {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+  });
+
+  it('forces JWT usuarioId and ignores query.usuarioId override', async () => {
+    const qb = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    comprasRepository.createQueryBuilder.mockReturnValue(qb);
+
+    await service.listarPropias(22, {
+      usuarioId: '999',
+      estado: 'Rechazado',
+      page: '1',
+      pageSize: '10',
+    });
+
+    expect(qb.andWhere).toHaveBeenCalledWith('compra.UsuarioId = :usuarioId', {
+      usuarioId: 22,
+    });
+    expect(qb.andWhere).toHaveBeenCalledWith('compra.Estado IN (:...estados)', {
+      estados: ['Rechazado', 'Rechazada'],
+    });
+    expect(qb.andWhere).not.toHaveBeenCalledWith(
+      'compra.UsuarioId = :usuarioId',
+      { usuarioId: 999 },
+    );
+  });
+
   it('lists multiple purchases with pagination', async () => {
     const qb = {
       leftJoinAndSelect: jest.fn().mockReturnThis(),

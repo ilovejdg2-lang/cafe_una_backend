@@ -23,10 +23,15 @@ export function generateToken(
     role: roles.length === 1 ? roles[0] : roles,
   };
 
+  const secretLimpio = secret?.trim();
+  if (!secretLimpio || secretLimpio.length < 32) {
+    throw new Error('JWT_SECRET inválido al firmar el token.');
+  }
+
   return jwtService.sign(payload, {
-    secret,
-    issuer,
-    audience,
+    secret: secretLimpio,
+    issuer: issuer?.trim() || undefined,
+    audience: audience?.trim() || undefined,
     expiresIn: '1h',
   });
 }
