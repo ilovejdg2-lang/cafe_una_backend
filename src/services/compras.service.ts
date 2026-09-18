@@ -10,6 +10,7 @@ import {
   insertarMovimientoInventario,
   TIPO_MOVIMIENTO,
 } from '../common/movimiento-inventario.util';
+import { nombreArchivoSeguro } from '../common/upload-paths';
 import { CompraItem } from '../entities/compra-item.entity';
 import { Compra } from '../entities/compra.entity';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
@@ -526,7 +527,8 @@ export class ComprasService {
 
     if (!forRegistrar) {
       const rolesNorm = (roles ?? []).map((r) => String(r).toLowerCase());
-      const esAdmin = rolesNorm.includes('superadmin') || rolesNorm.includes('admin');
+      const esAdmin =
+        rolesNorm.includes('superadmin') || rolesNorm.includes('admin');
       const esPropia =
         usuarioId != null && Number(compra.UsuarioId) === Number(usuarioId);
       if (!esAdmin && !esPropia) {
@@ -549,11 +551,11 @@ export class ComprasService {
     const compra = await this.comprasRepository.findOne({
       where: { Id: compraId },
     });
-    const filename = String(compra?.ComprobanteArchivo || '').trim();
-    if (!filename) {
+    const seguro = nombreArchivoSeguro(String(compra?.ComprobanteArchivo || ''));
+    if (!seguro) {
       throw new NotFoundException('Esta compra no tiene comprobante adjunto.');
     }
-    return filename;
+    return seguro;
   }
 
   private async descontarStockDeItems(
