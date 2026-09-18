@@ -9,14 +9,48 @@ import {
   Post,
   Put,
   Query,
+  StreamableFile,
+  UploadedFile,
   UseGuards,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { createReadStream, existsSync, mkdirSync } from 'fs';
+import { diskStorage } from 'multer';
+import { extname, join, relative, resolve, sep } from 'path';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { BODEGA_CENTRAL } from '../services/inventario.service';
 import { InventarioService } from '../services/inventario.service';
 import { ProductosService } from '../services/productos.service';
+
+const PRODUCTOS_IMAGENES_DIR = join(process.cwd(), 'uploads', 'productos');
+const MAX_IMAGEN_BYTES = 10 * 1024 * 1024;
+const TIPOS_IMAGEN = new Set(['image/jpeg', 'image/png', 'image/webp']);
+const EXTS_IMAGEN = new Set(['.jpg', '.jpeg', '.png', '.webp']);
+
+function asegurarDirectorioImagenes(): void {
+  if (!existsSync(PRODUCTOS_IMAGENES_DIR)) {
+    mkdirSync(PRODUCTOS_IMAGENES_DIR, { recursive: true });
+  }
+}
+
+function esImagenProducto(file: {
+  mimetype?: string;
+  originalname?: string;
+}): boolean {
+  const mime = (file.mimetype ?? '').toLowerCase();
+  const ext = extname(file.originalname ?? '').toLowerCase();
+  return TIPOS_IMAGEN.has(mime) || EXTS_IMAGEN.has(ext);
+}
+
+function mimePorNombre(filename: string): string {
+  const ext = extname(filename).toLowerCase();
+  if (ext === '.png') return 'image/png';
+  if (ext === '.webp') return 'image/webp';
+  return 'image/jpeg';
+}
 
 @Controller('productos')
 export class ProductosController {
@@ -40,6 +74,69 @@ export class ProductosController {
   @Get('disponibilidad-puntos-venta')
   obtenerDisponibilidadPuntosVenta(@Query('ids') ids?: string) {
     return this.inventarioService.obtenerDisponibilidadPuntosVenta(ids);
+  }
+
+  @Post('imagenes')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('crear_productos', 'actualizar_productos')
+  @UseInterceptors(
+    FileInterceptor('imagen', {
+      storage: diskStorage({
+        destination: (_req, _file, cb) => {
+          asegurarDirectorioImagenes();
+          cb(null, PRODUCTOS_IMAGENES_DIR);
+        },
+        filename: (_req, file, cb) => {
+          const ext = EXTS_IMAGEN.has(extname(file.originalname).toLowerCase())
+            ? extname(file.originalname).toLowerCase()
+            : '.jpg';
+          const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+          cb(null, `producto-${unique}${ext}`);
+        },
+      }),
+      limits: { fileSize: MAX_IMAGEN_BYTES },
+      fileFilter: (_req, file, cb) => {
+        if (!esImagenProducto(file)) {
+          cb(
+            new BadRequestException(
+              'La imagen debe ser JPG, PNG o WEBP.',
+            ) as unknown as Error,
+            false,
+          );
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  subirImagen(
+    @UploadedFile()
+    file: { filename: string } | undefined,
+  ) {
+    if (!file?.filename) {
+      throw new BadRequestException('Debés adjuntar una imagen.');
+    }
+    return { url: `/api/productos/imagenes/${file.filename}` };
+  }
+
+  @Get('imagenes/:filename')
+  servirImagen(@Param('filename') filename: string) {
+    if (!/^[A-Za-z0-9._-]+$/.test(filename)) {
+      throw new BadRequestException('Nombre de imagen inválido.');
+    }
+    const root = resolve(PRODUCTOS_IMAGENES_DIR);
+    const absolute = resolve(root, filename);
+    const rel = relative(root, absolute);
+    if (!rel || rel.startsWith('..') || rel.includes(`..${sep}`)) {
+      throw new BadRequestException('Ruta de imagen inválida.');
+    }
+    if (!existsSync(absolute)) {
+      throw new NotFoundException('No se encontró la imagen del producto.');
+    }
+    return new StreamableFile(createReadStream(absolute), {
+      type: mimePorNombre(filename),
+      disposition: `inline; filename="${filename}"`,
+    });
   }
 
   @Get(':id/stock')

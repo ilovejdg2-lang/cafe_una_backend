@@ -16,25 +16,23 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
-import { createReadStream, existsSync, mkdirSync } from 'fs';
+import { createReadStream } from 'fs';
 import { diskStorage } from 'multer';
-import { extname, join, relative, resolve, sep } from 'path';
+import { extname } from 'path';
 import { JwtUsuario } from '../common/permisos';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
+import {
+  asegurarDirectorioUpload,
+  resolverArchivoUpload,
+} from '../common/upload-paths';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { ComprasService } from '../services/compras.service';
 
-const COMPROBANTES_DIR = join(process.cwd(), 'uploads', 'compras');
+const COMPROBANTES_SUBDIR = 'compras';
 const MAX_COMPROBANTE_BYTES = 10 * 1024 * 1024;
 const TIPOS_IMAGEN = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const EXTS_IMAGEN = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-
-function asegurarDirectorioComprobantes(): void {
-  if (!existsSync(COMPROBANTES_DIR)) {
-    mkdirSync(COMPROBANTES_DIR, { recursive: true });
-  }
-}
 
 function esImagenComprobante(file: {
   mimetype?: string;
@@ -63,8 +61,7 @@ export class ComprasController {
     FileInterceptor('comprobante', {
       storage: diskStorage({
         destination: (_req, _file, cb) => {
-          asegurarDirectorioComprobantes();
-          cb(null, COMPROBANTES_DIR);
+          cb(null, asegurarDirectorioUpload(COMPROBANTES_SUBDIR));
         },
         filename: (_req, file, cb) => {
           const ext = EXTS_IMAGEN.has(extname(file.originalname).toLowerCase())
@@ -154,13 +151,8 @@ export class ComprasController {
       req.user.userId ?? null,
       req.user.roles ?? [],
     );
-    const root = resolve(COMPROBANTES_DIR);
-    const absolute = resolve(root, filename);
-    const rel = relative(root, absolute);
-    if (!rel || rel.startsWith('..') || rel.includes(`..${sep}`)) {
-      throw new BadRequestException('Ruta de comprobante inválida.');
-    }
-    if (!existsSync(absolute)) {
+    const absolute = resolverArchivoUpload(COMPROBANTES_SUBDIR, filename);
+    if (!absolute) {
       throw new NotFoundException('No se encontró el archivo del comprobante.');
     }
     return new StreamableFile(createReadStream(absolute), {
