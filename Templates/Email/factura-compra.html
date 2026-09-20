@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="es" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light only" />
+  <title>Factura de compra - Café UNA</title>
+  <style>
+    body, table, td, p, h1, span, a {
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+    img {
+      border: 0;
+      outline: none;
+      text-decoration: none;
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f5f8 !important;color:#1e2d4e !important;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f5f8" style="background-color:#f4f5f8 !important;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="600" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:600px;background-color:#ffffff !important;border:1px solid #e6eaf2;border-radius:8px;overflow:hidden;">
+          <tr>
+            <td align="center" bgcolor="#ffffff" style="padding:28px 20px 16px;">
+              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="180" style="display:block;width:180px;max-width:180px;height:auto;margin:0 auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#C41E3A" style="background-color:#C41E3A;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td bgcolor="#ffffff" style="padding:28px 28px 12px;">
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.5;color:#5f6b82;">{{saludo}}</p>
+              <h1 style="margin:0 0 12px;font-size:22px;line-height:1.35;color:#0D1B3E;font-weight:700;">¡Gracias por tu compra en Café UNA!</h1>
+              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#3a4a6b;">
+                Tu orden ha sido registrada exitosamente. Adjunto a este correo encontrarás tu <strong>Factura Oficial en formato PDF</strong>.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#ffffff" style="padding:0 28px 20px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f9fc" style="background-color:#f7f9fc;border:1px solid #dfe6f0;border-radius:6px;">
+                <tr>
+                  <td style="padding:16px 20px;">
+                    <p style="margin:0 0 6px;font-size:14px;color:#3a4a6b;"><strong>N° de Factura:</strong> <span style="color:#C41E3A;font-weight:bold;">{{numeroFactura}}</span></p>
+                    <p style="margin:0 0 6px;font-size:14px;color:#3a4a6b;"><strong>N° de Orden:</strong> {{numeroCompra}}</p>
+                    <p style="margin:0 0 6px;font-size:14px;color:#3a4a6b;"><strong>Fecha de Emisión:</strong> {{fecha}}</p>
+                    <p style="margin:0;font-size:14px;color:#3a4a6b;"><strong>Método de Pago:</strong> {{metodoPago}}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#ffffff" style="padding:0 28px 20px;">
+              <h3 style="margin:0 0 12px;font-size:16px;color:#0D1B3E;">Detalle de la compra:</h3>
+              <table role="presentation" width="100%" cellpadding="8" cellspacing="0" border="0" style="border-collapse:collapse;font-size:14px;color:#3a4a6b;">
+                <thead>
+                  <tr style="background-color:#0D1B3E;color:#ffffff;text-align:left;">
+                    <th style="padding:10px;border-top-left-radius:4px;">Producto</th>
+                    <th style="padding:10px;text-align:center;">Cant.</th>
+                    <th style="padding:10px;text-align:right;">Precio</th>
+                    <th style="padding:10px;text-align:right;border-top-right-radius:4px;">Subtotal</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {{tablaItems}}
+                </tbody>
+                <tfoot>
+                  <tr>
+                    <td colspan="3" style="padding:10px 10px 4px;text-align:right;color:#5f6b82;">Subtotal neto:</td>
+                    <td style="padding:10px 10px 4px;text-align:right;font-weight:bold;">{{subtotal}}</td>
+                  </tr>
+                  <tr>
+                    <td colspan="3" style="padding:4px 10px;text-align:right;color:#5f6b82;">IVA (13%):</td>
+                    <td style="padding:4px 10px;text-align:right;font-weight:bold;">{{impuestos}}</td>
+                  </tr>
+                  <tr style="border-top:2px solid #0D1B3E;">
+                    <td colspan="3" style="padding:10px;text-align:right;font-size:16px;font-weight:bold;color:#0D1B3E;">Total:</td>
+                    <td style="padding:10px;text-align:right;font-size:16px;font-weight:bold;color:#C41E3A;">{{total}}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#ffffff" style="padding:0 28px 28px;">
+              <div style="background-color:#eff4fc;border-left:4px solid #0D1B3E;padding:14px 16px;border-radius:4px;">
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#2c3e66;">
+                  📄 <strong>Nota:</strong> Tu factura electrónica ha sido generada y adjuntada en este correo. Podés consultar y descargar tus facturas en cualquier momento desde tu perfil en nuestra plataforma.
+                </p>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#f7f9fc" style="background-color:#f7f9fc;padding:20px 28px;text-align:center;border-top:1px solid #e6eaf2;">
+              <p style="margin:0 0 6px;font-size:13px;color:#8a96ad;">
+                <strong>Café UNA</strong> — Universidad Nacional de Costa Rica
+              </p>
+              <p style="margin:0;font-size:12px;color:#a0aec0;">
+                Finca Experimental Santa Lucía, Barva de Heredia | contacto@cafeuna.ac.cr
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

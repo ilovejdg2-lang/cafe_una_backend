@@ -343,6 +343,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.asegurarTablaVisitasGrupales();
       await this.asegurarPerfilClienteCliP01();
       await this.asegurarFaqInicio();
+      await this.asegurarTablasFacturacion();
       this.logger.log(
         `Conexión a PostgreSQL establecida (${postgres.host}/${postgres.database} como ${postgres.user}).`,
       );
@@ -1460,6 +1461,74 @@ export class DatabaseBootstrapService implements OnModuleInit {
           'Complete the volunteering form with your modality, type of support and available dates. You will receive an email when your request is reviewed.',
           4
         );
+    `);
+  }
+
+  private async asegurarTablasFacturacion(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS facturas (
+        "Id" varchar(80) PRIMARY KEY,
+        "CreadaEn" timestamptz NOT NULL DEFAULT NOW()
+      );
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE facturas
+        ADD COLUMN IF NOT EXISTS "CompraId" integer NULL,
+        ADD COLUMN IF NOT EXISTS "UsuarioId" integer NULL,
+        ADD COLUMN IF NOT EXISTS "NumeroConsecutivo" varchar(50) NULL,
+        ADD COLUMN IF NOT EXISTS "Subtotal" numeric(14,2) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS "Impuestos" numeric(14,2) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS "Total" numeric(14,2) NOT NULL DEFAULT 0,
+        ADD COLUMN IF NOT EXISTS "UrlPdf" varchar(500) NULL,
+        ADD COLUMN IF NOT EXISTS "ArchivoPdf" varchar(200) NULL,
+        ADD COLUMN IF NOT EXISTS "FechaEmision" timestamptz NOT NULL DEFAULT NOW(),
+        ADD COLUMN IF NOT EXISTS "Estado" varchar(30) NOT NULL DEFAULT 'Emitida';
+    `);
+    await this.dataSource.query(`
+      CREATE UNIQUE INDEX IF NOT EXISTS "IDX_facturas_NumeroConsecutivo"
+        ON facturas ("NumeroConsecutivo")
+        WHERE "NumeroConsecutivo" IS NOT NULL;
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_facturas_CompraId"
+        ON facturas ("CompraId");
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_facturas_UsuarioId"
+        ON facturas ("UsuarioId");
+    `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS factura_items (
+        "Id" serial PRIMARY KEY,
+        "FacturaId" varchar(80) NOT NULL REFERENCES facturas("Id") ON DELETE CASCADE,
+        "ProductoId" bigint NULL,
+        "Descripcion" varchar(250) NOT NULL,
+        "Cantidad" integer NOT NULL DEFAULT 1,
+        "PrecioUnitario" numeric(14,2) NOT NULL DEFAULT 0,
+        "Subtotal" numeric(14,2) NOT NULL DEFAULT 0
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_factura_items_FacturaId"
+        ON factura_items ("FacturaId");
+    `);
+
+    // Asegurar triggers de auditoría en tablas de facturación
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF EXISTS (SELECT 1 FROM pg_proc WHERE proname = 'fn_cafe_auditoria') THEN
+          DROP TRIGGER IF EXISTS tr_auditoria_facturas ON facturas;
+          CREATE TRIGGER tr_auditoria_facturas
+            AFTER INSERT OR UPDATE OR DELETE ON facturas
+            FOR EACH ROW EXECUTE FUNCTION fn_cafe_auditoria();
+
+          DROP TRIGGER IF EXISTS tr_auditoria_factura_items ON factura_items;
+          CREATE TRIGGER tr_auditoria_factura_items
+            AFTER INSERT OR UPDATE OR DELETE ON factura_items
+            FOR EACH ROW EXECUTE FUNCTION fn_cafe_auditoria();
+        END IF;
+      END $$;
     `);
   }
 }
