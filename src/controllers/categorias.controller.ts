@@ -37,6 +37,8 @@ export class CategoriasController {
     'actualizar_productos',
     'actualizar_informacion',
     'agregar_imagenes_galeria',
+    'crear_documentacion',
+    'actualizar_documentacion',
   )
   crear(
     @Body()
@@ -65,6 +67,8 @@ export class CategoriasController {
     'actualizar_informacion',
     'agregar_imagenes_galeria',
     'inactivar_informacion',
+    'inactivar_documentacion',
+    'actualizar_documentacion',
   )
   async eliminar(@Param('id') id: string) {
     const deleted = await this.categoriasService.eliminar(id);

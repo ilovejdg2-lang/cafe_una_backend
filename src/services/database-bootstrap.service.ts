@@ -139,6 +139,77 @@ export class DatabaseBootstrapService implements OnModuleInit {
         $$;
       `);
       await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS documentos (
+          "Id" bigserial PRIMARY KEY,
+          "Titulo" varchar(200) NOT NULL,
+          "Descripcion" varchar(2000) NOT NULL DEFAULT '',
+          "Categoria" varchar(80) NOT NULL DEFAULT '',
+          "Subcategoria" varchar(80) NOT NULL DEFAULT '',
+          "NombreArchivo" varchar(255) NOT NULL,
+          "NombreOriginal" varchar(255) NOT NULL,
+          "MimeType" varchar(100) NOT NULL DEFAULT 'application/octet-stream',
+          "TamanoBytes" bigint NOT NULL DEFAULT 0,
+          "EsPrivado" boolean NOT NULL DEFAULT false,
+          "Autor" varchar(150) NOT NULL DEFAULT '',
+          "Version" varchar(20) NOT NULL DEFAULT '1.0',
+          "PalabrasClave" varchar(500) NOT NULL DEFAULT '',
+          "DescargasCount" int NOT NULL DEFAULT 0,
+          "Activo" boolean NOT NULL DEFAULT true,
+          "CreatedAt" timestamp NOT NULL DEFAULT NOW(),
+          "UpdatedAt" timestamp NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS descargas_documentos (
+          "Id" bigserial PRIMARY KEY,
+          "DocumentoId" bigint NOT NULL,
+          "UsuarioId" bigint NULL,
+          "UsuarioNombre" varchar(150) NULL,
+          "Ip" varchar(64) NULL,
+          "FechaDescarga" timestamp NOT NULL DEFAULT NOW()
+        );
+
+        CREATE TABLE IF NOT EXISTS solicitudes_documentos (
+          "Id" bigserial PRIMARY KEY,
+          "DocumentoId" bigint NOT NULL,
+          "DocumentoTitulo" varchar(200) NOT NULL DEFAULT '',
+          "NombreSolicitante" varchar(150) NOT NULL,
+          "CorreoSolicitante" varchar(150) NOT NULL,
+          "Institucion" varchar(150) NOT NULL DEFAULT '',
+          "Motivo" varchar(1000) NOT NULL DEFAULT '',
+          "Estado" varchar(20) NOT NULL DEFAULT 'Pendiente',
+          "TokenDescarga" varchar(100) NULL,
+          "TokenExpira" timestamp NULL,
+          "RespuestaAdmin" varchar(1000) NULL,
+          "AtendidoPor" varchar(150) NULL,
+          "CreatedAt" timestamp NOT NULL DEFAULT NOW(),
+          "UpdatedAt" timestamp NOT NULL DEFAULT NOW()
+        );
+
+        ALTER TABLE solicitudes_documentos
+          ADD COLUMN IF NOT EXISTS "NombreArchivo" varchar(255) NULL,
+          ADD COLUMN IF NOT EXISTS "NombreOriginal" varchar(255) NULL,
+          ADD COLUMN IF NOT EXISTS "MimeType" varchar(100) NULL,
+          ADD COLUMN IF NOT EXISTS "TamanoBytes" bigint NOT NULL DEFAULT 0,
+          ADD COLUMN IF NOT EXISTS "Categoria" varchar(80) NOT NULL DEFAULT '',
+          ADD COLUMN IF NOT EXISTS "PublicadoDocumentoId" bigint NULL;
+
+        INSERT INTO categorias ("Nombre", "Descripcion", "Tipo", "Padre")
+        SELECT 'Investigaciones', 'Publicaciones científicas y estudios del café', 'documento', ''
+        WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE "Tipo" = 'documento' AND "Nombre" = 'Investigaciones');
+
+        INSERT INTO categorias ("Nombre", "Descripcion", "Tipo", "Padre")
+        SELECT 'Manuales y Guías', 'Guías técnicas y manuales de buenas prácticas', 'documento', ''
+        WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE "Tipo" = 'documento' AND "Nombre" = 'Manuales y Guías');
+
+        INSERT INTO categorias ("Nombre", "Descripcion", "Tipo", "Padre")
+        SELECT 'Informes Institucionales', 'Reportes de gestión y rendición de cuentas', 'documento', ''
+        WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE "Tipo" = 'documento' AND "Nombre" = 'Informes Institucionales');
+
+        INSERT INTO categorias ("Nombre", "Descripcion", "Tipo", "Padre")
+        SELECT 'Normativa y Reglamentos', 'Reglamentos y directrices del proyecto Café-UNA', 'documento', ''
+        WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE "Tipo" = 'documento' AND "Nombre" = 'Normativa y Reglamentos');
+      `);
+      await this.dataSource.query(`
         ALTER TABLE productos
         ADD COLUMN IF NOT EXISTS "Categoria" varchar(80) NOT NULL DEFAULT '';
       `);

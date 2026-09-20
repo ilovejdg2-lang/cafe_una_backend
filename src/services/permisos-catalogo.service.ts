@@ -66,34 +66,40 @@ export class PermisosCatalogoService implements OnModuleInit {
       }
     }
 
-    const count = await this.rolPermisoRepo.count();
-    if (count > 0) return;
-
     const roles = await this.rolesRepo.find();
     const permisos = await this.permisosRepo.find();
     const rolPorNombre = new Map(roles.map((r) => [r.Nombre, r]));
     const permisoPorCodigo = new Map(permisos.map((p) => [p.Codigo, p]));
 
-    const filas: RolPermiso[] = [];
+    const filasExistentes = await this.rolPermisoRepo.find();
+    const existeSet = new Set(
+      filasExistentes.map((f) => `${f.RolId}:${f.PermisoId}`),
+    );
+
+    const nuevasFilas: RolPermiso[] = [];
     for (const seed of PERMISOS_SEED) {
       const permiso = permisoPorCodigo.get(seed.codigo);
       if (!permiso) continue;
       for (const nombreRol of seed.roles) {
         const rol = rolPorNombre.get(nombreRol);
         if (!rol) continue;
-        filas.push(
-          this.rolPermisoRepo.create({
-            RolId: rol.Id,
-            PermisoId: permiso.Id,
-            Rol: rol,
-            Permiso: permiso,
-          }),
-        );
+        const clave = `${rol.Id}:${permiso.Id}`;
+        if (!existeSet.has(clave)) {
+          nuevasFilas.push(
+            this.rolPermisoRepo.create({
+              RolId: rol.Id,
+              PermisoId: permiso.Id,
+              Rol: rol,
+              Permiso: permiso,
+            }),
+          );
+          existeSet.add(clave);
+        }
       }
     }
-    if (filas.length > 0) {
-      await this.rolPermisoRepo.save(filas);
-      this.logger.log(`Semilla rol_permiso: ${filas.length} filas.`);
+    if (nuevasFilas.length > 0) {
+      await this.rolPermisoRepo.save(nuevasFilas);
+      this.logger.log(`Semilla rol_permiso sincronizada: ${nuevasFilas.length} nuevas filas.`);
     }
   }
 
@@ -113,6 +119,12 @@ export class PermisosCatalogoService implements OnModuleInit {
       if (!codigo || !rol) continue;
       if (!matriz[codigo]) matriz[codigo] = [];
       if (!matriz[codigo].includes(rol)) matriz[codigo].push(rol);
+    }
+
+    for (const seed of PERMISOS_SEED) {
+      if (!matriz[seed.codigo] || matriz[seed.codigo].length === 0) {
+        matriz[seed.codigo] = [...seed.roles];
+      }
     }
 
     for (const [codigo, roles] of Object.entries(PERMISOS_PUBLICOS_FIJOS)) {

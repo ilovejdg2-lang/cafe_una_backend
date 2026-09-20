@@ -23,6 +23,7 @@ import { SolicitudesCompraModule } from './modules/solicitudes-compra.module';
 import { UsuariosModule } from './modules/usuarios.module';
 import { VisitasModule } from './modules/visitas.module';
 import { VoluntariadoModule } from './modules/voluntariado.module';
+import { DocumentosModule } from './modules/documentos.module';
 
 @Module({
   imports: [
@@ -50,6 +51,7 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
     CedulaModule,
     AuditoriaModule,
     AjustesModule,
+    DocumentosModule,
   ],
   controllers: [HealthController],
   providers: [
