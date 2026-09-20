@@ -6,13 +6,19 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Categoria } from '../entities/categoria.entity';
+import { Documento } from '../entities/documento.entity';
 import { GaleriaInstitucionalItem } from '../entities/galeria-institucional-item.entity';
 import { Producto } from '../entities/producto.entity';
 
 export const TIPO_CATEGORIA_PRODUCTO = 'producto';
 export const TIPO_CATEGORIA_GALERIA = 'galeria';
+export const TIPO_CATEGORIA_DOCUMENTO = 'documento';
 
-const TIPOS = new Set([TIPO_CATEGORIA_PRODUCTO, TIPO_CATEGORIA_GALERIA]);
+const TIPOS = new Set([
+  TIPO_CATEGORIA_PRODUCTO,
+  TIPO_CATEGORIA_GALERIA,
+  TIPO_CATEGORIA_DOCUMENTO,
+]);
 
 type CategoriaConUsos = {
   Id: string;
@@ -31,12 +37,16 @@ export class CategoriasService {
     private readonly productosRepo: Repository<Producto>,
     @InjectRepository(GaleriaInstitucionalItem)
     private readonly galeriaRepo: Repository<GaleriaInstitucionalItem>,
+    @InjectRepository(Documento)
+    private readonly documentosRepo: Repository<Documento>,
   ) {}
 
   normalizarTipo(tipo?: string): string {
     const valor = String(tipo || '').trim().toLowerCase();
     if (!TIPOS.has(valor)) {
-      throw new BadRequestException('El tipo de categoría debe ser producto o galería.');
+      throw new BadRequestException(
+        'El tipo de categoría debe ser producto, galería o documento.',
+      );
     }
     return valor;
   }
@@ -50,14 +60,21 @@ export class CategoriasService {
   }
 
   async listar(tipo?: string, padre?: string): Promise<CategoriaConUsos[]> {
-    const where: { Tipo?: string; Padre?: string } = {};
-    if (tipo) where.Tipo = this.normalizarTipo(tipo);
-    if (padre !== undefined) where.Padre = this.normalizarPadre(padre);
+    const qb = this.repo.createQueryBuilder('c');
+    if (tipo) {
+      qb.andWhere('c.Tipo = :tipo', { tipo: this.normalizarTipo(tipo) });
+    }
+    if (padre !== undefined) {
+      const p = this.normalizarPadre(padre);
+      if (p) {
+        qb.andWhere('LOWER(c.Padre) = LOWER(:padre)', { padre: p });
+      } else {
+        qb.andWhere("(c.Padre = '' OR c.Padre IS NULL)");
+      }
+    }
+    qb.orderBy('c.Padre', 'ASC').addOrderBy('c.Nombre', 'ASC');
 
-    const lista = await this.repo.find({
-      where: Object.keys(where).length ? where : undefined,
-      order: { Padre: 'ASC', Nombre: 'ASC' },
-    });
+    const lista = await qb.getMany();
 
     return Promise.all(
       lista.map(async (item) => ({
@@ -80,9 +97,18 @@ export class CategoriasService {
       await this.asegurar(padreLimpio, tipoNormalizado, '');
     }
 
-    const existente = await this.repo.findOne({
-      where: { Nombre: limpio, Tipo: tipoNormalizado, Padre: padreLimpio },
-    });
+    const qb = this.repo
+      .createQueryBuilder('c')
+      .where('LOWER(c.Nombre) = LOWER(:nombre)', { nombre: limpio })
+      .andWhere('c.Tipo = :tipo', { tipo: tipoNormalizado });
+
+    if (padreLimpio) {
+      qb.andWhere('LOWER(c.Padre) = LOWER(:padre)', { padre: padreLimpio });
+    } else {
+      qb.andWhere("(c.Padre = '' OR c.Padre IS NULL)");
+    }
+
+    const existente = await qb.getOne();
     if (existente) return existente.Nombre;
 
     const creado = this.repo.create({
@@ -104,9 +130,13 @@ export class CategoriasService {
     const padreLimpio = this.normalizarPadre(padre);
 
     if (padreLimpio) {
-      const padreExiste = await this.repo.findOne({
-        where: { Nombre: padreLimpio, Tipo: tipoNormalizado, Padre: '' },
-      });
+      const padreExiste = await this.repo
+        .createQueryBuilder('c')
+        .where('LOWER(c.Nombre) = LOWER(:padre)', { padre: padreLimpio })
+        .andWhere('c.Tipo = :tipo', { tipo: tipoNormalizado })
+        .andWhere("(c.Padre = '' OR c.Padre IS NULL)")
+        .getOne();
+
       if (!padreExiste) {
         throw new BadRequestException(
           'La categoría padre no existe. Créela primero.',
@@ -114,9 +144,18 @@ export class CategoriasService {
       }
     }
 
-    const existente = await this.repo.findOne({
-      where: { Nombre: limpio, Tipo: tipoNormalizado, Padre: padreLimpio },
-    });
+    const qb = this.repo
+      .createQueryBuilder('c')
+      .where('LOWER(c.Nombre) = LOWER(:nombre)', { nombre: limpio })
+      .andWhere('c.Tipo = :tipo', { tipo: tipoNormalizado });
+
+    if (padreLimpio) {
+      qb.andWhere('LOWER(c.Padre) = LOWER(:padre)', { padre: padreLimpio });
+    } else {
+      qb.andWhere("(c.Padre = '' OR c.Padre IS NULL)");
+    }
+
+    const existente = await qb.getOne();
     if (existente) return existente;
 
     return this.repo.save(
@@ -147,12 +186,22 @@ export class CategoriasService {
 
     const usos = await this.contarUsos(item.Nombre, item.Tipo, padre);
     if (usos > 0) {
+      if (item.Tipo === TIPO_CATEGORIA_GALERIA) {
+        throw new ConflictException(
+          'No se puede borrar: hay fotos de la galería con esta categoría.',
+        );
+      }
+      if (item.Tipo === TIPO_CATEGORIA_DOCUMENTO) {
+        throw new ConflictException(
+          padre
+            ? 'No se puede borrar: hay documentos con esta subcategoría.'
+            : 'No se puede borrar: hay documentos con esta categoría.',
+        );
+      }
       throw new ConflictException(
-        item.Tipo === TIPO_CATEGORIA_GALERIA
-          ? 'No se puede borrar: hay fotos de la galería con esta categoría.'
-          : padre
-            ? 'No se puede borrar: hay productos con esta subcategoría.'
-            : 'No se puede borrar: hay productos con esta categoría.',
+        padre
+          ? 'No se puede borrar: hay productos con esta subcategoría.'
+          : 'No se puede borrar: hay productos con esta categoría.',
       );
     }
 
@@ -169,6 +218,20 @@ export class CategoriasService {
       return this.galeriaRepo
         .createQueryBuilder('item')
         .where('LOWER(item.Categoria) = LOWER(:nombre)', { nombre })
+        .getCount();
+    }
+
+    if (tipo === TIPO_CATEGORIA_DOCUMENTO) {
+      if (padre) {
+        return this.documentosRepo
+          .createQueryBuilder('doc')
+          .where('LOWER(doc.Categoria) = LOWER(:padre)', { padre })
+          .andWhere('LOWER(doc.Subcategoria) = LOWER(:nombre)', { nombre })
+          .getCount();
+      }
+      return this.documentosRepo
+        .createQueryBuilder('doc')
+        .where('LOWER(doc.Categoria) = LOWER(:nombre)', { nombre })
         .getCount();
     }
 

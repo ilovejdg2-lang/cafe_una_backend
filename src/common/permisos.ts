@@ -53,11 +53,11 @@ export type JwtUsuario = {
 
 function normalizarRol(rol: string): string {
   const valor = (rol ?? '').trim().toLowerCase();
-  if (valor === 'superadmin') return 'SuperAdmin';
-  if (valor === 'admin') return 'Admin';
+  if (valor === 'superadmin' || valor === 'superadministrador') return 'SuperAdmin';
+  if (valor === 'admin' || valor === 'administrador') return 'Admin';
   if (valor === 'vendedor') return 'Vendedor';
   if (valor === 'cliente') return 'Cliente';
-  if (valor === 'usuario') return 'Usuario';
+  if (valor === 'usuario' || valor === 'user') return 'Usuario';
   return (rol ?? '').trim();
 }
 
