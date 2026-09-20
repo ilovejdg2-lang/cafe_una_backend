@@ -19,7 +19,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     const audience = config.get<string>('JWT_AUDIENCE')?.trim();
 
     super({
-      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      jwtFromRequest: ExtractJwt.fromExtractors([
+        ExtractJwt.fromAuthHeaderAsBearerToken(),
+        ExtractJwt.fromUrlQueryParameter('token'),
+      ]),
       ignoreExpiration: false,
       secretOrKey: secret,
       ...(issuer ? { issuer } : {}),

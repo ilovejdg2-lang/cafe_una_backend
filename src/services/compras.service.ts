@@ -2,7 +2,9 @@ import {
   BadRequestException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
@@ -18,6 +20,9 @@ import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { ClientesService } from './clientes.service';
+import { FacturaPdfService } from './factura-pdf.service';
+import { FacturasNotificacionesService } from './facturas-notificaciones.service';
+import { FacturasService } from './facturas.service';
 import { BODEGA_CENTRAL, esPuntoVentaCliente } from './inventario.service';
 
 type CompraBody = Record<string, unknown> | undefined | null;
@@ -138,11 +143,17 @@ export type CompraDetalle = CompraResumen & {
 
 @Injectable()
 export class ComprasService {
+  private readonly logger = new Logger(ComprasService.name);
+
   constructor(
     @InjectRepository(Compra)
     private readonly comprasRepository: Repository<Compra>,
     private readonly dataSource: DataSource,
     private readonly clientesService: ClientesService,
+    @Optional()
+    private readonly facturasService?: FacturasService,
+    @Optional()
+    private readonly notificacionesService?: FacturasNotificacionesService,
   ) {}
 
   async registrar(body: CompraBody, usuarioId: number | null): Promise<CompraDetalle> {
@@ -300,6 +311,25 @@ export class ComprasService {
       );
 
       await queryRunner.commitTransaction();
+
+      // Notificación al cliente: Orden recibida en revisión (la factura se generará y enviará cuando sea Aceptada por el admin)
+      if (this.notificacionesService && compra.ClienteCorreo) {
+        setImmediate(async () => {
+          try {
+            await this.notificacionesService?.enviarActualizacionEstadoCompra(
+              compra,
+              'Pendiente',
+            );
+          } catch (err) {
+            this.logger.error(
+              `Error enviando notificación de orden pendiente #${compra.Id}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        });
+      }
+
       return this.obtenerDetalleAutorizado(compra.Id, usuarioId, ['Cliente'], true);
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -376,6 +406,58 @@ export class ComprasService {
       compra.Estado = nuevoEstado;
       await queryRunner.manager.save(compra);
       await queryRunner.commitTransaction();
+
+      if (compra.ClienteCorreo) {
+        setImmediate(async () => {
+          try {
+            let adjuntosPdf:
+              | Array<{ filename: string; content: Buffer; contentType: string }>
+              | undefined;
+
+            // Requerimiento: Si la orden es Aceptada, generar y enviar factura en PDF al cliente
+            if (nuevoEstado === 'Aceptado' && this.facturasService) {
+              try {
+                this.logger.log(
+                  `Orden #${compra.Id} aceptada: procesando envío de factura a ${compra.ClienteCorreo}...`,
+                );
+                const resultadoFactura =
+                  await this.facturasService.enviarFacturaPorCompra(compra.Id);
+                if (resultadoFactura?.buffer && resultadoFactura?.filename) {
+                  adjuntosPdf = [
+                    {
+                      filename: resultadoFactura.filename,
+                      content: resultadoFactura.buffer,
+                      contentType: 'application/pdf',
+                    },
+                  ];
+                }
+              } catch (facturaErr) {
+                this.logger.error(
+                  `Error al procesar/adjuntar factura para compra #${compra.Id} aceptada: ${
+                    facturaErr instanceof Error
+                      ? facturaErr.message
+                      : String(facturaErr)
+                  }`,
+                );
+              }
+            }
+
+            if (this.notificacionesService) {
+              await this.notificacionesService.enviarActualizacionEstadoCompra(
+                compra,
+                nuevoEstado,
+                adjuntosPdf,
+              );
+            }
+          } catch (err) {
+            this.logger.error(
+              `Error enviando notificación de estado para compra #${compra.Id}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        });
+      }
 
       return this.mapearDetalleCompleto(
         (await this.comprasRepository.findOne({

@@ -24,6 +24,7 @@ import { UsuariosModule } from './modules/usuarios.module';
 import { VisitasModule } from './modules/visitas.module';
 import { VoluntariadoModule } from './modules/voluntariado.module';
 import { DocumentosModule } from './modules/documentos.module';
+import { FacturasModule } from './modules/facturas.module';
 
 @Module({
   imports: [
@@ -43,6 +44,7 @@ import { DocumentosModule } from './modules/documentos.module';
     InventarioModule,
     ActivosFijosModule,
     ComprasModule,
+    FacturasModule,
     DonacionesModule,
     SolicitudesCompraModule,
     InformacionModule,

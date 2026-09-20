@@ -696,11 +696,17 @@ export class EmailService {
 </html>`;
   }
 
-  private async enviar(
+  async enviar(
     destinatario: string,
     subject: string,
     htmlBody: string,
     textBody?: string,
+    attachments?: Array<{
+      filename: string;
+      content?: Buffer | string;
+      path?: string;
+      contentType?: string;
+    }>,
   ): Promise<boolean> {
     const host = this.config.get<string>('SMTP_HOST')?.trim();
     const user = this.config.get<string>('SMTP_USER')?.trim();
@@ -737,6 +743,7 @@ export class EmailService {
         subject,
         html: htmlBody,
         text: textBody || undefined,
+        attachments: attachments && attachments.length > 0 ? attachments : undefined,
       });
 
       this.logger.log(`Correo enviado correctamente a ${destinatario}.`);
