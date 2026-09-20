@@ -41,6 +41,9 @@ import { Factura } from './factura.entity';
 import { FechaRecepcionDonacion } from './fecha-recepcion-donacion.entity';
 import { FechaVoluntariado } from './fecha-voluntariado.entity';
 import { VisitaGrupal } from './visita-grupal.entity';
+import { Documento } from './documento.entity';
+import { DescargaDocumento } from './descarga-documento.entity';
+import { SolicitudDocumento } from './solicitud-documento.entity';
 
 export const entities = [
   Usuario,
@@ -86,6 +89,9 @@ export const entities = [
   FechaRecepcionDonacion,
   FechaVoluntariado,
   VisitaGrupal,
+  Documento,
+  DescargaDocumento,
+  SolicitudDocumento,
 ];
 
 export * from './usuario.entity';
@@ -131,3 +137,6 @@ export * from './donacion-solicitud.entity';
 export * from './fecha-recepcion-donacion.entity';
 export * from './fecha-voluntariado.entity';
 export * from './visita-grupal.entity';
+export * from './documento.entity';
+export * from './descarga-documento.entity';
+export * from './solicitud-documento.entity';
