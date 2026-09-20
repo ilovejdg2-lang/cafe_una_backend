@@ -38,6 +38,7 @@ import { DonacionMaterialAceptado } from './donacion-material-aceptado.entity';
 import { DonacionSolicitud } from './donacion-solicitud.entity';
 import { FaqInicio } from './faq-inicio.entity';
 import { Factura } from './factura.entity';
+import { FacturaItem } from './factura-item.entity';
 import { FechaRecepcionDonacion } from './fecha-recepcion-donacion.entity';
 import { FechaVoluntariado } from './fecha-voluntariado.entity';
 import { VisitaGrupal } from './visita-grupal.entity';
@@ -60,6 +61,7 @@ export const entities = [
   GaleriaInstitucionalItem,
   FaqInicio,
   Factura,
+  FacturaItem,
   SolicitudVoluntariado,
   Pago,
   PasswordResetEntry,
@@ -107,6 +109,7 @@ export * from './informacion-footer.entity';
 export * from './enlace-sitio.entity';
 export * from './faq-inicio.entity';
 export * from './factura.entity';
+export * from './factura-item.entity';
 export * from './galeria-institucional-item.entity';
 export * from './solicitud-voluntariado.entity';
 export * from './pago.entity';

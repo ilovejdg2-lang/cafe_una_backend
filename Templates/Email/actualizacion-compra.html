@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="es" xmlns="http://www.w3.org/1999/xhtml">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light only" />
+  <title>Actualización de tu compra - Café UNA</title>
+  <style>
+    body, table, td, p, h1, span, a {
+      -webkit-text-size-adjust: 100%;
+      -ms-text-size-adjust: 100%;
+    }
+  </style>
+</head>
+<body style="margin:0;padding:0;background-color:#f4f5f8 !important;color:#1e2d4e !important;font-family:Arial,Helvetica,sans-serif;">
+  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f5f8" style="background-color:#f4f5f8 !important;">
+    <tr>
+      <td align="center" style="padding:32px 16px;">
+        <table role="presentation" width="580" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:580px;background-color:#ffffff !important;border:1px solid #e6eaf2;border-radius:8px;overflow:hidden;">
+          <tr>
+            <td align="center" bgcolor="#ffffff" style="padding:28px 20px 16px;">
+              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="180" style="display:block;width:180px;max-width:180px;height:auto;margin:0 auto;" />
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="{{badgeColor}}" style="background-color:{{badgeColor}};height:4px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td bgcolor="#ffffff" style="padding:28px 28px 12px;">
+              <p style="margin:0 0 8px;font-size:15px;line-height:1.5;color:#5f6b82;">{{saludo}}</p>
+              <h1 style="margin:0 0 12px;font-size:22px;line-height:1.35;color:#0D1B3E;font-weight:700;">{{tituloEstado}}</h1>
+              <p style="margin:0 0 16px;font-size:15px;line-height:1.6;color:#3a4a6b;">
+                {{mensajeEstado}}
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#ffffff" style="padding:0 28px 20px;">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f9fc" style="background-color:#f7f9fc;border:1px solid #dfe6f0;border-radius:6px;">
+                <tr>
+                  <td style="padding:18px 20px;">
+                    <p style="margin:0 0 8px;font-size:14px;color:#3a4a6b;"><strong>N° de Orden:</strong> {{numeroCompra}}</p>
+                    <p style="margin:0 0 8px;font-size:14px;color:#3a4a6b;">
+                      <strong>Nuevo Estado:</strong>
+                      <span style="display:inline-block;padding:4px 10px;border-radius:12px;background-color:{{badgeBg}};color:{{badgeColor}};font-weight:bold;font-size:13px;">{{estado}}</span>
+                    </p>
+                    <p style="margin:0 0 8px;font-size:14px;color:#3a4a6b;"><strong>Fecha de Actualización:</strong> {{fechaActualizacion}}</p>
+                    <p style="margin:0;font-size:14px;color:#3a4a6b;"><strong>Total de la Compra:</strong> {{total}}</p>
+                  </td>
+                </tr>
+              </table>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#ffffff" style="padding:0 28px 28px;">
+              <div style="background-color:#eff4fc;border-left:4px solid #0D1B3E;padding:14px 16px;border-radius:4px;">
+                <p style="margin:0;font-size:13px;line-height:1.5;color:#2c3e66;">
+                  Si tenés alguna duda sobre tu orden o deseás coordinar la entrega, podés contactarnos respondiendo a este correo o escribiendo a <strong>contacto@cafeuna.ac.cr</strong>.
+                </p>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td bgcolor="#f7f9fc" style="background-color:#f7f9fc;padding:20px 28px;text-align:center;border-top:1px solid #e6eaf2;">
+              <p style="margin:0 0 6px;font-size:13px;color:#8a96ad;">
+                <strong>Café UNA</strong> — Universidad Nacional de Costa Rica
+              </p>
+              <p style="margin:0;font-size:12px;color:#a0aec0;">
+                Finca Experimental Santa Lucía, Barva de Heredia
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>

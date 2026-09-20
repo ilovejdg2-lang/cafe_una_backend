@@ -31,7 +31,8 @@ const MODULO_TABLAS: Record<string, string[]> = {
     'enlaces_sitio',
     'faq_inicio',
   ],
-  compras: ['compras', 'compra_items'],
+  compras: ['compras', 'compra_items', 'facturas', 'factura_items'],
+  facturacion: ['facturas', 'factura_items'],
 };
 
 const CLAVES_SECRETO =
