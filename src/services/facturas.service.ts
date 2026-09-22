@@ -268,8 +268,13 @@ export class FacturasService {
       throw new NotFoundException('La factura solicitada no existe.');
     }
 
-    if (!factura.ArchivoPdf) {
-      // Intentar regenerar si no estaba almacenado
+    let absolute = factura.ArchivoPdf
+      ? resolverArchivoUpload(FACTURAS_SUBDIR, factura.ArchivoPdf)
+      : null;
+
+    // Regenerar si nunca se guardó el nombre o si el archivo ya no está en disco
+    // (p. ej. redeploy, carpeta uploads limpia, otro entorno).
+    if (!absolute) {
       const resultado = await this.pdfService.generarPdfFactura(factura);
       await this.facturaRepo.actualizarUrlPdf(
         factura.Id,
@@ -277,15 +282,13 @@ export class FacturasService {
         resultado.filename,
       );
       factura.ArchivoPdf = resultado.filename;
+      absolute = resultado.filePath;
     }
 
-    const absolute = resolverArchivoUpload(
-      FACTURAS_SUBDIR,
-      factura.ArchivoPdf,
-    );
-
-    if (!absolute) {
-      throw new NotFoundException('El archivo PDF de la factura no se encuentra en el servidor.');
+    if (!absolute || !factura.ArchivoPdf) {
+      throw new NotFoundException(
+        'El archivo PDF de la factura no se encuentra en el servidor.',
+      );
     }
 
     return {
