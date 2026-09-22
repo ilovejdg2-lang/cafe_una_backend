@@ -73,6 +73,22 @@ export class VisitasController {
     });
   }
 
+  @Get('mias')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('crear_solicitud_visitante', 'ver_solicitudes_propias')
+  obtenerSolicitudesMias(
+    @Req()
+    req: Request & {
+      user: {
+        userId: number;
+      };
+    },
+  ) {
+    return this.visitasService.obtenerSolicitudesDeUsuario(
+      String(req.user.userId),
+    );
+  }
+
   /**
    * Obtener solicitudes de un usuario específico.
    */

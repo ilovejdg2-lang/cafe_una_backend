@@ -27,13 +27,14 @@ import { BODEGA_CENTRAL, esPuntoVentaCliente } from './inventario.service';
 
 type CompraBody = Record<string, unknown> | undefined | null;
 
-/** Pedido: Pendiente → Aceptado|Rechazado; Aceptado → Entregado|Pendiente; Entregado cerrado. */
+/** Pedido: Pendiente → Aceptado|Rechazado; Aceptado → Entregado|Pendiente; Entregado → Devolucion; Devolucion/Entregado cerrados. */
 export const ESTADOS_COMPRA = [
   'Pendiente',
   'Aceptado',
   'Entregado',
   'Enviado',
   'Rechazado',
+  'Devolucion',
 ] as const;
 export type EstadoCompra = (typeof ESTADOS_COMPRA)[number];
 
@@ -43,6 +44,9 @@ const ESTADOS_CERRADOS = new Set([
   'Enviada',
   'Recibido',
   'Pagado',
+  'Devolucion',
+  'Devolución',
+  'Devoluciones',
 ]);
 
 /** Estados en los que el stock ya se bajó. */
@@ -69,6 +73,13 @@ function normalizarEstadoCompra(estadoRaw: string): string {
     return 'Entregado';
   }
   if (estado === 'Rechazada') return 'Rechazado';
+  if (
+    estado === 'Devolución' ||
+    estado === 'Devoluciones' ||
+    estado === 'Devuelto'
+  ) {
+    return 'Devolucion';
+  }
   return estado || 'Pendiente';
 }
 
@@ -83,6 +94,9 @@ function transicionPermitida(actual: string, nuevo: string): boolean {
   }
   if (actual === 'Aceptado') {
     return nuevo === 'Entregado' || nuevo === 'Enviado' || nuevo === 'Pendiente';
+  }
+  if (actual === 'Entregado') {
+    return nuevo === 'Devolucion';
   }
   if (actual === 'Rechazado') {
     return nuevo === 'Pendiente';
@@ -352,10 +366,11 @@ export class ComprasService {
       nuevoEstado !== 'Pendiente' &&
       nuevoEstado !== 'Aceptado' &&
       nuevoEstado !== 'Entregado' &&
-      nuevoEstado !== 'Rechazado'
+      nuevoEstado !== 'Rechazado' &&
+      nuevoEstado !== 'Devolucion'
     ) {
       throw new BadRequestException(
-        'El estado debe ser Pendiente, Aceptado, Entregado o Rechazado.',
+        'El estado debe ser Pendiente, Aceptado, Entregado, Rechazado o Devolucion.',
       );
     }
 
@@ -377,7 +392,12 @@ export class ComprasService {
       compra.Items = items;
 
       const actual = normalizarEstadoCompra(compra.Estado || '');
-      if (ESTADOS_CERRADOS.has(actual) || ESTADOS_CERRADOS.has((compra.Estado || '').trim())) {
+      const cerrado =
+        ESTADOS_CERRADOS.has(actual) ||
+        ESTADOS_CERRADOS.has((compra.Estado || '').trim());
+      const devolucionDesdeEntregado =
+        actual === 'Entregado' && nuevoEstado === 'Devolucion';
+      if (cerrado && !devolucionDesdeEntregado) {
         throw new BadRequestException(
           'Esta compra ya está cerrada y no se puede editar.',
         );
@@ -537,6 +557,10 @@ export class ComprasService {
       } else if (estadoFiltro === 'Rechazado') {
         qb.andWhere('compra.Estado IN (:...estados)', {
           estados: ['Rechazado', 'Rechazada'],
+        });
+      } else if (estadoFiltro === 'Devolucion') {
+        qb.andWhere('compra.Estado IN (:...estados)', {
+          estados: ['Devolucion', 'Devolución', 'Devoluciones', 'Devuelto'],
         });
       } else {
         qb.andWhere('compra.Estado ILIKE :estado', {
