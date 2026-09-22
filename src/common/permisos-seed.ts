@@ -108,6 +108,11 @@ export const PERMISOS_SEED: readonly PermisoSeed[] = [
     nombre: 'Ver historial de compras propio',
     roles: [CL],
   },
+  {
+    codigo: 'ver_solicitudes_propias',
+    nombre: 'Ver seguimiento de solicitudes propias',
+    roles: logueados,
+  },
   { codigo: 'ver_inventario', nombre: 'Ver inventario', roles: admins },
   {
     codigo: 'actualizar_inventario',

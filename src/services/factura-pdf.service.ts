@@ -38,9 +38,9 @@ export class FacturaPdfService {
         });
 
         const buffers: Buffer[] = [];
-        doc.on('data', (chunk) => buffers.push(chunk));
+        doc.on('data', (chunk: Buffer) => buffers.push(chunk));
         doc.on('end', () => resolve(Buffer.concat(buffers)));
-        doc.on('error', (err) => reject(err));
+        doc.on('error', (err: Error) => reject(err));
 
         this.construirContenidoPdf(doc, factura);
         doc.end();

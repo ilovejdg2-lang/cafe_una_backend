@@ -70,6 +70,22 @@ export class VoluntariadoController {
     });
   }
 
+  @Get('mias')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ingresar_solicitud_voluntariado', 'ver_solicitudes_propias')
+  obtenerSolicitudesMias(
+    @Req()
+    req: Request & {
+      user: {
+        userId: number;
+      };
+    },
+  ) {
+    return this.voluntariadoService.obtenerSolicitudesDeUsuario(
+      String(req.user.userId),
+    );
+  }
+
   /**
    * Obtener las solicitudes de un usuario específico.
    *

@@ -56,8 +56,10 @@ export class VoluntariadoService {
   }
 
   async obtenerSolicitudesDeUsuario(userId: string): Promise<SolicitudVoluntariado[]> {
-    const solicitudes = await this.obtenerSolicitudes();
-    return solicitudes.filter((s) => s.UserId === userId);
+    return this.repo.find({
+      where: { UserId: userId },
+      order: { Id: 'DESC' },
+    });
   }
 
   async crear(request: {
