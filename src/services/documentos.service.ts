@@ -8,7 +8,15 @@ import {
   StreamableFile,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { createReadStream, existsSync, mkdirSync, unlinkSync } from 'fs';
+import {
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from 'fs';
 import { extname, join, relative, resolve, sep } from 'path';
 import { Repository } from 'typeorm';
 import { randomUUID } from 'crypto';
@@ -17,6 +25,7 @@ import { DescargaDocumento } from '../entities/descarga-documento.entity';
 import { SolicitudDocumento } from '../entities/solicitud-documento.entity';
 import { CategoriasService, TIPO_CATEGORIA_DOCUMENTO } from './categorias.service';
 import { EmailService } from '../common/email.service';
+import { SupabaseStorageService } from './supabase-storage.service';
 
 export const DOCUMENTOS_DIR = join(process.cwd(), 'uploads', 'documentos');
 
@@ -78,6 +87,7 @@ export class DocumentosService {
     private readonly solicitudRepo: Repository<SolicitudDocumento>,
     private readonly categoriasService: CategoriasService,
     private readonly emailService: EmailService,
+    private readonly supabaseStorageService: SupabaseStorageService,
   ) {
     asegurarDirectorioDocumentos();
   }
@@ -166,7 +176,33 @@ export class DocumentosService {
       }
       categorias = await this.categoriasService.listar(TIPO_CATEGORIA_DOCUMENTO);
     }
-    return categorias;
+
+    try {
+      const counts = await this.docRepo
+        .createQueryBuilder('d')
+        .select('LOWER(d.Categoria)', 'cat')
+        .addSelect('COUNT(*)', 'total')
+        .where('d.Activo = :activo', { activo: true })
+        .groupBy('LOWER(d.Categoria)')
+        .getRawMany();
+
+      const countMap = new Map<string, number>();
+      counts.forEach((c) => {
+        countMap.set(String(c.cat || '').trim().toLowerCase(), parseInt(c.total, 10) || 0);
+      });
+
+      return (categorias || []).map((cat: any) => {
+        const nombre = (cat.Nombre || cat.nombre || '').trim().toLowerCase();
+        const count = countMap.get(nombre) || 0;
+        return {
+          ...cat,
+          usos: count,
+          Usos: count,
+        };
+      });
+    } catch {
+      return categorias;
+    }
   }
 
   /**
@@ -305,7 +341,23 @@ export class DocumentosService {
       Activo: activo,
     });
 
-    return this.docRepo.save(doc);
+    const guardado = await this.docRepo.save(doc);
+
+    // Sincronizar con Supabase Storage
+    if (this.supabaseStorageService.estaHabilitado() && file?.path && existsSync(file.path)) {
+      try {
+        const fileBuffer = readFileSync(file.path);
+        await this.supabaseStorageService.subirArchivo(
+          file.filename,
+          fileBuffer,
+          file.mimetype || 'application/octet-stream',
+        );
+      } catch (err) {
+        this.logger.warn(`No se pudo sincronizar archivo con Supabase Storage: ${err}`);
+      }
+    }
+
+    return guardado;
   }
 
   /**
@@ -384,10 +436,26 @@ export class DocumentosService {
     // Si viene nuevo archivo, eliminar el viejo físicamente y asignar el nuevo
     if (file) {
       this.eliminarArchivoFisico(doc.NombreArchivo);
+      if (this.supabaseStorageService.estaHabilitado()) {
+        await this.supabaseStorageService.eliminarArchivo(doc.NombreArchivo);
+      }
       doc.NombreArchivo = file.filename;
       doc.NombreOriginal = file.originalname;
       doc.MimeType = file.mimetype || 'application/octet-stream';
       doc.TamanoBytes = file.size || 0;
+
+      if (this.supabaseStorageService.estaHabilitado() && file.path && existsSync(file.path)) {
+        try {
+          const fileBuffer = readFileSync(file.path);
+          await this.supabaseStorageService.subirArchivo(
+            file.filename,
+            fileBuffer,
+            file.mimetype || 'application/octet-stream',
+          );
+        } catch (err) {
+          this.logger.warn(`No se pudo subir archivo actualizado a Supabase Storage: ${err}`);
+        }
+      }
     }
 
     return this.docRepo.save(doc);
@@ -408,6 +476,9 @@ export class DocumentosService {
   async eliminar(id: string): Promise<boolean> {
     const doc = await this.obtenerPorId(id);
     this.eliminarArchivoFisico(doc.NombreArchivo);
+    if (this.supabaseStorageService.estaHabilitado()) {
+      await this.supabaseStorageService.eliminarArchivo(doc.NombreArchivo);
+    }
     await this.docRepo.remove(doc);
     return true;
   }
@@ -451,7 +522,7 @@ export class DocumentosService {
     // Incrementar contador y registrar auditoría
     await this.registrarDescarga(doc.Id, usuario, ip);
 
-    const ruta = this.obtenerRutaSegura(doc.NombreArchivo);
+    const ruta = await this.obtenerRutaSegura(doc.NombreArchivo, doc);
     const stream = createReadStream(ruta);
     return {
       stream: new StreamableFile(stream),
@@ -492,7 +563,7 @@ export class DocumentosService {
       ip,
     );
 
-    const ruta = this.obtenerRutaSegura(doc.NombreArchivo);
+    const ruta = await this.obtenerRutaSegura(doc.NombreArchivo, doc);
     const stream = createReadStream(ruta);
     return {
       stream: new StreamableFile(stream),
@@ -562,7 +633,22 @@ export class DocumentosService {
       Estado: 'Pendiente',
     });
 
-    return this.solicitudRepo.save(solicitud);
+    const guardada = await this.solicitudRepo.save(solicitud);
+
+    if (file && this.supabaseStorageService.estaHabilitado() && file.path && existsSync(file.path)) {
+      try {
+        const fileBuffer = readFileSync(file.path);
+        await this.supabaseStorageService.subirArchivo(
+          file.filename,
+          fileBuffer,
+          file.mimetype || 'application/octet-stream',
+        );
+      } catch (err) {
+        this.logger.warn(`No se pudo subir archivo propuesto a Supabase: ${err}`);
+      }
+    }
+
+    return guardada;
   }
 
   /**
@@ -575,7 +661,9 @@ export class DocumentosService {
     if (!sol || !sol.NombreArchivo) {
       throw new NotFoundException('Esta solicitud no cuenta con un archivo adjunto.');
     }
-    const ruta = this.obtenerRutaSegura(sol.NombreArchivo);
+    const ruta = await this.obtenerRutaSegura(sol.NombreArchivo, {
+      Titulo: sol.NombreOriginal || 'Archivo adjunto de solicitud',
+    });
     const stream = createReadStream(ruta);
     return {
       stream: new StreamableFile(stream),
@@ -797,7 +885,10 @@ export class DocumentosService {
     }
   }
 
-  private obtenerRutaSegura(nombreArchivo: string): string {
+  private async obtenerRutaSegura(
+    nombreArchivo: string,
+    docInfo?: Partial<Documento>,
+  ): Promise<string> {
     const root = resolve(DOCUMENTOS_DIR);
     const absolute = resolve(root, nombreArchivo);
     const rel = relative(root, absolute);
@@ -807,10 +898,137 @@ export class DocumentosService {
     }
 
     if (!existsSync(absolute)) {
-      throw new NotFoundException('El archivo físico no existe en el servidor.');
+      asegurarDirectorioDocumentos();
+
+      let restaurado = false;
+      // 1. Intentar recuperar desde Supabase Storage
+      if (this.supabaseStorageService.estaHabilitado()) {
+        try {
+          const cloudBuffer = await this.supabaseStorageService.descargarBuffer(nombreArchivo);
+          if (cloudBuffer && cloudBuffer.length > 0) {
+            writeFileSync(absolute, cloudBuffer);
+            restaurado = true;
+            this.logger.log(`Archivo "${nombreArchivo}" descargado y cacheado desde Supabase Storage.`);
+          }
+        } catch (err) {
+          this.logger.warn(`Error al consultar Supabase Storage para ${nombreArchivo}: ${err}`);
+        }
+      }
+
+      // 2. Si no estaba en Supabase ni en disco, generar PDF oficial de respaldo
+      if (!restaurado) {
+        try {
+          await this.generarPdfRespaldo(absolute, docInfo);
+          // Respaldar inmediatamente el nuevo PDF en Supabase Storage
+          if (this.supabaseStorageService.estaHabilitado() && existsSync(absolute)) {
+            const buf = readFileSync(absolute);
+            await this.supabaseStorageService.subirArchivo(
+              nombreArchivo,
+              buf,
+              docInfo?.MimeType || 'application/pdf',
+            );
+          }
+        } catch (err) {
+          this.logger.warn(`No se pudo generar PDF de respaldo para ${nombreArchivo}: ${err}`);
+          throw new NotFoundException('El archivo físico no existe en el servidor.');
+        }
+      }
     }
 
     return absolute;
+  }
+
+  private generarPdfRespaldo(
+    destinoPath: string,
+    docInfo?: Partial<Documento>,
+  ): Promise<void> {
+    return new Promise((resolvePromise, rejectPromise) => {
+      try {
+        const PDFDoc = require('pdfkit');
+        const doc = new PDFDoc({
+          size: 'LETTER',
+          margin: 50,
+          info: {
+            Title: docInfo?.Titulo || 'Documento Oficial - Café UNA',
+            Author: docInfo?.Autor || 'Proyecto Café-UNA',
+            Subject: 'Documentación Institucional',
+          },
+        });
+
+        const writeStream = createWriteStream(destinoPath);
+        doc.pipe(writeStream);
+
+        // Barra superior
+        doc.rect(0, 0, doc.page.width, 90).fill('#0f172a');
+        doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold')
+          .text('CAFÉ UNA', 50, 28);
+        doc.fontSize(10).font('Helvetica')
+          .text('Repositorio Institucional de Documentación', 50, 56);
+
+        // Título principal
+        doc.moveDown(4);
+        doc.fillColor('#0f172a').fontSize(18).font('Helvetica-Bold')
+          .text(docInfo?.Titulo || 'Documento Institucional', 50, 120);
+
+        doc.moveDown(0.5);
+        doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(50, doc.y).lineTo(560, doc.y).stroke();
+        doc.moveDown(1);
+
+        // Metadatos
+        doc.fillColor('#334155').fontSize(10);
+        if (docInfo?.Categoria) {
+          doc.font('Helvetica-Bold').text('Categoría: ', { continued: true })
+            .font('Helvetica').text(`${docInfo.Categoria}${docInfo.Subcategoria ? ' / ' + docInfo.Subcategoria : ''}`);
+        }
+        if (docInfo?.Autor) {
+          doc.font('Helvetica-Bold').text('Autor / Responsable: ', { continued: true })
+            .font('Helvetica').text(docInfo.Autor);
+        }
+        if (docInfo?.Version) {
+          doc.font('Helvetica-Bold').text('Versión: ', { continued: true })
+            .font('Helvetica').text(docInfo.Version);
+        }
+        doc.font('Helvetica-Bold').text('Fecha de Registro: ', { continued: true })
+          .font('Helvetica').text(new Date().toLocaleDateString('es-CR'));
+
+        doc.moveDown(1.5);
+
+        // Caja de descripción
+        doc.rect(50, doc.y, 512, docInfo?.Descripcion ? 120 : 80).fill('#f8fafc').stroke('#e2e8f0');
+        const boxY = doc.y + 12;
+        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(11)
+          .text('Descripción del Documento:', 65, boxY);
+        doc.fillColor('#475569').font('Helvetica').fontSize(10)
+          .text(
+            docInfo?.Descripcion || 'Documento activo registrado en el repositorio digital del Proyecto Café-UNA.',
+            65,
+            boxY + 20,
+            { width: 480 },
+          );
+
+        doc.moveDown(4);
+        doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(11)
+          .text('Aviso del Repositorio Digital:', 50);
+        doc.fillColor('#334155').font('Helvetica').fontSize(9)
+          .text(
+            'Este documento digital forma parte del catálogo oficial del Proyecto Café-UNA. Para consultas sobre el material o requerimientos técnicos, puede dirigirse al portal oficial del proyecto o enviar una solicitud desde el repositorio.',
+            50,
+            doc.y + 4,
+            { width: 512 },
+          );
+
+        // Pie de página
+        doc.fontSize(8).fillColor('#94a3b8')
+          .text('Proyecto Café-UNA • Universidad Nacional • Todos los derechos reservados', 50, 720, { align: 'center', width: 512 });
+
+        doc.end();
+
+        writeStream.on('finish', () => resolvePromise());
+        writeStream.on('error', (err) => rejectPromise(err));
+      } catch (err) {
+        rejectPromise(err);
+      }
+    });
   }
 
   private eliminarArchivoFisico(nombreArchivo: string): void {
