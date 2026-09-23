@@ -5,6 +5,7 @@ import { DescargaDocumento } from '../entities/descarga-documento.entity';
 import { SolicitudDocumento } from '../entities/solicitud-documento.entity';
 import { DocumentosController } from '../controllers/documentos.controller';
 import { DocumentosService } from '../services/documentos.service';
+import { SupabaseStorageService } from '../services/supabase-storage.service';
 import { AuthModule } from './auth.module';
 import { CategoriasModule } from './categorias.module';
 import { EmailModule } from './email.module';
@@ -17,7 +18,7 @@ import { EmailModule } from './email.module';
     EmailModule,
   ],
   controllers: [DocumentosController],
-  providers: [DocumentosService],
-  exports: [DocumentosService],
+  providers: [DocumentosService, SupabaseStorageService],
+  exports: [DocumentosService, SupabaseStorageService],
 })
 export class DocumentosModule {}
