@@ -7,7 +7,11 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { pickString } from '../common/body-fields';
-import { ActivoFijo } from '../entities/activo-fijo.entity';
+import {
+  ActivoFijo,
+  ORIGENES_FONDO_ACTIVO,
+  OrigenFondoActivo,
+} from '../entities/activo-fijo.entity';
 
 type ActivoBody = Record<string, unknown> | undefined | null;
 
@@ -23,6 +27,7 @@ export type ActivoFijoResponse = {
   nombreCompleto: string;
   descripcionResponsable: string;
   descripcionProyecto: string;
+  origenFondo: OrigenFondoActivo | null;
   activo: boolean;
 };
 
@@ -33,8 +38,15 @@ export class ActivosFijosService {
     private readonly activosRepository: Repository<ActivoFijo>,
   ) {}
 
-  async listar(incluirInactivos = false): Promise<ActivoFijoResponse[]> {
-    const where = incluirInactivos ? {} : { Activo: true };
+  async listar(
+    incluirInactivos = false,
+    origen?: string,
+  ): Promise<ActivoFijoResponse[]> {
+    const where: { Activo?: boolean; OrigenFondo?: OrigenFondoActivo } =
+      incluirInactivos ? {} : { Activo: true };
+    if (origen?.trim()) {
+      where.OrigenFondo = this.validarOrigenFondo(origen);
+    }
     const rows = await this.activosRepository.find({
       where,
       order: { Codigo: 'ASC' },
@@ -168,7 +180,31 @@ export class ActivosFijosService {
         300,
         'descripción de proyecto',
       ),
+      OrigenFondo: this.validarOrigenFondo(
+        pickString(body, 'origenFondo', 'OrigenFondo'),
+      ),
     };
+  }
+
+  private validarOrigenFondo(valor: string): OrigenFondoActivo {
+    const clave = this.normalizarClaveOrigen(valor);
+    const origen = ORIGENES_FONDO_ACTIVO.find(
+      (opcion) => this.normalizarClaveOrigen(opcion) === clave,
+    );
+    if (!origen) {
+      throw new BadRequestException(
+        `El origen del activo es obligatorio: ${ORIGENES_FONDO_ACTIVO.join(', ')}.`,
+      );
+    }
+    return origen;
+  }
+
+  private normalizarClaveOrigen(valor: string): string {
+    return String(valor ?? '')
+      .normalize('NFD')
+      .replace(/[\u0300-\u036f]/g, '')
+      .replace(/[\s_-]+/g, '')
+      .toLowerCase();
   }
 
   private limitar(valor: string, max: number, etiqueta: string): string {
@@ -240,6 +276,7 @@ export class ActivosFijosService {
       nombreCompleto: row.NombreCompleto || '',
       descripcionResponsable: row.DescripcionResponsable || '',
       descripcionProyecto: row.DescripcionProyecto || '',
+      origenFondo: row.OrigenFondo ?? null,
       activo: row.Activo !== false,
     };
   }

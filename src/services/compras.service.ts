@@ -136,6 +136,7 @@ export type CompraClienteInfo = {
   telefono: string | null;
   tipoDocumento: string | null;
   identificacion: string | null;
+  nacionalidad: string | null;
   razonSocial: string | null;
   nombreComercial: string | null;
   representanteLegal: string | null;
@@ -1013,6 +1014,7 @@ export class ComprasService {
         telefono: ficha.Telefono,
         tipoDocumento: ficha.TipoDocumento,
         identificacion: ficha.Identificacion,
+        nacionalidad: ficha.Nacionalidad,
         razonSocial: ficha.RazonSocial,
         nombreComercial: ficha.NombreComercial,
         representanteLegal: ficha.RepresentanteLegal,

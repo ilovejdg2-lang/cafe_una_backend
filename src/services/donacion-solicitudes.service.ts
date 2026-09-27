@@ -7,6 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { EmailService } from '../common/email.service';
 import { pickString } from '../common/body-fields';
+import { validarIdentificacionFormulario } from '../common/cliente-registro.util';
 import { DonacionNecesidad } from '../entities/donacion-necesidad.entity';
 import {
   ESTADOS_SOLICITUD_DONACION,
@@ -245,14 +246,32 @@ export class DonacionSolicitudesService {
       raw.valorEstimado ?? raw.ValorEstimado ?? body.valorEstimado,
     );
 
+    const tipoIdentificacion = texto('tipoIdentificacion', 40);
+    let documento: { identificacion: string; nacionalidad: string | null };
+    try {
+      documento =
+        texto('tipoDonante', 20) === 'persona'
+          ? validarIdentificacionFormulario({
+              tipo: tipoIdentificacion,
+              identificacion: texto('numeroIdentificacion', 40),
+              nacionalidad: texto('nacionalidad', 2),
+            })
+          : { identificacion: texto('numeroIdentificacion', 40), nacionalidad: null };
+    } catch (error) {
+      throw new BadRequestException(
+        error instanceof Error ? error.message : 'La identificación no es válida.',
+      );
+    }
+
     return {
       donanteNombre: texto('donanteNombre', 200),
       tipoDonante: texto('tipoDonante', 20),
       nombre: texto('nombre', 80),
       primerApellido: texto('primerApellido', 80),
       segundoApellido: texto('segundoApellido', 80),
-      tipoIdentificacion: texto('tipoIdentificacion', 40),
-      numeroIdentificacion: texto('numeroIdentificacion', 40),
+      tipoIdentificacion,
+      numeroIdentificacion: documento.identificacion,
+      nacionalidad: documento.nacionalidad ?? '',
       correo: texto('correo', 160),
       telefono: texto('telefono', 20),
       materialId: extras.materialId,

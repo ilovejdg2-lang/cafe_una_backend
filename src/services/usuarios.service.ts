@@ -29,6 +29,7 @@ export interface UsuarioPerfilResponse {
   Identificacion: string | null;
   NombreLegal: string | null;
   TipoDocumento: string | null;
+  Nacionalidad: string | null;
   RazonSocial: string | null;
   NombreComercial: string | null;
   RepresentanteLegal: string | null;
@@ -419,6 +420,7 @@ export class UsuariosService {
       Identificacion: ficha.Identificacion,
       NombreLegal: ficha.NombreLegal,
       TipoDocumento: ficha.TipoDocumento,
+      Nacionalidad: ficha.Nacionalidad,
       RazonSocial: ficha.RazonSocial,
       NombreComercial: ficha.NombreComercial,
       RepresentanteLegal: ficha.RepresentanteLegal,

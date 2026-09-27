@@ -22,6 +22,9 @@ export class DatabaseBootstrapService implements OnModuleInit {
         ADD COLUMN IF NOT EXISTS "ObservacionesAdmin" varchar(2000) NULL;
         ALTER TABLE solicitudes_voluntariado
         ADD COLUMN IF NOT EXISTS "DocumentoAdjunto" varchar(300) NULL;
+        ALTER TABLE solicitudes_voluntariado
+        ADD COLUMN IF NOT EXISTS "TipoIdentificacion" varchar(20) NULL,
+        ADD COLUMN IF NOT EXISTS "Nacionalidad" varchar(2) NULL;
       `);
       await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS fechas_voluntariado (
@@ -293,6 +296,20 @@ export class DatabaseBootstrapService implements OnModuleInit {
         );
       `);
       await this.dataSource.query(`
+        ALTER TABLE activos_fijos
+          ADD COLUMN IF NOT EXISTS "OrigenFondo" varchar(30) NULL;
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'CK_activos_fijos_origen_fondo'
+          ) THEN
+            ALTER TABLE activos_fijos
+              ADD CONSTRAINT "CK_activos_fijos_origen_fondo"
+              CHECK ("OrigenFondo" IS NULL OR "OrigenFondo" IN ('UNA', 'FUNDAUNA', 'Donación', 'Compra Directa'));
+          END IF;
+        END $$;
+      `);
+      await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS compras (
           "Id" serial PRIMARY KEY,
           "Numero" varchar(40) NOT NULL UNIQUE,
@@ -344,6 +361,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.asegurarPerfilClienteCliP01();
       await this.asegurarFaqInicio();
       await this.asegurarTablasFacturacion();
+      await this.asegurarTablaCarrito();
       this.logger.log(
         `Conexión a PostgreSQL establecida (${postgres.host}/${postgres.database} como ${postgres.user}).`,
       );
@@ -1288,6 +1306,11 @@ export class DatabaseBootstrapService implements OnModuleInit {
       );
     `);
     await this.dataSource.query(`
+      ALTER TABLE solicitudes_visitas_grupales
+        ADD COLUMN IF NOT EXISTS "EncargadoTipoIdentificacion" varchar(20) NULL,
+        ADD COLUMN IF NOT EXISTS "EncargadoNacionalidad" varchar(2) NULL;
+    `);
+    await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS "IDX_visitas_UserId"
         ON solicitudes_visitas_grupales ("UserId");
     `);
@@ -1326,6 +1349,10 @@ export class DatabaseBootstrapService implements OnModuleInit {
         "FechaRegistro" timestamptz NULL,
         "FechaVerificacion" timestamptz NULL
       );
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE clientes
+        ADD COLUMN IF NOT EXISTS "Nacionalidad" varchar(2) NULL;
     `);
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS "IDX_clientes_UsuarioId" ON clientes ("UsuarioId");
@@ -1529,6 +1556,18 @@ export class DatabaseBootstrapService implements OnModuleInit {
             FOR EACH ROW EXECUTE FUNCTION fn_cafe_auditoria();
         END IF;
       END $$;
+    `);
+  }
+
+  private async asegurarTablaCarrito(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS carrito_items (
+        "UsuarioId" integer NOT NULL REFERENCES usuarios("Id") ON DELETE CASCADE,
+        "ProductoId" bigint NOT NULL REFERENCES productos("Id") ON DELETE CASCADE,
+        "Cantidad" integer NOT NULL CHECK ("Cantidad" > 0),
+        "ActualizadoEn" timestamptz NOT NULL DEFAULT NOW(),
+        PRIMARY KEY ("UsuarioId", "ProductoId")
+      );
     `);
   }
 }

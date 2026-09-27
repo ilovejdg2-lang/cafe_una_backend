@@ -20,12 +20,15 @@ export class ActivosFijosController {
   constructor(private readonly activosFijosService: ActivosFijosService) {}
 
   @Get()
-  listar(@Query('incluirInactivos') incluirInactivos?: string) {
+  listar(
+    @Query('incluirInactivos') incluirInactivos?: string,
+    @Query('origen') origen?: string,
+  ) {
     const incluir =
       incluirInactivos === 'true' ||
       incluirInactivos === '1' ||
       incluirInactivos === 'si';
-    return this.activosFijosService.listar(incluir);
+    return this.activosFijosService.listar(incluir, origen);
   }
 
   @Get(':id')

@@ -16,6 +16,7 @@ import {
 } from '@nestjs/common';
 import { Request } from 'express';
 
+import { validarIdentificacionFormulario } from '../common/cliente-registro.util';
 import { EmailService } from '../common/email.service';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
@@ -132,13 +133,20 @@ export class VisitasController {
   ) {
     try {
       const userId = req?.user?.userId ? String(req.user.userId) : null;
+      const documento = validarIdentificacionFormulario({
+        tipo: body.EncargadoTipoIdentificacion ?? body.encargadoTipoIdentificacion,
+        identificacion: texto(
+          body.EncargadoIdentificacion ?? body.identificacion,
+        ),
+        nacionalidad: body.EncargadoNacionalidad ?? body.encargadoNacionalidad,
+      });
 
       const solicitud = await this.visitasService.crear({
         UserId: userId,
         EncargadoNombre: texto(body.EncargadoNombre ?? body.nombre),
-        EncargadoIdentificacion: texto(
-          body.EncargadoIdentificacion ?? body.identificacion,
-        ),
+        EncargadoIdentificacion: documento.identificacion,
+        EncargadoTipoIdentificacion: documento.tipo,
+        EncargadoNacionalidad: documento.nacionalidad,
         EncargadoEmail: texto(body.EncargadoEmail ?? body.email),
         EncargadoTelefono: texto(body.EncargadoTelefono ?? body.telefono),
         EncargadoInstitucion: textoOpcional(body.EncargadoInstitucion),

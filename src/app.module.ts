@@ -26,6 +26,7 @@ import { VoluntariadoModule } from './modules/voluntariado.module';
 import { DocumentosModule } from './modules/documentos.module';
 import { FacturasModule } from './modules/facturas.module';
 import { SolicitudesClienteModule } from './modules/solicitudes-cliente.module';
+import { CarritoModule } from './modules/carrito.module';
 
 @Module({
   imports: [
@@ -52,6 +53,7 @@ import { SolicitudesClienteModule } from './modules/solicitudes-cliente.module';
     VoluntariadoModule,
     VisitasModule,
     SolicitudesClienteModule,
+    CarritoModule,
     CedulaModule,
     AuditoriaModule,
     AjustesModule,
