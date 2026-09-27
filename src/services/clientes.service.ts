@@ -12,6 +12,7 @@ export type FichaClientePlana = {
   TipoDocumento: string | null;
   Apellidos: string | null;
   Identificacion: string | null;
+  Nacionalidad: string | null;
   RazonSocial: string | null;
   NombreComercial: string | null;
   RepresentanteLegal: string | null;
@@ -29,6 +30,7 @@ const FICHA_VACIA: FichaClientePlana = {
   TipoDocumento: null,
   Apellidos: null,
   Identificacion: null,
+  Nacionalidad: null,
   RazonSocial: null,
   NombreComercial: null,
   RepresentanteLegal: null,
@@ -114,6 +116,7 @@ export class ClientesService {
           Apellidos: (datos.apellidos || '').trim(),
           TipoDocumento: datos.tipoDocumento || 'cedula',
           Identificacion: (datos.identificacion || '').trim(),
+          Nacionalidad: this.nacionalidadDesdeDatos(datos),
           Telefono: datos.telefono,
           FechaRegistro: ahora,
           FechaVerificacion: ahora,
@@ -160,6 +163,7 @@ export class ClientesService {
       row.Apellidos = (datos.apellidos || '').trim();
       row.TipoDocumento = datos.tipoDocumento || 'cedula';
       row.Identificacion = (datos.identificacion || '').trim();
+      row.Nacionalidad = this.nacionalidadDesdeDatos(datos);
       row.Telefono = datos.telefono;
       row.FechaVerificacion = ahora;
       await this.clientesRepo.save(row);
@@ -192,6 +196,11 @@ export class ClientesService {
     return Boolean(ficha?.TipoCliente);
   }
 
+  private nacionalidadDesdeDatos(datos: DatosClienteRegistro): string | null {
+    if (datos.tipoDocumento !== 'pasaporte') return null;
+    return datos.nacionalidad?.trim().toUpperCase() || null;
+  }
+
   private planaDesdePersona(
     row: Cliente,
   ): Omit<FichaClientePlana, 'TipoCliente'> & { TipoCliente: 'persona' } {
@@ -202,6 +211,7 @@ export class ClientesService {
       TipoDocumento: row.TipoDocumento,
       Apellidos: row.Apellidos,
       Identificacion: row.Identificacion,
+      Nacionalidad: row.Nacionalidad ?? null,
       RazonSocial: null,
       NombreComercial: null,
       RepresentanteLegal: null,
@@ -223,6 +233,7 @@ export class ClientesService {
       TipoDocumento: null,
       Apellidos: null,
       Identificacion: null,
+      Nacionalidad: null,
       RazonSocial: row.RazonSocial,
       NombreComercial: row.NombreComercial,
       RepresentanteLegal: row.RepresentanteLegal,

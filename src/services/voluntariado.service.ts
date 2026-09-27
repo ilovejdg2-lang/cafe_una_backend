@@ -69,6 +69,8 @@ export class VoluntariadoService {
     Telefono?: string | null;
     TipoVoluntariado?: string | null;
     Identificacion?: string | null;
+    TipoIdentificacion?: string | null;
+    Nacionalidad?: string | null;
     Institucion?: string | null;
     Pais?: string | null;
     Modalidad?: string | null;
@@ -137,6 +139,8 @@ export class VoluntariadoService {
       Telefono: request.Telefono ?? null,
       TipoVoluntariado: request.TipoVoluntariado ?? null,
       Identificacion: request.Identificacion ?? null,
+      TipoIdentificacion: request.TipoIdentificacion ?? null,
+      Nacionalidad: request.Nacionalidad ?? null,
       Institucion: request.Institucion ?? null,
       Pais: request.Pais ?? null,
       Modalidad: request.Modalidad ?? null,
