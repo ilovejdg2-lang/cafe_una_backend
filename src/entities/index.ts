@@ -45,6 +45,7 @@ import { VisitaGrupal } from './visita-grupal.entity';
 import { Documento } from './documento.entity';
 import { DescargaDocumento } from './descarga-documento.entity';
 import { SolicitudDocumento } from './solicitud-documento.entity';
+import { CarritoItem } from './carrito-item.entity';
 
 export const entities = [
   Usuario,
@@ -94,6 +95,7 @@ export const entities = [
   Documento,
   DescargaDocumento,
   SolicitudDocumento,
+  CarritoItem,
 ];
 
 export * from './usuario.entity';
@@ -143,3 +145,4 @@ export * from './visita-grupal.entity';
 export * from './documento.entity';
 export * from './descarga-documento.entity';
 export * from './solicitud-documento.entity';
+export * from './carrito-item.entity';

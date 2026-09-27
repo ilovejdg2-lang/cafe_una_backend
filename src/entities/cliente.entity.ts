@@ -21,6 +21,10 @@ export class Cliente {
   @Column({ name: 'Identificacion', type: 'varchar', length: 40 })
   Identificacion: string;
 
+  /** ISO 3166-1 alfa-2; solo se llena con pasaporte. */
+  @Column({ name: 'Nacionalidad', type: 'varchar', length: 2, nullable: true })
+  Nacionalidad: string | null;
+
   @Column({ name: 'Telefono', type: 'varchar', length: 40 })
   Telefono: string;
 

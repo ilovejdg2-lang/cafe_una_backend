@@ -1,5 +1,14 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
+export const ORIGENES_FONDO_ACTIVO = [
+  'UNA',
+  'FUNDAUNA',
+  'Donación',
+  'Compra Directa',
+] as const;
+
+export type OrigenFondoActivo = (typeof ORIGENES_FONDO_ACTIVO)[number];
+
 @Entity('activos_fijos')
 export class ActivoFijo {
   @PrimaryGeneratedColumn({ name: 'Id', type: 'integer' })
@@ -50,6 +59,9 @@ export class ActivoFijo {
     default: '',
   })
   DescripcionProyecto: string;
+
+  @Column({ name: 'OrigenFondo', type: 'varchar', length: 30, nullable: true })
+  OrigenFondo: OrigenFondoActivo | null;
 
   @Column({ name: 'Activo', type: 'boolean', default: true })
   Activo: boolean;

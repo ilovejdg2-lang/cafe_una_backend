@@ -65,7 +65,7 @@ export class CedulaController {
         await this.cedulaConsultaService.consultarDetallado(numero);
       if (!resultado) {
         throw new NotFoundException({
-          message: 'No se encontraron datos para esa cédula.',
+          message: 'No se encontraron datos para esa identificación.',
         });
       }
       return resultado;

@@ -29,6 +29,13 @@ export class SolicitudVoluntariado {
   @Column({ name: 'Identificacion', type: 'varchar', length: 100, nullable: true })
   Identificacion: string | null;
 
+  @Column({ name: 'TipoIdentificacion', type: 'varchar', length: 20, nullable: true })
+  TipoIdentificacion: string | null;
+
+  /** ISO 3166-1 alfa-2; solo con pasaporte. */
+  @Column({ name: 'Nacionalidad', type: 'varchar', length: 2, nullable: true })
+  Nacionalidad: string | null;
+
   @Column({ name: 'Institucion', type: 'varchar', length: 200, nullable: true })
   Institucion: string | null;
 

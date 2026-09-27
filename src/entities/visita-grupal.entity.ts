@@ -43,6 +43,23 @@ export class VisitaGrupal {
   @Column({ name: 'EncargadoIdentificacion', type: 'varchar', length: 100 })
   EncargadoIdentificacion: string;
 
+  @Column({
+    name: 'EncargadoTipoIdentificacion',
+    type: 'varchar',
+    length: 20,
+    nullable: true,
+  })
+  EncargadoTipoIdentificacion: string | null;
+
+  /** ISO 3166-1 alfa-2; solo con pasaporte. */
+  @Column({
+    name: 'EncargadoNacionalidad',
+    type: 'varchar',
+    length: 2,
+    nullable: true,
+  })
+  EncargadoNacionalidad: string | null;
+
   @Column({ name: 'EncargadoEmail', type: 'varchar', length: 200 })
   EncargadoEmail: string;
 

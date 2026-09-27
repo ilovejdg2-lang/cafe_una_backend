@@ -24,6 +24,7 @@ import { createReadStream, existsSync, mkdirSync } from 'fs';
 import { diskStorage } from 'multer';
 import { extname, join, relative, resolve, sep } from 'path';
 
+import { validarIdentificacionFormulario } from '../common/cliente-registro.util';
 import { EmailService } from '../common/email.service';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
@@ -215,6 +216,12 @@ export class VoluntariadoController {
           ? Number(cantPartRaw)
           : null;
 
+      const documento = validarIdentificacionFormulario({
+        tipo: getVal('TipoIdentificacion', 'tipoIdentificacion'),
+        identificacion: getVal('Identificacion', 'identificacion'),
+        nacionalidad: getVal('Nacionalidad', 'nacionalidad'),
+      });
+
       const solicitud = await this.voluntariadoService.crear({
         UserId: userId,
 
@@ -223,7 +230,9 @@ export class VoluntariadoController {
 
         Telefono: getVal('Telefono', 'telefono'),
         TipoVoluntariado: getVal('TipoVoluntariado', 'tipoVoluntariado'),
-        Identificacion: getVal('Identificacion', 'identificacion'),
+        Identificacion: documento.identificacion || null,
+        TipoIdentificacion: documento.tipo,
+        Nacionalidad: documento.nacionalidad,
         Institucion: getVal('Institucion', 'institucion'),
         Pais: getVal('Pais', 'pais'),
         Modalidad: getVal('Modalidad', 'modalidad'),

@@ -41,10 +41,13 @@ export class CedulaConsultaService {
     }
   }
 
+  /** Acepta cédula nacional (9 dígitos) o DIMEX (11 o 12 dígitos). */
   async consultarDetallado(numero: string): Promise<CedulaConsultaDetalladaResponse | null> {
-    const cedula = this.normalizarCedula(numero);
+    const cedula = this.normalizarIdentificacion(numero);
     if (!cedula) {
-      throw new Error('Ingrese una cédula válida de 9 dígitos.');
+      throw new Error(
+        'Ingrese una cédula válida de 9 dígitos o un DIMEX de 11 o 12 dígitos.',
+      );
     }
 
     const provider = (this.config.get<string>('CEDULA_PROVIDER') ?? 'GoMeta').trim();
@@ -65,6 +68,11 @@ export class CedulaConsultaService {
   private normalizarCedula(numero: string): string | null {
     const soloDigitos = (numero ?? '').replace(/\D/g, '');
     return soloDigitos.length === 9 ? soloDigitos : null;
+  }
+
+  private normalizarIdentificacion(numero: string): string | null {
+    const soloDigitos = (numero ?? '').replace(/\D/g, '');
+    return /^(\d{9}|\d{11,12})$/.test(soloDigitos) ? soloDigitos : null;
   }
 
   private async consultarGoMeta(cedula: string): Promise<CedulaConsultaResponse | null> {
@@ -150,6 +158,7 @@ export class CedulaConsultaService {
   ): Record<string, unknown> | null {
     let coincidenciaExacta: Record<string, unknown> | null = null;
     let primeraFisica: Record<string, unknown> | null = null;
+    let coincidenciaOtroTipo: Record<string, unknown> | null = null;
 
     for (const item of results) {
       if (!item || typeof item !== 'object') continue;
@@ -157,17 +166,24 @@ export class CedulaConsultaService {
       const tipo = this.obtenerTexto(record, 'guess_type') ?? this.obtenerTexto(record, 'type');
       const esFisica =
         tipo?.toUpperCase() === 'FISICA' || tipo?.toUpperCase() === 'F';
+      const cedulaResultado = this.obtenerTexto(record, 'cedula');
 
-      if (!esFisica) continue;
+      if (!esFisica) {
+        // DIMEX puede venir con otro tipo; solo se acepta si el número coincide exacto.
+        if (cedula.length > 9 && cedulaResultado === cedula && !coincidenciaOtroTipo) {
+          coincidenciaOtroTipo = record;
+        }
+        continue;
+      }
       if (!primeraFisica) primeraFisica = record;
 
-      const cedulaResultado = this.obtenerTexto(record, 'cedula');
       if (cedulaResultado === cedula) {
         coincidenciaExacta = record;
         break;
       }
     }
 
+    if (cedula.length > 9) return coincidenciaExacta ?? coincidenciaOtroTipo;
     return coincidenciaExacta ?? primeraFisica;
   }
 

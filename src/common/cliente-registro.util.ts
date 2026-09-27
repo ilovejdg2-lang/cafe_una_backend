@@ -10,6 +10,8 @@ export type DatosClienteRegistro = {
   apellidos?: string;
   identificacion?: string;
   tipoDocumento?: TipoDocumentoPersona;
+  /** ISO 3166-1 alfa-2; solo con pasaporte. */
+  nacionalidad?: string;
   razonSocial?: string;
   nombreComercial?: string;
   representanteLegal?: string;
@@ -23,7 +25,8 @@ const NOMBRE_PERSONA_RE = /^[A-Za-zÁÉÍÓÚÜÑáéíóúüñ ]+$/;
 const CEDULA_JURIDICA_RE = /^\d{1}-\d{3}-\d{6}$/;
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PASAPORTE_RE = /^[A-Za-z0-9]{5,20}$/;
-const DIMEX_RE = /^\d{10,12}$/;
+const DIMEX_RE = /^\d{11,12}$/;
+const PAIS_ISO_RE = /^[A-Z]{2}$/;
 
 export function validarPasswordCliente(password: string): void {
   if (!password) throw new Error('La contraseña es obligatoria.');
@@ -80,6 +83,77 @@ function resolverTipoDocumento(raw: Record<string, unknown>): TipoDocumentoPerso
   return 'cedula';
 }
 
+function validarIdentificacionPersona(
+  tipoDocumento: TipoDocumentoPersona,
+  raw: Record<string, unknown>,
+): { identificacion: string; nacionalidad?: string } {
+  let identificacion = String(raw.identificacion ?? raw.Identificacion ?? '').trim();
+  if (!identificacion) {
+    throw new Error('El número de identificación es obligatorio.');
+  }
+  if (tipoDocumento === 'cedula') {
+    identificacion = identificacion.replace(/\D/g, '');
+    if (!/^\d{9}$/.test(identificacion)) {
+      throw new Error('La cédula costarricense debe tener 9 dígitos.');
+    }
+    return { identificacion };
+  }
+  if (tipoDocumento === 'dimex') {
+    identificacion = identificacion.replace(/\D/g, '');
+    if (!DIMEX_RE.test(identificacion)) {
+      throw new Error('El DIMEX debe tener 11 o 12 dígitos.');
+    }
+    return { identificacion };
+  }
+
+  identificacion = identificacion.toUpperCase();
+  if (!PASAPORTE_RE.test(identificacion)) {
+    throw new Error('El pasaporte debe tener entre 5 y 20 letras o números.');
+  }
+  const nacionalidad = String(raw.nacionalidad ?? raw.Nacionalidad ?? '')
+    .trim()
+    .toUpperCase();
+  if (!nacionalidad) {
+    throw new Error('Elegí el país de origen del pasaporte.');
+  }
+  if (!PAIS_ISO_RE.test(nacionalidad)) {
+    throw new Error('El país de origen no es válido.');
+  }
+  return { identificacion, nacionalidad };
+}
+
+/**
+ * Formularios públicos (voluntariado, visitas, donaciones). Sin tipo se acepta
+ * la identificación tal cual, para no romper envíos anteriores al selector.
+ */
+export function validarIdentificacionFormulario(datos: {
+  tipo: unknown;
+  identificacion: unknown;
+  nacionalidad?: unknown;
+}): {
+  tipo: TipoDocumentoPersona | null;
+  identificacion: string;
+  nacionalidad: string | null;
+} {
+  const identificacion = String(datos.identificacion ?? '').trim();
+  const tipoRaw = String(datos.tipo ?? '').trim().toLowerCase();
+  if (!tipoRaw) return { tipo: null, identificacion, nacionalidad: null };
+
+  const tipo = tipoRaw === 'cédula' ? 'cedula' : tipoRaw;
+  if (tipo !== 'cedula' && tipo !== 'dimex' && tipo !== 'pasaporte') {
+    throw new Error('El tipo de identificación no es válido.');
+  }
+  const resultado = validarIdentificacionPersona(tipo, {
+    identificacion,
+    nacionalidad: datos.nacionalidad,
+  });
+  return {
+    tipo,
+    identificacion: resultado.identificacion,
+    nacionalidad: resultado.nacionalidad ?? null,
+  };
+}
+
 export function validarDatosCliente(raw: Record<string, unknown>): {
   nombre: string;
   datos: DatosClienteRegistro;
@@ -130,23 +204,10 @@ export function validarDatosCliente(raw: Record<string, unknown>): {
     }
     const apellidos = [apellido1, apellido2].filter(Boolean).join(' ').trim();
 
-    let identificacion = String(raw.identificacion ?? raw.Identificacion ?? '').trim();
-    if (!identificacion) {
-      throw new Error('El número de identificación es obligatorio.');
-    }
-    if (tipoDocumento === 'cedula') {
-      identificacion = identificacion.replace(/\D/g, '');
-      if (!/^\d{9}$/.test(identificacion)) {
-        throw new Error('La cédula costarricense debe tener 9 dígitos.');
-      }
-    } else if (tipoDocumento === 'dimex') {
-      identificacion = identificacion.replace(/\D/g, '');
-      if (!DIMEX_RE.test(identificacion)) {
-        throw new Error('El DIMEX debe tener entre 10 y 12 dígitos.');
-      }
-    } else if (!PASAPORTE_RE.test(identificacion)) {
-      throw new Error('El pasaporte no tiene un formato válido.');
-    }
+    const { identificacion, nacionalidad } = validarIdentificacionPersona(
+      tipoDocumento,
+      raw,
+    );
 
     return {
       nombre: `${nombre} ${apellidos}`.trim(),
@@ -159,6 +220,7 @@ export function validarDatosCliente(raw: Record<string, unknown>): {
         apellidos,
         identificacion,
         tipoDocumento,
+        nacionalidad,
       },
     };
   }
@@ -248,23 +310,10 @@ export function validarDatosClienteEdicion(
       throw new Error('El apellido 2 es obligatorio.');
     }
 
-    let identificacion = String(raw.identificacion ?? raw.Identificacion ?? '').trim();
-    if (!identificacion) {
-      throw new Error('El número de identificación es obligatorio.');
-    }
-    if (tipoDocumento === 'cedula') {
-      identificacion = identificacion.replace(/\D/g, '');
-      if (!/^\d{9}$/.test(identificacion)) {
-        throw new Error('La cédula costarricense debe tener 9 dígitos.');
-      }
-    } else if (tipoDocumento === 'dimex') {
-      identificacion = identificacion.replace(/\D/g, '');
-      if (!DIMEX_RE.test(identificacion)) {
-        throw new Error('El DIMEX debe tener entre 10 y 12 dígitos.');
-      }
-    } else if (!PASAPORTE_RE.test(identificacion)) {
-      throw new Error('El pasaporte no tiene un formato válido.');
-    }
+    const { identificacion, nacionalidad } = validarIdentificacionPersona(
+      tipoDocumento,
+      raw,
+    );
 
     return {
       tipo,
@@ -275,6 +324,7 @@ export function validarDatosClienteEdicion(
       apellidos,
       identificacion,
       tipoDocumento,
+      nacionalidad,
     };
   }
 
