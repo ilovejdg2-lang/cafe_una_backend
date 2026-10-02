@@ -7,14 +7,16 @@ import {
   Get,
   Logger,
   NotFoundException,
+  Optional,
   Param,
   Post,
   Put,
   Query,
   Req,
+  Res,
   UseGuards,
 } from '@nestjs/common';
-import { Request } from 'express';
+import type { Request, Response } from 'express';
 
 import { validarIdentificacionFormulario } from '../common/cliente-registro.util';
 import { EmailService } from '../common/email.service';
@@ -22,6 +24,7 @@ import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { VisitasService } from '../services/visitas.service';
+import { VisitasInstructivoPdfService } from '../services/visitas-instructivo-pdf.service';
 
 function texto(valor: unknown): string {
   if (typeof valor === 'string') return valor.trim();
@@ -47,7 +50,25 @@ export class VisitasController {
   constructor(
     private readonly visitasService: VisitasService,
     private readonly emailService: EmailService,
+    @Optional()
+    private readonly instructivoPdfService?: VisitasInstructivoPdfService,
   ) {}
+
+  /**
+   * Descargar instructivo de recomendaciones en PDF.
+   */
+  @Get('instructivo-pdf')
+  async descargarInstructivoPdf(@Res() res: Response) {
+    const service =
+      this.instructivoPdfService || new VisitasInstructivoPdfService();
+    const buffer = await service.generarPdfInstructivo();
+    res.setHeader('Content-Type', 'application/pdf');
+    res.setHeader(
+      'Content-Disposition',
+      'attachment; filename="instructivo_recomendaciones_visitas_cafe_una.pdf"',
+    );
+    res.send(buffer);
+  }
 
   /**
    * Obtener todas las solicitudes de visitas (uso administrativo).

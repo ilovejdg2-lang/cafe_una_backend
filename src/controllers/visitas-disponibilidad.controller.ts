@@ -26,6 +26,33 @@ export class VisitasDisponibilidadController {
     return this.service.listarPublicas({ desde, hasta });
   }
 
+  @Get('franjas')
+  obtenerFranjas(@Query('fecha') fecha: string) {
+    return this.service.obtenerFranjasPorFecha(fecha);
+  }
+
+  @Get('turnos')
+  listarTurnos() {
+    return this.service.listarTurnosParametrizados();
+  }
+
+  @Post('turnos')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('administrar_solicitudes_visitantes', 'actualizar_visitas')
+  crearTurno(@Body() body: Record<string, unknown>) {
+    return this.service.crearTurnoParametrizado(body ?? {});
+  }
+
+  @Put('turnos/:id')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('administrar_solicitudes_visitantes', 'actualizar_visitas')
+  actualizarTurno(
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.service.actualizarTurnoParametrizado(id, body ?? {});
+  }
+
   @Get('admin')
   @UseGuards(JwtAuthGuard, PermisosGuard)
   @RequierePermiso(

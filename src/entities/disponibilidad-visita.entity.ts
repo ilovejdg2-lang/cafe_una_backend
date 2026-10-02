@@ -31,6 +31,10 @@ export class DisponibilidadVisita {
   @Column({ name: 'Habilitada', type: 'boolean', default: true })
   Habilitada: boolean;
 
+  @Column({ name: 'CapacidadMaxima', type: 'int', default: 30 })
+  CapacidadMaxima: number;
+
   @Column({ name: 'Nota', type: 'varchar', length: 500, nullable: true })
   Nota: string | null;
 }
+

@@ -74,6 +74,31 @@ export class VisitasService {
       );
     }
 
+    let totalOcupado = 0;
+    try {
+      const qb = this.repo.createQueryBuilder?.('v');
+      if (qb && typeof qb.where === 'function') {
+        const ocupadoQuery = await qb
+          .where('v.DisponibilidadVisitaId = :id', { id: disponibilidad.Id })
+          .andWhere('v.Estado NOT IN (:...estadosExcluidos)', {
+            estadosExcluidos: ['Rechazada', 'Inactiva'],
+          })
+          .select('COALESCE(SUM(v.CantidadVisitantes), 0)', 'total')
+          .getRawOne();
+        totalOcupado = Number(ocupadoQuery?.total ?? 0);
+      }
+    } catch {
+      totalOcupado = 0;
+    }
+
+    const capacidadMaxima = Number(disponibilidad.CapacidadMaxima ?? 30);
+    const cupoDisponible = Math.max(0, capacidadMaxima - totalOcupado);
+    if (cantidad > cupoDisponible) {
+      throw new BadRequestException(
+        `No hay cupo suficiente para ${cantidad} personas en este horario. Cupo disponible restante: ${cupoDisponible}.`,
+      );
+    }
+
     const entidad = this.repo.create({
       ...datos,
       DisponibilidadVisitaId: disponibilidad.Id,
