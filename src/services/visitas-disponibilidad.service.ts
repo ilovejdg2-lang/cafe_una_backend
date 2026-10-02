@@ -2,13 +2,27 @@ import {
   BadRequestException,
   Injectable,
   NotFoundException,
+  Optional,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, MoreThan, Not, Repository } from 'typeorm';
 
 import { DisponibilidadVisita } from '../entities/disponibilidad-visita.entity';
+import { TurnoVisita } from '../entities/turno-visita.entity';
+import { VisitaGrupal } from '../entities/visita-grupal.entity';
 
 type FiltrosFecha = { desde?: string; hasta?: string };
+
+export function formatearHora12(hora: string): string {
+  const [hStr, mStr] = String(hora || '').slice(0, 5).split(':');
+  let h = parseInt(hStr, 10);
+  if (isNaN(h)) return hora;
+  const ampm = h >= 12 ? 'PM' : 'AM';
+  h = h % 12;
+  if (h === 0) h = 12;
+  const m = mStr ? mStr.padStart(2, '0') : '00';
+  return `${h}:${m} ${ampm}`;
+}
 
 function hoyLocal(): string {
   const hoy = new Date();
@@ -31,6 +45,12 @@ export class VisitasDisponibilidadService {
   constructor(
     @InjectRepository(DisponibilidadVisita)
     private readonly repo: Repository<DisponibilidadVisita>,
+    @Optional()
+    @InjectRepository(TurnoVisita)
+    private readonly turnosRepo?: Repository<TurnoVisita>,
+    @Optional()
+    @InjectRepository(VisitaGrupal)
+    private readonly visitasRepo?: Repository<VisitaGrupal>,
   ) {}
 
   async listarPublicas(filtros: FiltrosFecha) {
@@ -98,6 +118,140 @@ export class VisitasDisponibilidadService {
     return { desde, hasta };
   }
 
+  async obtenerFranjasPorFecha(fechaRaw: string) {
+    const fecha = String(fechaRaw || '').trim();
+    this.validarFecha(fecha);
+
+    const slots = await this.repo.find({
+      where: { Fecha: fecha, Habilitada: true },
+      order: { HoraInicio: 'ASC' },
+    });
+
+    const franjas = [];
+    for (const slot of slots) {
+      let ocupado = 0;
+      if (this.visitasRepo) {
+        const query = await this.visitasRepo
+          .createQueryBuilder('v')
+          .where('v.DisponibilidadVisitaId = :id', { id: slot.Id })
+          .andWhere('v.Estado NOT IN (:...estadosExcluidos)', {
+            estadosExcluidos: ['Rechazada', 'Inactiva'],
+          })
+          .select('COALESCE(SUM(v.CantidadVisitantes), 0)', 'total')
+          .getRawOne();
+        ocupado = Number(query?.total ?? 0);
+      }
+
+      const capacidadMaxima = Number(slot.CapacidadMaxima ?? 30);
+      const cupoRestante = Math.max(0, capacidadMaxima - ocupado);
+      const agotada = cupoRestante <= 0;
+      const inicio12 = formatearHora12(slot.HoraInicio);
+      const fin12 = formatearHora12(slot.HoraFin);
+
+      franjas.push({
+        id: slot.Id,
+        fecha: slot.Fecha,
+        horaInicio: slot.HoraInicio,
+        horaFin: slot.HoraFin,
+        horaInicioFormato: inicio12,
+        horaFinFormato: fin12,
+        franja: `${inicio12} - ${fin12}`,
+        capacidadMaxima,
+        cupoOcupado: ocupado,
+        cupoRestante,
+        agotada,
+        habilitada: slot.Habilitada && !agotada,
+        nota: slot.Nota,
+      });
+    }
+
+    return franjas;
+  }
+
+  async listarTurnosParametrizados() {
+    if (!this.turnosRepo) return [];
+    return this.turnosRepo.find({
+      order: { HoraInicio: 'ASC' },
+    });
+  }
+
+  async crearTurnoParametrizado(body: Record<string, unknown>) {
+    if (!this.turnosRepo) {
+      throw new BadRequestException('El módulo de turnos no está disponible.');
+    }
+    const HoraInicio = this.validarHora(
+      this.texto(body, 'horaInicio', 'HoraInicio'),
+    );
+    const HoraFin = this.validarHora(
+      this.texto(body, 'horaFin', 'HoraFin'),
+    );
+    if (HoraFin <= HoraInicio) {
+      throw new BadRequestException(
+        'La hora final debe ser posterior a la hora inicial.',
+      );
+    }
+    const capacidadRaw = body.capacidadMaxima ?? body.CapacidadMaxima ?? 30;
+    const CapacidadMaxima = Math.max(1, Number(capacidadRaw) || 30);
+    const Habilitado = this.booleano(body, 'habilitado', 'Habilitado', true);
+    const Nota = this.nota(body, 'nota', 'Nota');
+
+    const nuevo = this.turnosRepo.create({
+      HoraInicio,
+      HoraFin,
+      CapacidadMaxima,
+      Habilitado,
+      Nota,
+    });
+    return this.turnosRepo.save(nuevo);
+  }
+
+  async actualizarTurnoParametrizado(
+    idRaw: string,
+    body: Record<string, unknown>,
+  ) {
+    if (!this.turnosRepo) {
+      throw new BadRequestException('El módulo de turnos no está disponible.');
+    }
+    const id = this.validarId(idRaw);
+    const actual = await this.turnosRepo.findOne({ where: { Id: id } });
+    if (!actual) {
+      throw new NotFoundException('El turno parametrizado no existe.');
+    }
+
+    if (this.tiene(body, 'horaInicio', 'HoraInicio')) {
+      actual.HoraInicio = this.validarHora(
+        this.texto(body, 'horaInicio', 'HoraInicio'),
+      );
+    }
+    if (this.tiene(body, 'horaFin', 'HoraFin')) {
+      actual.HoraFin = this.validarHora(
+        this.texto(body, 'horaFin', 'HoraFin'),
+      );
+    }
+    if (actual.HoraFin <= actual.HoraInicio) {
+      throw new BadRequestException(
+        'La hora final debe ser posterior a la hora inicial.',
+      );
+    }
+    if (this.tiene(body, 'capacidadMaxima', 'CapacidadMaxima')) {
+      const capRaw = body.capacidadMaxima ?? body.CapacidadMaxima;
+      actual.CapacidadMaxima = Math.max(1, Number(capRaw) || 30);
+    }
+    if (this.tiene(body, 'habilitado', 'Habilitado')) {
+      actual.Habilitado = this.booleano(
+        body,
+        'habilitado',
+        'Habilitado',
+        true,
+      );
+    }
+    if (this.tiene(body, 'nota', 'Nota')) {
+      actual.Nota = this.nota(body, 'nota', 'Nota');
+    }
+
+    return this.turnosRepo.save(actual);
+  }
+
   private leerAlta(body: Record<string, unknown>) {
     const Fecha = this.texto(body, 'fecha', 'Fecha');
     const HoraInicio = this.validarHora(
@@ -105,11 +259,15 @@ export class VisitasDisponibilidadService {
     );
     const HoraFin = this.validarHora(this.texto(body, 'horaFin', 'HoraFin'));
     this.validarLimites(Fecha, HoraInicio, HoraFin);
+    const capacidadRaw = body.capacidadMaxima ?? body.CapacidadMaxima ?? 30;
+    const CapacidadMaxima = Math.max(1, Number(capacidadRaw) || 30);
+
     return {
       Fecha,
       HoraInicio,
       HoraFin,
       Habilitada: this.booleano(body, 'habilitada', 'Habilitada', true),
+      CapacidadMaxima,
       Nota: this.nota(body, 'nota', 'Nota'),
     };
   }
@@ -137,6 +295,10 @@ export class VisitasDisponibilidadService {
         'Habilitada',
         false,
       );
+    }
+    if (this.tiene(body, 'capacidadMaxima', 'CapacidadMaxima')) {
+      const capRaw = body.capacidadMaxima ?? body.CapacidadMaxima;
+      cambios.CapacidadMaxima = Math.max(1, Number(capRaw) || 30);
     }
     if (this.tiene(body, 'nota', 'Nota')) {
       cambios.Nota = this.nota(body, 'nota', 'Nota');

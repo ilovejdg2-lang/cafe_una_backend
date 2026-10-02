@@ -138,6 +138,40 @@ describe('VisitasService', () => {
         ...datos,
       }),
     ).rejects.toThrow(mensaje);
+  });
+
+  it('rechaza la reservación si excede la capacidad disponible de la franja', async () => {
+    findAvailabilityMock.mockResolvedValueOnce({
+      Id: '9',
+      Fecha: '2099-10-15',
+      HoraInicio: '08:00:00',
+      HoraFin: '09:30:00',
+      Habilitada: true,
+      CapacidadMaxima: 10,
+    });
+
+    const andWhere = jest.fn();
+    const select = jest.fn();
+    const qb = {
+      where: jest.fn().mockReturnThis(),
+      andWhere,
+      select,
+      getRawOne: jest.fn().mockResolvedValue({ total: 8 }),
+    };
+    andWhere.mockReturnValue(qb);
+    select.mockReturnValue(qb);
+    createQueryBuilderMock.mockReturnValue(qb);
+
+    await expect(
+      service.crear({
+        EncargadoNombre: 'Carlos Méndez',
+        EncargadoEmail: 'carlos@ejemplo.com',
+        EncargadoTelefono: '8888-8888',
+        CantidadVisitantes: 5,
+        TipoVisitante: 'Nacional',
+        DisponibilidadVisitaId: '9',
+      }),
+    ).rejects.toThrow('No hay cupo suficiente');
     expect(saveMock).not.toHaveBeenCalled();
   });
 

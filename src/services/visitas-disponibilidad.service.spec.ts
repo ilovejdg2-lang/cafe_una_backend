@@ -12,6 +12,7 @@ describe('VisitasDisponibilidadService', () => {
     create: jest.Mock;
     save: jest.Mock;
     findOne: jest.Mock;
+    find: jest.Mock;
     createQueryBuilder: jest.Mock;
   };
 
@@ -24,6 +25,7 @@ describe('VisitasDisponibilidadService', () => {
         Promise.resolve({ Id: '4', ...value } as DisponibilidadVisita),
       ),
       findOne: jest.fn(),
+      find: jest.fn(),
       createQueryBuilder: jest.fn(),
     };
     const moduleRef = await Test.createTestingModule({
@@ -172,5 +174,31 @@ describe('VisitasDisponibilidadService', () => {
     await expect(
       service.actualizar('404', { habilitada: false }),
     ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('obtiene franjas libres con formato y cupo restante por fecha', async () => {
+    repo.find.mockResolvedValueOnce([
+      {
+        Id: '10',
+        Fecha: '2099-05-10',
+        HoraInicio: '09:00:00',
+        HoraFin: '10:00:00',
+        CapacidadMaxima: 20,
+        Habilitada: true,
+        Nota: 'Turno 1',
+      },
+    ]);
+
+    const resultado = await service.obtenerFranjasPorFecha('2099-05-10');
+    expect(resultado).toHaveLength(1);
+    expect(resultado[0]).toMatchObject({
+      id: '10',
+      fecha: '2099-05-10',
+      franja: '9:00 AM - 10:00 AM',
+      capacidadMaxima: 20,
+      cupoRestante: 20,
+      agotada: false,
+      habilitada: true,
+    });
   });
 });
