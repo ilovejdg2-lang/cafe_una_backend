@@ -1,12 +1,12 @@
 import { Column, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
-/** Bloques de fechas/horas para recibir grupos (visitas o voluntariado). */
+/** Excepciones de horario por fecha (compras de productos, visitas o voluntariado). */
 @Entity('disponibilidad_grupos')
 export class DisponibilidadGrupo {
   @PrimaryGeneratedColumn({ name: 'Id' })
   Id: number;
 
-  /** visitas | voluntariado */
+  /** compras | visitas | voluntariado */
   @Column({ name: 'Tipo', length: 30 })
   Tipo: string;
 
