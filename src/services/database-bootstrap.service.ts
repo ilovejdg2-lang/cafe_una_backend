@@ -352,9 +352,11 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.asegurarTablasRolesPermisos();
       await this.asegurarTablaDisponibilidadGrupos();
       await this.asegurarTablaAjustesEIdiomas();
-      await this.asegurarTraduccionesInglesVacias();
-      await this.asegurarTablaAuditoria();
-      await this.asegurarTriggersAuditoria();
+      await this.asegurarEquipoSobreNosotros();
+      await this.asegurarHistoriaCompleta();
+    await this.asegurarTablaAuditoria();
+    await this.asegurarTriggersAuditoria();
+    await this.asegurarTraduccionesInglesVacias();
       await this.asegurarTablasDonaciones();
       await this.asegurarFechasRecepcionDonaciones();
       await this.asegurarTablaVisitasGrupales();
@@ -969,6 +971,15 @@ export class DatabaseBootstrapService implements OnModuleInit {
         END;
         v_old := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE to_jsonb(OLD) END;
         v_new := CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE to_jsonb(NEW) END;
+        -- Las columnas *En son traducciones al inglés o marcas de tiempo
+        -- (CreadoEn, ActualizadoEn). Si el sistema (sin usuario) solo toca esas,
+        -- es traducción automática y no va a la bitácora; si lo hace una persona, sí.
+        IF TG_OP = 'UPDATE' AND v_uid IS NULL AND
+          (SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) FROM jsonb_each(v_old) WHERE key !~ 'En$') =
+          (SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) FROM jsonb_each(v_new) WHERE key !~ 'En$')
+        THEN
+          RETURN NEW;
+        END IF;
         -- Nunca guardar contraseña en texto plano en la bitácora
         IF v_old IS NOT NULL THEN
           IF v_old ? 'PasswordHash' THEN
@@ -1042,6 +1053,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       'solicitudes_visitas_grupales',
       'disponibilidades_visitas',
       'faq_inicio',
+      'equipo_sobre_nosotros',
     ];
     const tablasClave = ['textos_institucionales', 'tarjetas_inicio'];
 
@@ -1444,6 +1456,31 @@ export class DatabaseBootstrapService implements OnModuleInit {
         ADD COLUMN IF NOT EXISTS "EsRegistroCliente" boolean NOT NULL DEFAULT false,
         ADD COLUMN IF NOT EXISTS "TipoCliente" varchar(20) NULL,
         ADD COLUMN IF NOT EXISTS "DatosCliente" jsonb NULL;
+    `);
+  }
+
+  private async asegurarEquipoSobreNosotros(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS equipo_sobre_nosotros (
+        "Id" bigserial PRIMARY KEY,
+        "Nombre" varchar(200) NOT NULL,
+        "Cargo" varchar(200) NOT NULL,
+        "CargoEn" varchar(200) NOT NULL DEFAULT '',
+        "Correo" varchar(200) NOT NULL DEFAULT '',
+        "Telefono" varchar(50) NOT NULL DEFAULT '',
+        "Foto" varchar(1000) NOT NULL DEFAULT '',
+        "Orden" integer NOT NULL DEFAULT 0
+      );
+    `);
+  }
+
+  private async asegurarHistoriaCompleta(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS historia_completa (
+        "Id" integer PRIMARY KEY,
+        "Contenido" jsonb NOT NULL,
+        "ActualizadoEn" timestamptz NOT NULL DEFAULT now()
+      );
     `);
   }
 

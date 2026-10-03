@@ -30,6 +30,7 @@ const MODULO_TABLAS: Record<string, string[]> = {
     'galeria_institucional',
     'enlaces_sitio',
     'faq_inicio',
+    'equipo_sobre_nosotros',
   ],
   compras: ['compras', 'compra_items', 'facturas', 'factura_items'],
   facturacion: ['facturas', 'factura_items'],
@@ -80,6 +81,13 @@ function sanitizarRegistro(registro: Auditoria): Auditoria {
       registro.DatosNuevos,
     ) as Auditoria['DatosNuevos'],
   };
+}
+
+/** Columnas *En = traducciones al inglés o marcas de tiempo; no cuentan como cambio. */
+function sinTraducciones(columna: string): string {
+  return `(SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb)
+    FROM jsonb_each(CASE WHEN jsonb_typeof(${columna}) = 'object' THEN ${columna} ELSE '{}'::jsonb END)
+    WHERE key !~ 'En$')`;
 }
 
 @Injectable()
@@ -141,6 +149,14 @@ export class AuditoriaService {
         hasta: `${query.hasta.trim()}T23:59:59.999Z`,
       });
     }
+
+    qb.andWhere(
+      `NOT (auditoria."Accion" = 'UPDATE'
+        AND auditoria."IdUsuario" IS NULL
+        AND jsonb_typeof(auditoria."DatosAnteriores") = 'object'
+        AND jsonb_typeof(auditoria."DatosNuevos") = 'object'
+        AND ${sinTraducciones('auditoria."DatosAnteriores"')} = ${sinTraducciones('auditoria."DatosNuevos"')})`,
+    );
 
     const limit = Math.min(Math.max(Number(query.limit) || 500, 1), 2000);
     qb.take(limit);

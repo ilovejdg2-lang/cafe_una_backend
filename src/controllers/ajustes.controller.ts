@@ -55,7 +55,7 @@ export class AjustesController {
     @Query('hasta') hasta?: string,
   ) {
     return this.disponibilidad.listarPublicos(
-      String(tipo || 'visitas').toLowerCase(),
+      String(tipo || 'compras').toLowerCase(),
       desde,
       hasta,
     );

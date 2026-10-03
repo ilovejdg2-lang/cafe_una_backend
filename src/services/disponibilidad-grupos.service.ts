@@ -7,7 +7,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { DisponibilidadGrupo } from '../entities/disponibilidad-grupo.entity';
 
-const TIPOS = new Set(['visitas', 'voluntariado']);
+const TIPOS = new Set(['compras', 'visitas', 'voluntariado']);
 const HORA_RE = /^\d{2}:\d{2}$/;
 
 /** Horario base Café UNA (lun–vie). */
@@ -91,7 +91,7 @@ export class DisponibilidadGruposService {
     }[]
   > {
     if (!TIPOS.has(tipo)) {
-      throw new BadRequestException('Tipo debe ser visitas o voluntariado.');
+      throw new BadRequestException('Tipo debe ser compras, visitas o voluntariado.');
     }
 
     const inicio = desde && /^\d{4}-\d{2}-\d{2}$/.test(desde) ? desde : hoyIso();
@@ -206,7 +206,7 @@ export class DisponibilidadGruposService {
     const t = String(tipo || '').toLowerCase();
     const f = String(fecha || '').slice(0, 10);
     if (!TIPOS.has(t)) {
-      throw new BadRequestException('Tipo debe ser visitas o voluntariado.');
+      throw new BadRequestException('Tipo debe ser compras, visitas o voluntariado.');
     }
     if (!/^\d{4}-\d{2}-\d{2}$/.test(f)) {
       throw new BadRequestException('Fecha inválida.');
@@ -229,7 +229,7 @@ export class DisponibilidadGruposService {
       .toLowerCase();
     if (!parcial || body.tipo != null || body.Tipo != null) {
       if (!TIPOS.has(tipo)) {
-        throw new BadRequestException('Tipo debe ser visitas o voluntariado.');
+        throw new BadRequestException('Tipo debe ser compras, visitas o voluntariado.');
       }
     }
 
