@@ -191,7 +191,7 @@ export class DocumentosController {
 
     const ip = req.ip || (req.headers['x-forwarded-for'] as string) || '';
     const { stream, nombreOriginal, mimeType } =
-      await this.documentosService.descargar(id, usuario, ip);
+      await this.documentosService.descargar(id, usuario, ip, false);
 
     const safeFilename = encodeURIComponent(nombreOriginal);
     res.set({
