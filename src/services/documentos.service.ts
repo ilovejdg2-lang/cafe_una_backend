@@ -490,6 +490,7 @@ export class DocumentosService {
     id: string,
     usuario?: { id?: string; name?: string; username?: string; role?: string; roles?: string[] },
     ip?: string,
+    esDescargaEfectiva = true,
   ): Promise<{ stream: StreamableFile; nombreOriginal: string; mimeType: string }> {
     const doc = await this.obtenerPorId(id);
 
@@ -519,8 +520,10 @@ export class DocumentosService {
       }
     }
 
-    // Incrementar contador y registrar auditoría
-    await this.registrarDescarga(doc.Id, usuario, ip);
+    // Incrementar contador y registrar auditoría únicamente si es descarga real/efectiva (no visualización)
+    if (esDescargaEfectiva) {
+      await this.registrarDescarga(doc.Id, usuario, ip);
+    }
 
     const ruta = await this.obtenerRutaSegura(doc.NombreArchivo, doc);
     const stream = createReadStream(ruta);
