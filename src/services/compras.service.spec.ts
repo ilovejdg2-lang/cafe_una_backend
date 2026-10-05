@@ -173,6 +173,40 @@ describe('ComprasService historial', () => {
     );
   });
 
+  it('incluye compras web del punto asignado y las registradas por el vendedor', async () => {
+    const qb = {
+      leftJoinAndSelect: jest.fn().mockReturnThis(),
+      orderBy: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      skip: jest.fn().mockReturnThis(),
+      take: jest.fn().mockReturnThis(),
+      getManyAndCount: jest.fn().mockResolvedValue([[], 0]),
+    };
+    comprasRepository.createQueryBuilder.mockReturnValue(qb);
+    const asignaciones = {
+      idsUbicacionesActivas: jest.fn().mockResolvedValue([2, 3]),
+    };
+    const conAsignaciones = new ComprasService(
+      comprasRepository as never,
+      dataSource as never,
+      clientesService as never,
+      undefined,
+      undefined,
+      asignaciones as never,
+    );
+
+    await conAsignaciones.listarParaActor({ estado: 'Pendiente' }, {
+      userId: 7,
+      roles: ['Vendedor'],
+    });
+
+    expect(asignaciones.idsUbicacionesActivas).toHaveBeenCalledWith(7);
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      '(compra.UsuarioId = :alcanceVendedorId OR compra.UbicacionId IN (:...puntosAsignados))',
+      { alcanceVendedorId: 7, puntosAsignados: [2, 3] },
+    );
+  });
+
   it('lists multiple purchases with pagination', async () => {
     const qb = {
       leftJoinAndSelect: jest.fn().mockReturnThis(),

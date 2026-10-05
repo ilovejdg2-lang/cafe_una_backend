@@ -249,6 +249,45 @@ export class DatabaseBootstrapService implements OnModuleInit {
         ADD COLUMN IF NOT EXISTS "Activo" boolean NOT NULL DEFAULT true;
       `);
       await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS vendedor_punto_venta (
+          "Id" serial PRIMARY KEY,
+          "VendedorId" integer NOT NULL,
+          "UbicacionId" integer NOT NULL,
+          "Activo" boolean NOT NULL DEFAULT true,
+          "CreadoEn" timestamptz NOT NULL DEFAULT NOW(),
+          "ActualizadoEn" timestamptz NOT NULL DEFAULT NOW(),
+          "AsignadoPorId" integer NULL,
+          CONSTRAINT "UQ_vendedor_punto_venta" UNIQUE ("VendedorId", "UbicacionId")
+        );
+      `);
+      await this.dataSource.query(`
+        DO $$
+        BEGIN
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'FK_vendedor_punto_venta_vendedor'
+          ) THEN
+            ALTER TABLE vendedor_punto_venta
+              ADD CONSTRAINT "FK_vendedor_punto_venta_vendedor"
+              FOREIGN KEY ("VendedorId") REFERENCES usuarios ("Id") ON DELETE RESTRICT;
+          END IF;
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'FK_vendedor_punto_venta_ubicacion'
+          ) THEN
+            ALTER TABLE vendedor_punto_venta
+              ADD CONSTRAINT "FK_vendedor_punto_venta_ubicacion"
+              FOREIGN KEY ("UbicacionId") REFERENCES inventario_ubicaciones ("Id") ON DELETE RESTRICT;
+          END IF;
+          IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'FK_vendedor_punto_venta_asignado_por'
+          ) THEN
+            ALTER TABLE vendedor_punto_venta
+              ADD CONSTRAINT "FK_vendedor_punto_venta_asignado_por"
+              FOREIGN KEY ("AsignadoPorId") REFERENCES usuarios ("Id") ON DELETE SET NULL;
+          END IF;
+        END
+        $$;
+      `);
+      await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS transferencias (
           "Id" bigserial PRIMARY KEY,
           "ProductoId" bigint NOT NULL,
@@ -1054,6 +1093,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       'disponibilidades_visitas',
       'faq_inicio',
       'equipo_sobre_nosotros',
+      'vendedor_punto_venta',
     ];
     const tablasClave = ['textos_institucionales', 'tarjetas_inicio'];
 

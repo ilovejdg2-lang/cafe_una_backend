@@ -240,6 +240,11 @@ export const PERMISOS_SEED: readonly PermisoSeed[] = [
     roles: [SA],
   },
   { codigo: 'inactivar_donacion', nombre: 'Inactivar donación', roles: admins },
+  {
+    codigo: 'gestionar_asignaciones_puntos',
+    nombre: 'Gestionar asignaciones de puntos de venta',
+    roles: [SA],
+  },
   { codigo: 'ver_auditoria', nombre: 'Ver bitácoras', roles: [SA] },
 ];
 

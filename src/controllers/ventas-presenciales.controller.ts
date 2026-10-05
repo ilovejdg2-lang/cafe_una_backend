@@ -15,8 +15,8 @@ export class VentasPresencialesController {
 
   @Get('puntos')
   @RequierePermiso('registrar_ventas', 'ajustar_stock_ubicaciones', 'ver_inventario')
-  listarPuntos() {
-    return this.ventasPresencialesService.listarPuntosPermitidos();
+  listarPuntos(@Req() req: Request & { user: JwtUsuario }) {
+    return this.ventasPresencialesService.listarPuntosPermitidos(req.user);
   }
 
   @Post()
@@ -28,6 +28,7 @@ export class VentasPresencialesController {
     return this.ventasPresencialesService.registrar(
       body ?? {},
       req.user?.userId ?? null,
+      req.user?.roles ?? [],
     );
   }
 

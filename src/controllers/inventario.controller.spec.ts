@@ -11,6 +11,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { InventarioController } from './inventario.controller';
 import { InventarioService } from '../services/inventario.service';
+import { AsignacionesPuntoVentaService } from '../services/asignaciones-punto-venta.service';
 import { StockAlertaService } from '../services/stock-alerta.service';
 import { DataSource } from 'typeorm';
 
@@ -50,6 +51,13 @@ describe('InventarioController location reads', () => {
         {
           provide: getRepositoryToken(Transferencia),
           useValue: { createQueryBuilder: jest.fn() },
+        },
+        {
+          provide: AsignacionesPuntoVentaService,
+          useValue: {
+            filtrarUbicacionesVisibles: jest.fn(async (_actor, rows) => rows),
+            exigirConsultaPunto: jest.fn(),
+          },
         },
         {
           provide: StockAlertaService,

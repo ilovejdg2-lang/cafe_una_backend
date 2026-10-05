@@ -20,6 +20,7 @@ import { JwtUsuario, tienePermiso } from '../common/permisos';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { PerfilService } from '../services/perfil.service';
+import { AsignacionesPuntoVentaService } from '../services/asignaciones-punto-venta.service';
 import { UsuariosAdminService } from '../services/usuarios-admin.service';
 import { UsuariosService } from '../services/usuarios.service';
 
@@ -30,10 +31,11 @@ export class UsuariosController {
     private readonly usuariosService: UsuariosService,
     private readonly perfilService: PerfilService,
     private readonly usuariosAdminService: UsuariosAdminService,
+    private readonly asignacionesPunto: AsignacionesPuntoVentaService,
   ) {}
 
   @Get()
-  @RequierePermiso('editar_usuarios')
+  @RequierePermiso('editar_usuarios', 'gestionar_asignaciones_puntos')
   obtenerUsuarios() {
     return this.usuariosService.obtenerTodos();
   }
@@ -42,6 +44,64 @@ export class UsuariosController {
   @RequierePermiso('editar_usuarios')
   obtenerUsuariosActivos() {
     return this.usuariosService.obtenerActivos();
+  }
+
+  @Get('asignaciones-puntos/elegibles')
+  @RequierePermiso('gestionar_asignaciones_puntos')
+  listarPuntosElegibles() {
+    return this.asignacionesPunto.listarPuntosElegibles();
+  }
+
+  @Get(':id/asignaciones-puntos')
+  @RequierePermiso('gestionar_asignaciones_puntos')
+  listarAsignaciones(@Param('id', ParseIntPipe) id: number) {
+    return this.asignacionesPunto.listarDeVendedor(id);
+  }
+
+  @Post(':id/asignaciones-puntos')
+  @RequierePermiso('gestionar_asignaciones_puntos')
+  asignarPuntos(
+    @Req() req: Request & { user: JwtUsuario },
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { ubicacionIds?: number[]; ubicacionId?: number },
+  ) {
+    const ids = Array.isArray(body?.ubicacionIds)
+      ? body.ubicacionIds
+      : body?.ubicacionId != null
+        ? [body.ubicacionId]
+        : [];
+    return this.asignacionesPunto.asignarVarios(id, ids, req.user?.userId ?? null);
+  }
+
+  @Patch(':id/asignaciones-puntos/:ubicacionId')
+  @RequierePermiso('gestionar_asignaciones_puntos')
+  cambiarEstadoAsignacion(
+    @Req() req: Request & { user: JwtUsuario },
+    @Param('id', ParseIntPipe) id: number,
+    @Param('ubicacionId', ParseIntPipe) ubicacionId: number,
+    @Body() body: { activo?: boolean },
+  ) {
+    return this.asignacionesPunto.cambiarEstado(
+      id,
+      ubicacionId,
+      body?.activo === true,
+      req.user?.userId ?? null,
+    );
+  }
+
+  @Post(':id/asignaciones-puntos/cambiar')
+  @RequierePermiso('gestionar_asignaciones_puntos')
+  cambiarPuntoAsignado(
+    @Req() req: Request & { user: JwtUsuario },
+    @Param('id', ParseIntPipe) id: number,
+    @Body() body: { desdeUbicacionId?: number; haciaUbicacionId?: number },
+  ) {
+    return this.asignacionesPunto.cambiarPunto(
+      id,
+      Number(body?.desdeUbicacionId),
+      Number(body?.haciaUbicacionId),
+      req.user?.userId ?? null,
+    );
   }
 
   @Get(':id')

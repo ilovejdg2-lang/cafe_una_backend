@@ -48,6 +48,7 @@ import { DescargaDocumento } from './descarga-documento.entity';
 import { SolicitudDocumento } from './solicitud-documento.entity';
 import { CarritoItem } from './carrito-item.entity';
 import { HistoriaCompleta } from './historia-completa.entity';
+import { VendedorPuntoVenta } from './vendedor-punto-venta.entity';
 
 export const entities = [
   Usuario,
@@ -100,6 +101,7 @@ export const entities = [
   SolicitudDocumento,
   CarritoItem,
   HistoriaCompleta,
+  VendedorPuntoVenta,
 ];
 
 export * from './usuario.entity';
@@ -152,3 +154,4 @@ export * from './descarga-documento.entity';
 export * from './solicitud-documento.entity';
 export * from './carrito-item.entity';
 export * from './historia-completa.entity';
+export * from './vendedor-punto-venta.entity';
