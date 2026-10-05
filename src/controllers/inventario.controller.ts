@@ -7,22 +7,30 @@ import {
   Post,
   Put,
   Query,
+  Req,
   UseGuards,
 } from '@nestjs/common';
+import type { Request } from 'express';
+import { JwtUsuario } from '../common/permisos';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
+import { AsignacionesPuntoVentaService } from '../services/asignaciones-punto-venta.service';
 import { InventarioService } from '../services/inventario.service';
 
 @Controller('inventario')
 @UseGuards(JwtAuthGuard, PermisosGuard)
 export class InventarioController {
-  constructor(private readonly inventarioService: InventarioService) {}
+  constructor(
+    private readonly inventarioService: InventarioService,
+    private readonly asignaciones: AsignacionesPuntoVentaService,
+  ) {}
 
   @Get('ubicaciones')
   @RequierePermiso('ver_inventario', 'registrar_ventas')
-  obtenerUbicaciones() {
-    return this.inventarioService.obtenerUbicaciones();
+  async obtenerUbicaciones(@Req() req: Request & { user: JwtUsuario }) {
+    const ubicaciones = await this.inventarioService.obtenerUbicaciones();
+    return this.asignaciones.filtrarUbicacionesVisibles(req.user, ubicaciones);
   }
 
   @Post('ubicaciones')
@@ -56,7 +64,11 @@ export class InventarioController {
 
   @Get('stock')
   @RequierePermiso('ver_inventario', 'registrar_ventas')
-  obtenerStockPorUbicacion(@Query('locationCode') locationCode: string) {
+  async obtenerStockPorUbicacion(
+    @Query('locationCode') locationCode: string,
+    @Req() req: Request & { user: JwtUsuario },
+  ) {
+    await this.asignaciones.exigirConsultaPunto(req.user, locationCode);
     return this.inventarioService.obtenerStockPorUbicacion(locationCode);
   }
 
@@ -65,7 +77,11 @@ export class InventarioController {
   async obtenerStockProducto(
     @Param('id') id: string,
     @Query('locationCode') locationCode: string,
+    @Req() req: Request & { user: JwtUsuario },
   ) {
+    if (locationCode) {
+      await this.asignaciones.exigirConsultaPunto(req.user, locationCode);
+    }
     const stock = await this.inventarioService.obtenerStockProducto(
       id,
       locationCode,

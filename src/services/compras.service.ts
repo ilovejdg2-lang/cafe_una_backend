@@ -22,6 +22,10 @@ import { Usuario } from '../entities/usuario.entity';
 import { ClientesService } from './clientes.service';
 import { FacturaPdfService } from './factura-pdf.service';
 import { FacturasNotificacionesService } from './facturas-notificaciones.service';
+import {
+  AsignacionesPuntoVentaService,
+  omiteAsignacionDePunto,
+} from './asignaciones-punto-venta.service';
 import { FacturasService } from './facturas.service';
 import { BODEGA_CENTRAL, esPuntoVentaCliente } from './inventario.service';
 
@@ -169,6 +173,8 @@ export class ComprasService {
     private readonly facturasService?: FacturasService,
     @Optional()
     private readonly notificacionesService?: FacturasNotificacionesService,
+    @Optional()
+    private readonly asignacionesPunto?: AsignacionesPuntoVentaService,
   ) {}
 
   async registrar(body: CompraBody, usuarioId: number | null): Promise<CompraDetalle> {
@@ -357,10 +363,18 @@ export class ComprasService {
   async cambiarEstado(
     id: number | string,
     estadoRaw: unknown,
+    actor?: { userId?: number | null; roles?: string[] },
   ): Promise<CompraDetalle> {
     const compraId = Number(id);
     if (!Number.isFinite(compraId) || compraId <= 0) {
       throw new BadRequestException('El identificador de compra no es válido.');
+    }
+    if (actor && !omiteAsignacionDePunto(actor.roles)) {
+      await this.obtenerDetalleAutorizado(
+        compraId,
+        actor.userId ?? null,
+        actor.roles ?? [],
+      );
     }
     const nuevoEstado = normalizarEstadoCompra(String(estadoRaw ?? '').trim());
     if (
@@ -512,6 +526,24 @@ export class ComprasService {
     });
   }
 
+  async listarParaActor(
+    query: Record<string, string | undefined>,
+    actor: { userId?: number | null; roles?: string[] },
+  ) {
+    if (omiteAsignacionDePunto(actor?.roles)) {
+      return this.listar(query);
+    }
+    const puntos = this.asignacionesPunto
+      ? await this.asignacionesPunto.idsUbicacionesActivas(actor?.userId)
+      : [];
+    const { usuarioId: _ignorado, ...filtros } = query ?? {};
+    return this.listar({
+      ...filtros,
+      alcanceVendedorId: String(actor?.userId ?? ''),
+      puntosAsignados: puntos.join(','),
+    });
+  }
+
   async listar(query: Record<string, string | undefined>) {
     const page = Math.max(1, Number(query.page) || 1);
     const pageSize = Math.min(50, Math.max(1, Number(query.pageSize) || 10));
@@ -522,7 +554,25 @@ export class ComprasService {
       .leftJoinAndSelect('compra.Ubicacion', 'ubicacion')
       .orderBy('compra.Fecha', 'DESC');
 
-    if (query.usuarioId) {
+    if (query.alcanceVendedorId) {
+      const puntos = String(query.puntosAsignados || '')
+        .split(',')
+        .map((id) => Number(id))
+        .filter((id) => Number.isFinite(id) && id > 0);
+      if (puntos.length > 0) {
+        qb.andWhere(
+          '(compra.UsuarioId = :alcanceVendedorId OR compra.UbicacionId IN (:...puntosAsignados))',
+          {
+            alcanceVendedorId: Number(query.alcanceVendedorId),
+            puntosAsignados: puntos,
+          },
+        );
+      } else {
+        qb.andWhere('compra.UsuarioId = :alcanceVendedorId', {
+          alcanceVendedorId: Number(query.alcanceVendedorId),
+        });
+      }
+    } else if (query.usuarioId) {
       qb.andWhere('compra.UsuarioId = :usuarioId', {
         usuarioId: Number(query.usuarioId),
       });
@@ -634,13 +684,16 @@ export class ComprasService {
 
     if (!forRegistrar) {
       const rolesNorm = (roles ?? []).map((r) => String(r).toLowerCase());
-      const esAdmin =
-        rolesNorm.includes('superadmin') || rolesNorm.includes('admin');
+      const esAdmin = omiteAsignacionDePunto(rolesNorm);
       const esPropia =
         usuarioId != null && Number(compra.UsuarioId) === Number(usuarioId);
-      if (!esAdmin && !esPropia) {
+      const puntos = !esAdmin && this.asignacionesPunto
+        ? await this.asignacionesPunto.idsUbicacionesActivas(usuarioId)
+        : [];
+      const enPuntoAsignado = puntos.includes(Number(compra.UbicacionId));
+      if (!esAdmin && !esPropia && !enPuntoAsignado) {
         throw new ForbiddenException(
-          'Solo puede consultar las ventas registradas por su usuario.',
+          'Solo puede consultar las ventas de sus puntos asignados o las que registró.',
         );
       }
     }
