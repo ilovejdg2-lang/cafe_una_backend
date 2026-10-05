@@ -131,7 +131,10 @@ export class ComprasController {
     const esAdmin = roles.includes('superadmin') || roles.includes('admin');
     const queryFinal = { ...query };
     if (!esAdmin && req.user?.userId) {
-      queryFinal.usuarioId = String(req.user.userId);
+      return this.comprasService.listarParaActor(queryFinal, {
+        userId: req.user.userId,
+        roles: req.user.roles ?? [],
+      });
     }
     return this.comprasService.listar(queryFinal);
   }
@@ -183,10 +186,15 @@ export class ComprasController {
   cambiarEstado(
     @Param('id') id: string,
     @Body() body: Record<string, unknown>,
+    @Req() req: Request & { user: JwtUsuario },
   ) {
     return this.comprasService.cambiarEstado(
       id,
       body?.estado ?? body?.Estado,
+      {
+        userId: req.user?.userId ?? null,
+        roles: req.user?.roles ?? [],
+      },
     );
   }
 }

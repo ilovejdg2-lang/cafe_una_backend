@@ -3,9 +3,9 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { InjectRepository } from '@nestjs/typeorm';
-import { DataSource, EntityManager, Repository } from 'typeorm';
+import { DataSource, EntityManager } from 'typeorm';
 import { EmailService } from '../common/email.service';
+import { AsignacionesPuntoVentaService } from './asignaciones-punto-venta.service';
 import { Compra } from '../entities/compra.entity';
 import { CompraItem } from '../entities/compra-item.entity';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
@@ -61,30 +61,22 @@ export type VentaPresencialResponse = {
 @Injectable()
 export class VentasPresencialesService {
   constructor(
-    @InjectRepository(InventarioUbicacion)
-    private readonly ubicacionesRepo: Repository<InventarioUbicacion>,
     private readonly dataSource: DataSource,
     private readonly emailService: EmailService,
+    private readonly asignaciones: AsignacionesPuntoVentaService,
   ) {}
 
-  async listarPuntosPermitidos() {
-    const rows = await this.ubicacionesRepo.find({
-      where: { Activo: true },
-      order: { Nombre: 'ASC' },
+  async listarPuntosPermitidos(actor: { userId?: number | null; roles?: string[] }) {
+    return this.asignaciones.listarPuntosOperables({
+      userId: actor?.userId ?? 0,
+      roles: actor?.roles ?? [],
     });
-    return rows
-      .filter((row) => this.esPuntoPresencial(row.Codigo))
-      .map((row) => ({
-        id: row.Id,
-        code: row.Codigo,
-        name: row.Nombre,
-        activo: row.Activo !== false,
-      }));
   }
 
   async registrar(
     body: Record<string, unknown>,
     responsableId: number | null,
+    roles: string[] = [],
   ): Promise<VentaPresencialResponse> {
     const ubicacionRaw =
       body.ubicacionId ??
@@ -141,6 +133,12 @@ export class VentasPresencialesService {
           'El punto de venta seleccionado está inactivo.',
         );
       }
+      await this.asignaciones.exigirVentaEnPunto(
+        responsableId,
+        roles,
+        ubicacion,
+        queryRunner.manager,
+      );
 
       let responsableNombre = '';
       if (responsableId != null) {

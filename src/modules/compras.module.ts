@@ -7,6 +7,7 @@ import { Producto } from '../entities/producto.entity';
 import { ComprasService } from '../services/compras.service';
 import { AuthModule } from './auth.module';
 import { FacturasModule } from './facturas.module';
+import { AsignacionesPuntoVentaModule } from './asignaciones-punto-venta.module';
 import { UsuariosModule } from './usuarios.module';
 
 @Module({
@@ -15,6 +16,7 @@ import { UsuariosModule } from './usuarios.module';
     AuthModule,
     UsuariosModule,
     FacturasModule,
+    AsignacionesPuntoVentaModule,
   ],
   controllers: [ComprasController],
   providers: [ComprasService],

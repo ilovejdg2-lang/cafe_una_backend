@@ -10,6 +10,7 @@ import { ClientesService } from '../services/clientes.service';
 import { UsuariosAdminService } from '../services/usuarios-admin.service';
 import { UsuariosService } from '../services/usuarios.service';
 import { PerfilModule } from './perfil.module';
+import { AsignacionesPuntoVentaModule } from './asignaciones-punto-venta.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { PerfilModule } from './perfil.module';
       ClienteJuridico,
     ]),
     forwardRef(() => PerfilModule),
+    AsignacionesPuntoVentaModule,
   ],
   controllers: [UsuariosController],
   providers: [

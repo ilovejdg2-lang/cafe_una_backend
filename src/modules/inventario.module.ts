@@ -19,6 +19,7 @@ import { MovimientosService } from '../services/movimientos.service';
 import { StockAlertaService } from '../services/stock-alerta.service';
 import { VentasPresencialesService } from '../services/ventas-presenciales.service';
 import { AuthModule } from './auth.module';
+import { AsignacionesPuntoVentaModule } from './asignaciones-punto-venta.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { AuthModule } from './auth.module';
       CompraItem,
     ]),
     AuthModule,
+    AsignacionesPuntoVentaModule,
   ],
   controllers: [
     InventarioController,
