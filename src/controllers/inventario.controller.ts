@@ -26,6 +26,24 @@ export class InventarioController {
     private readonly asignaciones: AsignacionesPuntoVentaService,
   ) {}
 
+  @Get('motivos-salida')
+  @RequierePermiso('ajustar_stock_ubicaciones')
+  listarMotivosSalida() {
+    return this.inventarioService.listarMotivosSalida();
+  }
+
+  @Post('salidas')
+  @RequierePermiso('ajustar_stock_ubicaciones')
+  registrarSalida(
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request & { user: JwtUsuario },
+  ) {
+    return this.inventarioService.registrarSalida(
+      body ?? {},
+      req.user.userId ?? null,
+    );
+  }
+
   @Get('ubicaciones')
   @RequierePermiso('ver_inventario', 'registrar_ventas')
   async obtenerUbicaciones(@Req() req: Request & { user: JwtUsuario }) {
