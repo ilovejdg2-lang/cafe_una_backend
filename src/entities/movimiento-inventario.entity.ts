@@ -10,6 +10,7 @@ import { InventarioUbicacion } from './inventario-ubicacion.entity';
 import { Producto } from './producto.entity';
 import { SolicitudCompra } from './solicitud-compra.entity';
 import { Usuario } from './usuario.entity';
+import { MotivoSalida } from './motivo-salida.entity';
 
 @Entity('movimientos_inventario')
 @Check('CK_movimientos_inventario_cantidad_positiva', '"Cantidad" > 0')
@@ -29,6 +30,16 @@ export class MovimientoInventario {
 
   @Column({ name: 'Cantidad', type: 'integer' })
   Cantidad: number;
+
+  @Column({ name: 'MotivoSalidaId', type: 'integer', nullable: true })
+  MotivoSalidaId: number | null;
+
+  @ManyToOne(() => MotivoSalida, { onDelete: 'RESTRICT', nullable: true })
+  @JoinColumn({ name: 'MotivoSalidaId', referencedColumnName: 'Id' })
+  MotivoSalida?: MotivoSalida | null;
+
+  @Column({ name: 'Destinatario', type: 'varchar', length: 200, nullable: true })
+  Destinatario: string | null;
 
   /** Nombre legible (columna legacy NOT NULL en Supabase). */
   @Column({ name: 'Responsable', type: 'varchar', length: 200, default: '' })
