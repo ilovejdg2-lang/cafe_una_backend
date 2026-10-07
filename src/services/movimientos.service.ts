@@ -22,6 +22,9 @@ export type HistorialMovimientoItem = {
   responsableId: number | null;
   responsableNombre: string;
   notas: string;
+  motivoSalidaId: number | null;
+  motivoSalida: string | null;
+  destinatario: string | null;
 };
 
 export type HistorialMovimientosResponse = {
@@ -56,6 +59,7 @@ export class MovimientosService {
       .leftJoinAndSelect('m.Origen', 'origen')
       .leftJoinAndSelect('m.Destino', 'destino')
       .leftJoinAndSelect('m.Responsable', 'responsable')
+      .leftJoinAndSelect('m.MotivoSalida', 'motivoSalida')
       .orderBy('m.Fecha', 'DESC')
       .addOrderBy('m.Id', 'DESC');
 
@@ -79,7 +83,7 @@ export class MovimientosService {
       const tipo = normalizarTipoMovimiento(tipoRaw);
       if (!tipo) {
         throw new BadRequestException(
-          'El tipo debe ser entrada, transferencia, venta_presencial o venta_web.',
+          'El tipo debe ser entrada, transferencia, venta_presencial, venta_web o salida_bodega.',
         );
       }
       qb.andWhere('m.Tipo IN (:...tipos)', {
@@ -155,6 +159,9 @@ export class MovimientosService {
       responsableNombre:
         responsableJoin || String(row.ResponsableNombre || '').trim(),
       notas: String(row.Notas || row.Observaciones || '').trim(),
+      motivoSalidaId: row.MotivoSalidaId ?? null,
+      motivoSalida: row.MotivoSalida?.Nombre ?? null,
+      destinatario: row.Destinatario ?? null,
     };
   }
 
