@@ -15,6 +15,7 @@ import { InformacionNavbar } from './informacion-navbar.entity';
 import { InventarioStockUbicacion } from './inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from './inventario-ubicacion.entity';
 import { MovimientoInventario } from './movimiento-inventario.entity';
+import { MotivoSalida } from './motivo-salida.entity';
 import { Pago } from './pago.entity';
 import { PasswordResetEntry } from './password-reset-entry.entity';
 import { Producto } from './producto.entity';
@@ -84,6 +85,7 @@ export const entities = [
   SolicitudCompra,
   DetalleSolicitud,
   MovimientoInventario,
+  MotivoSalida,
   Rol,
   Permiso,
   RolPermiso,
@@ -137,6 +139,7 @@ export * from './proveedor.entity';
 export * from './solicitud-compra.entity';
 export * from './detalle-solicitud.entity';
 export * from './movimiento-inventario.entity';
+export * from './motivo-salida.entity';
 export * from './rol.entity';
 export * from './permiso.entity';
 export * from './rol-permiso.entity';

@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -11,6 +12,7 @@ import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
 import { Transferencia } from '../entities/transferencia.entity';
+import { MotivoSalida } from '../entities/motivo-salida.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { StockAlertaService } from './stock-alerta.service';
 import {
@@ -89,6 +91,16 @@ export type RespuestaTransferencia = {
   responsableId: number | null;
 };
 
+export type RespuestaSalidaInventario = {
+  id: string;
+  productoId: string;
+  cantidad: number;
+  motivoSalidaId: number;
+  motivoSalida: string;
+  destinatario: string | null;
+  stockRestante: number;
+};
+
 export type HistorialTransferenciaItem = {
   id: string;
   fecha: string;
@@ -111,6 +123,8 @@ export type HistorialTransferenciasResponse = {
 
 @Injectable()
 export class InventarioService {
+  private readonly logger = new Logger(InventarioService.name);
+
   constructor(
     @InjectRepository(InventarioUbicacion)
     private readonly locationsRepository: Repository<InventarioUbicacion>,
@@ -123,6 +137,13 @@ export class InventarioService {
     private readonly dataSource: DataSource,
     private readonly stockAlertaService: StockAlertaService,
   ) {}
+
+  async listarMotivosSalida(): Promise<Array<{ id: number; nombre: string }>> {
+    const motivos = await this.dataSource.getRepository(MotivoSalida).find({
+      order: { Id: 'ASC' },
+    });
+    return motivos.map(({ Id, Nombre }) => ({ id: Id, nombre: Nombre }));
+  }
 
   async actualizarStockCentral(
     productId: string,
@@ -461,6 +482,141 @@ export class InventarioService {
       if (queryRunner.isTransactionActive) {
         await queryRunner.rollbackTransaction();
       }
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  async registrarSalida(
+    body: Record<string, unknown>,
+    responsableId: number | null,
+  ): Promise<RespuestaSalidaInventario> {
+    const productoId = this.validarProductId(
+      this.normalizarIdentidadProducto(
+        this.tomarCampo(body, 'productoId', 'ProductoId'),
+      ),
+    );
+    const cantidad = this.validarCantidadTransferencia(
+      this.tomarCampo(body, 'cantidad', 'Cantidad'),
+    );
+    const motivoRaw = this.tomarCampo(
+      body,
+      'motivoSalidaId',
+      'MotivoSalidaId',
+      'motivo_salida_id',
+    );
+    const motivoSalidaId = Number(motivoRaw);
+    if (
+      motivoRaw === undefined ||
+      motivoRaw === null ||
+      motivoRaw === '' ||
+      !Number.isSafeInteger(motivoSalidaId) ||
+      motivoSalidaId <= 0
+    ) {
+      throw new BadRequestException('El motivo de salida no es válido.');
+    }
+    const destinatarioRaw = this.tomarCampo(
+      body,
+      'destinatario',
+      'Destinatario',
+    );
+    const destinatario = String(destinatarioRaw ?? '').trim();
+    if (destinatario.length > 200) {
+      throw new BadRequestException('El destinatario no puede superar 200 caracteres.');
+    }
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const central = await queryRunner.manager.findOne(InventarioUbicacion, {
+        where: { Codigo: BODEGA_CENTRAL },
+      });
+      if (!central) {
+        throw new NotFoundException('La Bodega Central no está inicializada.');
+      }
+
+      const producto = await queryRunner.manager.findOne(Producto, {
+        where: { Id: productoId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!producto) throw new NotFoundException('No se encontró el producto.');
+
+      const motivo = await queryRunner.manager.findOne(MotivoSalida, {
+        where: { Id: motivoSalidaId },
+      });
+      if (!motivo) throw new BadRequestException('El motivo de salida no existe.');
+      if (['Donación', 'Traslado'].includes(motivo.Nombre) && !destinatario) {
+        throw new BadRequestException(
+          'El destinatario es obligatorio para Donación y Traslado.',
+        );
+      }
+
+      const balance = await queryRunner.manager.findOne(
+        InventarioStockUbicacion,
+        {
+          where: { ProductoId: productoId, UbicacionId: central.Id },
+          lock: { mode: 'pessimistic_write' },
+        },
+      );
+      if (!balance) {
+        throw new NotFoundException('El balance de Bodega Central no está inicializado.');
+      }
+      const disponible = Number(balance.Stock) || 0;
+      if (disponible < cantidad) {
+        throw new BadRequestException(
+          `No hay stock suficiente en Bodega Central. Disponible: ${disponible}.`,
+        );
+      }
+
+      balance.Stock = disponible - cantidad;
+      producto.Stock = balance.Stock;
+      if (producto.Stock <= 0) producto.EsDestacado = false;
+      await queryRunner.manager.save(balance);
+      await queryRunner.manager.save(producto);
+
+      const responsable =
+        responsableId == null
+          ? null
+          : await queryRunner.manager.findOne(Usuario, {
+              where: { Id: responsableId },
+            });
+
+      const movimiento = await insertarMovimientoInventario(queryRunner.manager, {
+        tipo: TIPO_MOVIMIENTO.SALIDA_BODEGA,
+        productoId,
+        cantidad,
+        responsableId,
+        responsableNombre: responsable
+          ? String(responsable.Nombre || responsable.Correo || '').trim()
+          : responsableId == null
+            ? ''
+            : `usuario:${responsableId}`,
+        motivoSalidaId,
+        destinatario: destinatario || null,
+        ubicacionId: central.Id,
+      });
+      await queryRunner.commitTransaction();
+      try {
+        await this.stockAlertaService.verificarTrasMovimiento(productoId);
+      } catch (error) {
+        this.logger.warn(
+          `No se pudieron verificar alertas de stock tras confirmar la salida del producto ${productoId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
+
+      return {
+        id: String(movimiento.Id),
+        productoId,
+        cantidad,
+        motivoSalidaId,
+        motivoSalida: motivo.Nombre,
+        destinatario: destinatario || null,
+        stockRestante: balance.Stock,
+      };
+    } catch (error) {
+      if (queryRunner.isTransactionActive) await queryRunner.rollbackTransaction();
       throw error;
     } finally {
       await queryRunner.release();
