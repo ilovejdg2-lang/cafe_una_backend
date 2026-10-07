@@ -63,6 +63,8 @@ describe('MovimientosService', () => {
           UbicacionDestinoId: 3,
           ResponsableId: 8,
           ResponsableNombre: '',
+          MotivoSalidaId: null,
+          Destinatario: null,
           Notas: 'Reposición',
           Observaciones: 'Reposición',
           Fecha: new Date('2026-09-03T12:00:00.000Z'),
@@ -82,7 +84,43 @@ describe('MovimientosService', () => {
       origenNombre: 'Bodega Central',
       destinoNombre: 'Editorial',
       responsableNombre: 'Fatima',
+      motivoSalidaId: null,
+      motivoSalida: null,
+      destinatario: null,
       tipo: 'transferencia',
+    });
+    expect(qb.leftJoinAndSelect).toHaveBeenCalledWith(
+      'm.MotivoSalida',
+      'motivoSalida',
+    );
+  });
+
+  it('maps a classified warehouse exit reason and recipient into the history response', async () => {
+    qb.getManyAndCount.mockResolvedValue([
+      [
+        {
+          Id: '10',
+          Tipo: 'salida_bodega',
+          ProductoId: '101',
+          Cantidad: 2,
+          MotivoSalidaId: 3,
+          Destinatario: 'Biblioteca de la comunidad',
+          Fecha: new Date('2026-10-06T12:00:00.000Z'),
+          Producto: { Nombre: 'Café molido' },
+          MotivoSalida: { Id: 3, Nombre: 'Traslado' },
+        },
+      ],
+      1,
+    ]);
+
+    const result = await service.listar({});
+
+    expect(result.items[0]).toMatchObject({
+      id: '10',
+      tipo: 'salida_bodega',
+      motivoSalidaId: 3,
+      motivoSalida: 'Traslado',
+      destinatario: 'Biblioteca de la comunidad',
     });
   });
 });
