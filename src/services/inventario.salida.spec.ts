@@ -99,6 +99,36 @@ describe('InventarioService.registrarSalida', () => {
     expect(stockAlerts.verificarTrasMovimiento).toHaveBeenCalledWith('101');
   });
 
+  it('returns the committed exit when the post-commit stock alert fails', async () => {
+    stockAlerts.verificarTrasMovimiento.mockRejectedValueOnce(
+      new Error('alert delivery failed'),
+    );
+
+    await expect(
+      service.registrarSalida(
+        {
+          productoId: '101',
+          cantidad: 2,
+          motivoSalidaId: 2,
+          destinatario: 'Fundación Café UNA',
+        },
+        44,
+      ),
+    ).resolves.toMatchObject({
+      productoId: '101',
+      cantidad: 2,
+      motivoSalidaId: 2,
+      destinatario: 'Fundación Café UNA',
+      stockRestante: 6,
+    });
+
+    expect(balance.Stock).toBe(6);
+    expect(product.Stock).toBe(6);
+    expect(queryRunner.commitTransaction).toHaveBeenCalledTimes(1);
+    expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();
+    expect(stockAlerts.verificarTrasMovimiento).toHaveBeenCalledWith('101');
+  });
+
   it.each([
     ['Donación', 2],
     ['Traslado', 3],

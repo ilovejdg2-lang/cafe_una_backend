@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
@@ -122,6 +123,8 @@ export type HistorialTransferenciasResponse = {
 
 @Injectable()
 export class InventarioService {
+  private readonly logger = new Logger(InventarioService.name);
+
   constructor(
     @InjectRepository(InventarioUbicacion)
     private readonly locationsRepository: Repository<InventarioUbicacion>,
@@ -595,7 +598,13 @@ export class InventarioService {
         ubicacionId: central.Id,
       });
       await queryRunner.commitTransaction();
-      await this.stockAlertaService.verificarTrasMovimiento(productoId);
+      try {
+        await this.stockAlertaService.verificarTrasMovimiento(productoId);
+      } catch (error) {
+        this.logger.warn(
+          `No se pudieron verificar alertas de stock tras confirmar la salida del producto ${productoId}: ${error instanceof Error ? error.message : String(error)}`,
+        );
+      }
 
       return {
         id: String(movimiento.Id),
