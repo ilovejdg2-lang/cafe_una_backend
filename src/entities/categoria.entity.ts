@@ -18,4 +18,8 @@ export class Categoria {
   /** Vacío = categoría raíz. Si tiene valor, es subcategoría de ese padre. */
   @Column({ name: 'Padre', length: 80, default: '' })
   Padre: string;
+
+  /** Clave de ícono del catálogo del front (ej. `coffee`); vacío = automático. */
+  @Column({ name: 'Icono', length: 60, default: '' })
+  Icono: string;
 }

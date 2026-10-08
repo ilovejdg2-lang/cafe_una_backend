@@ -138,6 +138,11 @@ export class DocumentosController {
       institucion?: string;
       motivo?: string;
       categoria?: string;
+      subcategoria?: string;
+      autor?: string;
+      version?: string;
+      palabrasClave?: string;
+      esPrivado?: string | boolean;
     },
   ) {
     return this.documentosService.solicitarAcceso(body, file);

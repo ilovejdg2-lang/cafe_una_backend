@@ -29,6 +29,14 @@ import { SupabaseStorageService } from './supabase-storage.service';
 
 export const DOCUMENTOS_DIR = join(process.cwd(), 'uploads', 'documentos');
 
+/** Multer entrega el nombre del archivo leído como latin1; lo devuelve en UTF-8 si así venía. */
+export function nombreArchivoUtf8(nombre: string | null | undefined): string {
+  const valor = String(nombre ?? '');
+  if (!/[\u0080-\u00ff]/.test(valor)) return valor;
+  const utf8 = Buffer.from(valor, 'latin1').toString('utf8');
+  return utf8.includes('\uFFFD') ? valor : utf8;
+}
+
 export function asegurarDirectorioDocumentos(): void {
   if (!existsSync(DOCUMENTOS_DIR)) {
     mkdirSync(DOCUMENTOS_DIR, { recursive: true });
@@ -99,6 +107,8 @@ export class DocumentosService {
   async listarPublicos(filtros: FiltrosDocumentosPublicos) {
     const qb = this.docRepo.createQueryBuilder('doc');
     qb.where('doc.Activo = :activo', { activo: true });
+    // Por seguridad y control, los documentos privados NO aparecen en la página principal ni en el catálogo público general
+    qb.andWhere('doc.EsPrivado = :esPrivado', { esPrivado: false });
 
     if (filtros.categoria && filtros.categoria.trim()) {
       qb.andWhere(
@@ -300,9 +310,11 @@ export class DocumentosService {
 
     const subcategoria = String(data.subcategoria || '').trim();
     const esPrivado =
-      data.esPrivado === true ||
-      data.esPrivado === 'true' ||
-      data.esPrivado === '1';
+      data.esPrivado === undefined
+        ? true
+        : data.esPrivado === true ||
+          data.esPrivado === 'true' ||
+          data.esPrivado === '1';
     const activo =
       data.activo === undefined
         ? true
@@ -330,7 +342,7 @@ export class DocumentosService {
       Categoria: categoria,
       Subcategoria: subcategoria,
       NombreArchivo: file.filename,
-      NombreOriginal: file.originalname,
+      NombreOriginal: nombreArchivoUtf8(file.originalname),
       MimeType: file.mimetype || 'application/octet-stream',
       TamanoBytes: file.size || 0,
       EsPrivado: esPrivado,
@@ -440,7 +452,7 @@ export class DocumentosService {
         await this.supabaseStorageService.eliminarArchivo(doc.NombreArchivo);
       }
       doc.NombreArchivo = file.filename;
-      doc.NombreOriginal = file.originalname;
+      doc.NombreOriginal = nombreArchivoUtf8(file.originalname);
       doc.MimeType = file.mimetype || 'application/octet-stream';
       doc.TamanoBytes = file.size || 0;
 
@@ -587,6 +599,11 @@ export class DocumentosService {
       institucion?: string;
       motivo?: string;
       categoria?: string;
+      subcategoria?: string;
+      autor?: string;
+      version?: string;
+      palabrasClave?: string;
+      esPrivado?: string | boolean;
     },
     file?: Express.Multer.File,
   ): Promise<SolicitudDocumento> {
@@ -616,10 +633,14 @@ export class DocumentosService {
     const docTitulo =
       String(data.documentoTitulo || '').trim() ||
       doc?.Titulo ||
-      file?.originalname ||
+      nombreArchivoUtf8(file?.originalname) ||
       'Aporte de documentación';
 
     const categoria = String(data.categoria || '').trim() || (doc ? doc.Categoria : 'Investigaciones');
+    const subcategoria = String(data.subcategoria || '').trim() || (doc ? doc.Subcategoria : '');
+    const autor = String(data.autor || '').trim() || (doc ? doc.Autor : nombre);
+    const version = String(data.version || '1.0').trim();
+    const palabrasClave = String(data.palabrasClave || '').trim();
 
     const solicitud = this.solicitudRepo.create({
       DocumentoId: doc ? doc.Id : null,
@@ -629,8 +650,13 @@ export class DocumentosService {
       Institucion: String(data.institucion || '').trim(),
       Motivo: motivo || 'Archivo aportado por usuario.',
       Categoria: categoria,
+      Subcategoria: subcategoria,
+      Autor: autor,
+      Version: version,
+      PalabrasClave: palabrasClave,
+      EsPrivado: true, // Siempre privado por defecto
       NombreArchivo: file ? file.filename : null,
-      NombreOriginal: file ? file.originalname : null,
+      NombreOriginal: file ? nombreArchivoUtf8(file.originalname) : null,
       MimeType: file ? (file.mimetype || 'application/octet-stream') : null,
       TamanoBytes: file ? (file.size || 0) : 0,
       Estado: 'Pendiente',
@@ -716,24 +742,31 @@ export class DocumentosService {
       // Token válido por 48 horas
       sol.TokenExpira = new Date(Date.now() + 48 * 60 * 60 * 1000);
 
-      // Si el usuario envió un archivo y no ha sido publicado aún, publicarlo en el catálogo
+      // Si el usuario envió un archivo y no ha sido publicado aún, registrarlo en el catálogo
       if (sol.NombreArchivo && !sol.PublicadoDocumentoId) {
         const cat = sol.Categoria || 'Investigaciones';
         await this.categoriasService.asegurar(cat, TIPO_CATEGORIA_DOCUMENTO, '');
+        if (sol.Subcategoria) {
+          await this.categoriasService.asegurar(sol.Subcategoria, TIPO_CATEGORIA_DOCUMENTO, cat);
+        }
+
+        const autorFinal =
+          sol.Autor ||
+          sol.NombreSolicitante + (sol.Institucion ? ` (${sol.Institucion})` : '');
 
         const nuevoDoc = this.docRepo.create({
           Titulo: sol.DocumentoTitulo || sol.NombreOriginal || 'Aporte de la comunidad',
           Descripcion: sol.Motivo || 'Documento aportado a través del portal de solicitudes.',
           Categoria: cat,
-          Subcategoria: '',
+          Subcategoria: sol.Subcategoria || '',
           NombreArchivo: sol.NombreArchivo,
           NombreOriginal: sol.NombreOriginal || sol.NombreArchivo,
           MimeType: sol.MimeType || 'application/octet-stream',
           TamanoBytes: Number(sol.TamanoBytes) || 0,
-          EsPrivado: false,
-          Autor: sol.NombreSolicitante + (sol.Institucion ? ` (${sol.Institucion})` : ''),
-          Version: '1.0',
-          PalabrasClave: '',
+          EsPrivado: true, // Por defecto privado para gestión administrativa interna
+          Autor: autorFinal,
+          Version: sol.Version || '1.0',
+          PalabrasClave: sol.PalabrasClave || '',
           DescargasCount: 0,
           Activo: true,
         });

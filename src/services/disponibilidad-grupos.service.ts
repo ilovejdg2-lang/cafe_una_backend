@@ -4,7 +4,7 @@ import {
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { FindOptionsWhere, IsNull, Repository } from 'typeorm';
 import { DisponibilidadGrupo } from '../entities/disponibilidad-grupo.entity';
 
 const TIPOS = new Set(['compras', 'visitas', 'voluntariado']);
@@ -46,6 +46,20 @@ function horaAMinutos(hora: string): number {
   return h * 60 + m;
 }
 
+export function parseUbicacionId(raw: unknown): number | null {
+  const n = Number(raw);
+  return Number.isInteger(n) && n > 0 ? n : null;
+}
+
+export type DiaDisponibilidad = {
+  fecha: string;
+  horaInicio: string;
+  horaFin: string;
+  disponible: boolean;
+  esExcepcion: boolean;
+  nota: string;
+};
+
 @Injectable()
 export class DisponibilidadGruposService {
   constructor(
@@ -63,33 +77,41 @@ export class DisponibilidadGruposService {
     };
   }
 
-  async listarExcepciones(tipo?: string): Promise<DisponibilidadGrupo[]> {
-    const where =
-      tipo && TIPOS.has(tipo) ? { Tipo: tipo } : undefined;
+  /** Excepciones generales y, si viene punto de venta, también las propias de ese punto. */
+  private whereGeneralYPunto(
+    tipo: string | undefined,
+    ubicacionId: number | null,
+  ): FindOptionsWhere<DisponibilidadGrupo>[] {
+    const base: FindOptionsWhere<DisponibilidadGrupo> =
+      tipo && TIPOS.has(tipo) ? { Tipo: tipo } : {};
+    const where: FindOptionsWhere<DisponibilidadGrupo>[] = [
+      { ...base, UbicacionId: IsNull() },
+    ];
+    if (ubicacionId) where.push({ ...base, UbicacionId: ubicacionId });
+    return where;
+  }
+
+  async listarExcepciones(
+    tipo?: string,
+    ubicacionId: number | null = null,
+  ): Promise<DisponibilidadGrupo[]> {
     return this.repo.find({
-      where,
+      where: this.whereGeneralYPunto(tipo, ubicacionId),
       order: { Fecha: 'ASC', Id: 'ASC' },
     });
   }
 
   /**
    * Calendario resuelto: días laborables con horario default u excepción.
+   * Con punto de venta, su excepción manda sobre la general de esa fecha.
    * Fines de semana nunca se incluyen.
    */
   async listarPublicos(
     tipo: string,
     desde?: string,
     hasta?: string,
-  ): Promise<
-    {
-      fecha: string;
-      horaInicio: string;
-      horaFin: string;
-      disponible: boolean;
-      esExcepcion: boolean;
-      nota: string;
-    }[]
-  > {
+    ubicacionId: number | null = null,
+  ): Promise<DiaDisponibilidad[]> {
     if (!TIPOS.has(tipo)) {
       throw new BadRequestException('Tipo debe ser compras, visitas o voluntariado.');
     }
@@ -104,19 +126,17 @@ export class DisponibilidadGruposService {
       throw new BadRequestException('El rango de fechas es inválido.');
     }
 
-    const excepciones = await this.repo.find({ where: { Tipo: tipo } });
-    const porFecha = new Map(
-      excepciones.map((e) => [String(e.Fecha).slice(0, 10), e]),
-    );
+    const excepciones = await this.repo.find({
+      where: this.whereGeneralYPunto(tipo, ubicacionId),
+    });
+    const porFecha = new Map<string, DisponibilidadGrupo>();
+    for (const e of excepciones) {
+      const fecha = String(e.Fecha).slice(0, 10);
+      if (e.UbicacionId == null && porFecha.has(fecha)) continue;
+      porFecha.set(fecha, e);
+    }
 
-    const out: {
-      fecha: string;
-      horaInicio: string;
-      horaFin: string;
-      disponible: boolean;
-      esExcepcion: boolean;
-      nota: string;
-    }[] = [];
+    const out: DiaDisponibilidad[] = [];
 
     for (
       let cursor = inicio;
@@ -163,12 +183,31 @@ export class DisponibilidadGruposService {
     return out;
   }
 
+  /** Próximos días abiertos para comprar/retirar en un punto de venta. */
+  async proximosDiasCompra(
+    ubicacionId: number | null,
+    cantidad = 5,
+  ): Promise<DiaDisponibilidad[]> {
+    const desde = hoyIso();
+    const dias = await this.listarPublicos(
+      'compras',
+      desde,
+      addDaysIso(desde, 30),
+      ubicacionId,
+    );
+    return dias.filter((d) => d.disponible).slice(0, cantidad);
+  }
+
   async upsertExcepcion(
     body: Record<string, unknown>,
   ): Promise<DisponibilidadGrupo> {
     const datos = this.normalizarExcepcion(body);
     const existente = await this.repo.findOne({
-      where: { Tipo: datos.Tipo!, Fecha: datos.Fecha! },
+      where: {
+        Tipo: datos.Tipo!,
+        Fecha: datos.Fecha!,
+        UbicacionId: datos.UbicacionId ?? IsNull(),
+      },
     });
     if (existente) {
       Object.assign(existente, datos);
@@ -201,8 +240,12 @@ export class DisponibilidadGruposService {
     await this.repo.remove(actual);
   }
 
-  /** Quitar excepción por fecha+tipo (vuelve al horario normal 8–5). */
-  async eliminarPorFecha(tipo: string, fecha: string): Promise<void> {
+  /** Quitar excepción por fecha+tipo(+punto). Sin punto vuelve al 8–5; con punto vuelve al horario general. */
+  async eliminarPorFecha(
+    tipo: string,
+    fecha: string,
+    ubicacionId: number | null = null,
+  ): Promise<void> {
     const t = String(tipo || '').toLowerCase();
     const f = String(fecha || '').slice(0, 10);
     if (!TIPOS.has(t)) {
@@ -216,7 +259,9 @@ export class DisponibilidadGruposService {
         'Sábados y domingos no tienen horario laborable.',
       );
     }
-    const actual = await this.repo.findOne({ where: { Tipo: t, Fecha: f } });
+    const actual = await this.repo.findOne({
+      where: { Tipo: t, Fecha: f, UbicacionId: ubicacionId ?? IsNull() },
+    });
     if (actual) await this.repo.remove(actual);
   }
 
@@ -245,6 +290,9 @@ export class DisponibilidadGruposService {
         );
       }
     }
+
+    const ubicacionRaw = body.ubicacionId ?? body.UbicacionId;
+    const ubicacionId = parseUbicacionId(ubicacionRaw);
 
     const disponibleRaw = body.disponible ?? body.Disponible;
     const esDisponible =
@@ -278,7 +326,11 @@ export class DisponibilidadGruposService {
           `El horario especial debe estar entre ${HORA_APERTURA_DEFAULT} y ${HORA_CIERRE_DEFAULT}.`,
         );
       }
-      if (horaInicio === HORA_APERTURA_DEFAULT && horaFin === HORA_CIERRE_DEFAULT) {
+      if (
+        !ubicacionId &&
+        horaInicio === HORA_APERTURA_DEFAULT &&
+        horaFin === HORA_CIERRE_DEFAULT
+      ) {
         throw new BadRequestException(
           `Para horario especial usá un rango distinto a ${HORA_APERTURA_DEFAULT}–${HORA_CIERRE_DEFAULT} (ese es el horario normal).`,
         );
@@ -290,6 +342,7 @@ export class DisponibilidadGruposService {
     const out: Partial<DisponibilidadGrupo> = {};
     if (!parcial || body.tipo != null || body.Tipo != null) out.Tipo = tipo;
     if (!parcial || fechaRaw != null) out.Fecha = fecha;
+    if (!parcial || ubicacionRaw !== undefined) out.UbicacionId = ubicacionId;
     out.HoraInicio = horaInicio;
     out.HoraFin = horaFin;
     out.Disponible = esDisponible;

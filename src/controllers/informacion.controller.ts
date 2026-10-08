@@ -351,6 +351,7 @@ export class InformacionController {
       PreguntaEn?: string;
       Respuesta: string;
       RespuestaEn?: string;
+      Icono?: string;
       Orden?: number;
     },
   ) {
@@ -368,6 +369,7 @@ export class InformacionController {
       PreguntaEn?: string;
       Respuesta?: string;
       RespuestaEn?: string;
+      Icono?: string;
       Orden?: number;
     },
   ) {

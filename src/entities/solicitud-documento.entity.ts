@@ -45,6 +45,21 @@ export class SolicitudDocumento {
   @Column({ name: 'Categoria', type: 'varchar', length: 80, default: '' })
   Categoria: string;
 
+  @Column({ name: 'Subcategoria', type: 'varchar', length: 80, default: '' })
+  Subcategoria: string;
+
+  @Column({ name: 'Autor', type: 'varchar', length: 150, default: '' })
+  Autor: string;
+
+  @Column({ name: 'Version', type: 'varchar', length: 20, default: '1.0' })
+  Version: string;
+
+  @Column({ name: 'PalabrasClave', type: 'varchar', length: 255, default: '' })
+  PalabrasClave: string;
+
+  @Column({ name: 'EsPrivado', type: 'boolean', default: true })
+  EsPrivado: boolean;
+
   /** ID del documento generado en el catálogo cuando se aprueba */
   @Column({ name: 'PublicadoDocumentoId', type: 'bigint', nullable: true })
   PublicadoDocumentoId: string | null;
