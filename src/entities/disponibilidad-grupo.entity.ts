@@ -13,6 +13,10 @@ export class DisponibilidadGrupo {
   @Column({ name: 'Fecha', type: 'date' })
   Fecha: string;
 
+  /** Punto de venta (inventario_ubicaciones). NULL = horario general de todos los puntos. */
+  @Column({ name: 'UbicacionId', type: 'int', nullable: true })
+  UbicacionId: number | null;
+
   /** HH:mm — vacío si el día completo está cerrado */
   @Column({ name: 'HoraInicio', length: 5, default: '' })
   HoraInicio: string;

@@ -29,6 +29,14 @@ import { SupabaseStorageService } from './supabase-storage.service';
 
 export const DOCUMENTOS_DIR = join(process.cwd(), 'uploads', 'documentos');
 
+/** Multer entrega el nombre del archivo leído como latin1; lo devuelve en UTF-8 si así venía. */
+export function nombreArchivoUtf8(nombre: string | null | undefined): string {
+  const valor = String(nombre ?? '');
+  if (!/[\u0080-\u00ff]/.test(valor)) return valor;
+  const utf8 = Buffer.from(valor, 'latin1').toString('utf8');
+  return utf8.includes('\uFFFD') ? valor : utf8;
+}
+
 export function asegurarDirectorioDocumentos(): void {
   if (!existsSync(DOCUMENTOS_DIR)) {
     mkdirSync(DOCUMENTOS_DIR, { recursive: true });
@@ -334,7 +342,7 @@ export class DocumentosService {
       Categoria: categoria,
       Subcategoria: subcategoria,
       NombreArchivo: file.filename,
-      NombreOriginal: file.originalname,
+      NombreOriginal: nombreArchivoUtf8(file.originalname),
       MimeType: file.mimetype || 'application/octet-stream',
       TamanoBytes: file.size || 0,
       EsPrivado: esPrivado,
@@ -444,7 +452,7 @@ export class DocumentosService {
         await this.supabaseStorageService.eliminarArchivo(doc.NombreArchivo);
       }
       doc.NombreArchivo = file.filename;
-      doc.NombreOriginal = file.originalname;
+      doc.NombreOriginal = nombreArchivoUtf8(file.originalname);
       doc.MimeType = file.mimetype || 'application/octet-stream';
       doc.TamanoBytes = file.size || 0;
 
@@ -625,7 +633,7 @@ export class DocumentosService {
     const docTitulo =
       String(data.documentoTitulo || '').trim() ||
       doc?.Titulo ||
-      file?.originalname ||
+      nombreArchivoUtf8(file?.originalname) ||
       'Aporte de documentación';
 
     const categoria = String(data.categoria || '').trim() || (doc ? doc.Categoria : 'Investigaciones');
@@ -648,7 +656,7 @@ export class DocumentosService {
       PalabrasClave: palabrasClave,
       EsPrivado: true, // Siempre privado por defecto
       NombreArchivo: file ? file.filename : null,
-      NombreOriginal: file ? file.originalname : null,
+      NombreOriginal: file ? nombreArchivoUtf8(file.originalname) : null,
       MimeType: file ? (file.mimetype || 'application/octet-stream') : null,
       TamanoBytes: file ? (file.size || 0) : 0,
       Estado: 'Pendiente',

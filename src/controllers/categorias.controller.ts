@@ -6,6 +6,7 @@ import {
   NotFoundException,
   Param,
   Post,
+  Put,
   Query,
   UseGuards,
 } from '@nestjs/common';
@@ -56,6 +57,27 @@ export class CategoriasController {
       pickString(request, 'tipo', 'Tipo'),
       pickString(request, 'padre', 'Padre'),
     );
+  }
+
+  @Put(':id')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso(
+    'administrar_roles_permisos',
+    'actualizar_productos',
+    'actualizar_informacion',
+    'actualizar_documentacion',
+  )
+  actualizar(
+    @Param('id') id: string,
+    @Body()
+    request: { nombre?: string; icono?: string; Nombre?: string; Icono?: string },
+  ) {
+    const nombre = request.nombre ?? request.Nombre;
+    const icono = request.icono ?? request.Icono;
+    return this.categoriasService.actualizar(id, {
+      nombre: nombre == null ? undefined : String(nombre),
+      icono: icono == null ? undefined : String(icono),
+    });
   }
 
   @Delete(':id')

@@ -2,6 +2,7 @@ import {
   BadRequestException,
   ConflictException,
   Injectable,
+  NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -25,8 +26,11 @@ type CategoriaConUsos = {
   Nombre: string;
   Tipo: string;
   Padre: string;
+  Icono: string;
   Usos: number;
 };
+
+const ICONO_VALIDO = /^[a-z0-9-]{0,60}$/;
 
 @Injectable()
 export class CategoriasService {
@@ -82,6 +86,7 @@ export class CategoriasService {
         Nombre: item.Nombre,
         Tipo: item.Tipo,
         Padre: item.Padre || '',
+        Icono: item.Icono || '',
         Usos: await this.contarUsos(item.Nombre, item.Tipo, item.Padre || ''),
       })),
     );
@@ -166,6 +171,81 @@ export class CategoriasService {
         Padre: padreLimpio,
       }),
     );
+  }
+
+  /** Renombra (propagando el nombre a productos, fotos, documentos y subcategorías) y/o cambia el ícono. */
+  async actualizar(
+    id: string,
+    cambios: { nombre?: string; icono?: string },
+  ): Promise<Categoria> {
+    const item = await this.repo.findOne({ where: { Id: id } });
+    if (!item) throw new NotFoundException('La categoría no existe.');
+
+    if (cambios.icono != null) {
+      const icono = String(cambios.icono).trim().toLowerCase();
+      if (!ICONO_VALIDO.test(icono)) {
+        throw new BadRequestException('Ícono no válido.');
+      }
+      item.Icono = icono;
+    }
+
+    const viejo = item.Nombre;
+    const nuevo =
+      cambios.nombre != null ? this.normalizarNombre(cambios.nombre) : viejo;
+    if (!nuevo) throw new BadRequestException('Ingrese el nombre de la categoría.');
+    if (nuevo.length > 80) {
+      throw new BadRequestException('El nombre admite hasta 80 caracteres.');
+    }
+
+    const padre = item.Padre || '';
+    if (nuevo.toLowerCase() !== viejo.toLowerCase()) {
+      const qb = this.repo
+        .createQueryBuilder('c')
+        .where('LOWER(c.Nombre) = LOWER(:nombre)', { nombre: nuevo })
+        .andWhere('c.Tipo = :tipo', { tipo: item.Tipo })
+        .andWhere('c.Id <> :id', { id });
+      if (padre) {
+        qb.andWhere('LOWER(c.Padre) = LOWER(:padre)', { padre });
+      } else {
+        qb.andWhere("(c.Padre = '' OR c.Padre IS NULL)");
+      }
+      if (await qb.getCount()) {
+        throw new ConflictException('Ya existe una categoría con ese nombre.');
+      }
+    }
+
+    if (nuevo === viejo) return this.repo.save(item);
+
+    return this.repo.manager.transaction(async (em) => {
+      item.Nombre = nuevo;
+      const guardada = await em.save(item);
+      const tablaPorTipo: Record<string, string> = {
+        [TIPO_CATEGORIA_PRODUCTO]: 'productos',
+        [TIPO_CATEGORIA_DOCUMENTO]: 'documentos',
+        [TIPO_CATEGORIA_GALERIA]: 'galeria_institucional',
+      };
+      const tabla = tablaPorTipo[item.Tipo];
+
+      if (padre) {
+        if (item.Tipo !== TIPO_CATEGORIA_GALERIA) {
+          await em.query(
+            `UPDATE ${tabla} SET "Subcategoria" = $1
+             WHERE LOWER("Categoria") = LOWER($2) AND LOWER("Subcategoria") = LOWER($3)`,
+            [nuevo, padre, viejo],
+          );
+        }
+      } else {
+        await em.query(
+          `UPDATE categorias SET "Padre" = $1 WHERE "Tipo" = $2 AND LOWER("Padre") = LOWER($3)`,
+          [nuevo, item.Tipo, viejo],
+        );
+        await em.query(
+          `UPDATE ${tabla} SET "Categoria" = $1 WHERE LOWER("Categoria") = LOWER($2)`,
+          [nuevo, viejo],
+        );
+      }
+      return guardada;
+    });
   }
 
   async eliminar(id: string): Promise<boolean> {
