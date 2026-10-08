@@ -173,7 +173,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
 
         CREATE TABLE IF NOT EXISTS solicitudes_documentos (
           "Id" bigserial PRIMARY KEY,
-          "DocumentoId" bigint NOT NULL,
+          "DocumentoId" bigint NULL,
           "DocumentoTitulo" varchar(200) NOT NULL DEFAULT '',
           "NombreSolicitante" varchar(150) NOT NULL,
           "CorreoSolicitante" varchar(150) NOT NULL,
@@ -189,11 +189,19 @@ export class DatabaseBootstrapService implements OnModuleInit {
         );
 
         ALTER TABLE solicitudes_documentos
+          ALTER COLUMN "DocumentoId" DROP NOT NULL;
+
+        ALTER TABLE solicitudes_documentos
           ADD COLUMN IF NOT EXISTS "NombreArchivo" varchar(255) NULL,
           ADD COLUMN IF NOT EXISTS "NombreOriginal" varchar(255) NULL,
           ADD COLUMN IF NOT EXISTS "MimeType" varchar(100) NULL,
           ADD COLUMN IF NOT EXISTS "TamanoBytes" bigint NOT NULL DEFAULT 0,
           ADD COLUMN IF NOT EXISTS "Categoria" varchar(80) NOT NULL DEFAULT '',
+          ADD COLUMN IF NOT EXISTS "Subcategoria" varchar(80) NOT NULL DEFAULT '',
+          ADD COLUMN IF NOT EXISTS "Autor" varchar(150) NOT NULL DEFAULT '',
+          ADD COLUMN IF NOT EXISTS "Version" varchar(20) NOT NULL DEFAULT '1.0',
+          ADD COLUMN IF NOT EXISTS "PalabrasClave" varchar(255) NOT NULL DEFAULT '',
+          ADD COLUMN IF NOT EXISTS "EsPrivado" boolean NOT NULL DEFAULT true,
           ADD COLUMN IF NOT EXISTS "PublicadoDocumentoId" bigint NULL;
 
         INSERT INTO categorias ("Nombre", "Descripcion", "Tipo", "Padre")
