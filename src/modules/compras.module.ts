@@ -8,6 +8,7 @@ import { ComprasService } from '../services/compras.service';
 import { AuthModule } from './auth.module';
 import { FacturasModule } from './facturas.module';
 import { AsignacionesPuntoVentaModule } from './asignaciones-punto-venta.module';
+import { AjustesModule } from './ajustes.module';
 import { UsuariosModule } from './usuarios.module';
 
 @Module({
@@ -17,6 +18,7 @@ import { UsuariosModule } from './usuarios.module';
     UsuariosModule,
     FacturasModule,
     AsignacionesPuntoVentaModule,
+    AjustesModule,
   ],
   controllers: [ComprasController],
   providers: [ComprasService],

@@ -117,6 +117,10 @@ export class FacturasNotificacionesService {
     compra: Compra,
     nuevoEstado: string,
     adjuntos?: Array<{ filename: string; content: Buffer; contentType: string }>,
+    horarioRetiro?: {
+      punto: string;
+      dias: Array<{ fecha: string; horaInicio: string; horaFin: string }>;
+    },
   ): Promise<boolean> {
     const correo = (compra.ClienteCorreo || '').trim();
     if (!correo) {
@@ -125,6 +129,9 @@ export class FacturasNotificacionesService {
     }
 
     const info = this.obtenerInfoVisualEstado(nuevoEstado);
+    if (horarioRetiro?.dias.length) {
+      info.mensajeEstado += this.horarioRetiroHtml(horarioRetiro);
+    }
     const clienteNombre = compra.ClienteNombre || 'Estimado(a) cliente';
     const totalFmt = `₡ ${Number(compra.Total || 0).toLocaleString('es-CR', { minimumFractionDigits: 2 })}`;
     const fechaActualizacion = new Date().toLocaleString('es-CR', {
@@ -163,6 +170,34 @@ export class FacturasNotificacionesService {
       () => this.emailService.enviar(correo, subject, html, undefined, adjuntos),
       `Actualización de orden #${compra.Numero} (${nuevoEstado}) a ${correo}`,
     );
+  }
+
+  private horarioRetiroHtml(horario: {
+    punto: string;
+    dias: Array<{ fecha: string; horaInicio: string; horaFin: string }>;
+  }): string {
+    const escapar = (texto: string) =>
+      texto.replace(/[&<>"]/g, (c) => `&#${c.charCodeAt(0)};`);
+    const hora = (valor: string) => {
+      const [h, m] = valor.split(':').map(Number);
+      const sufijo = h >= 12 ? 'p. m.' : 'a. m.';
+      return `${h % 12 || 12}:${String(m).padStart(2, '0')} ${sufijo}`;
+    };
+    const filas = horario.dias
+      .map((dia) => {
+        const [y, mes, d] = dia.fecha.split('-').map(Number);
+        const fecha = new Date(y, mes - 1, d).toLocaleDateString('es-CR', {
+          weekday: 'long',
+          day: 'numeric',
+          month: 'long',
+        });
+        return `${fecha}: ${hora(dia.horaInicio)} – ${hora(dia.horaFin)}`;
+      })
+      .join('<br>');
+    const titulo = horario.punto
+      ? `Horario para retirar en ${escapar(horario.punto)}:`
+      : 'Horario para retirar tu pedido:';
+    return `<br><br><strong>${titulo}</strong><br>${filas}`;
   }
 
   /**

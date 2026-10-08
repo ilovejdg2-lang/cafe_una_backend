@@ -3,6 +3,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FaqInicio } from '../entities/faq-inicio.entity';
 
+function limpiarIcono(valor: unknown): string {
+  return String(valor ?? '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9-]/g, '')
+    .slice(0, 40);
+}
+
 @Injectable()
 export class FaqInicioService {
   constructor(
@@ -21,6 +29,7 @@ export class FaqInicioService {
     PreguntaEn?: string;
     Respuesta: string;
     RespuestaEn?: string;
+    Icono?: string;
     Orden?: number;
   }): Promise<FaqInicio> {
     const pregunta = String(request.Pregunta ?? '').trim();
@@ -46,6 +55,7 @@ export class FaqInicioService {
       RespuestaEn: String(request.RespuestaEn ?? '')
         .trim()
         .slice(0, 4000),
+      Icono: limpiarIcono(request.Icono),
       Orden: request.Orden ?? (maxOrden?.max ?? 0) + 1,
     });
     return this.repo.save(item);
@@ -58,6 +68,7 @@ export class FaqInicioService {
       PreguntaEn?: string;
       Respuesta?: string;
       RespuestaEn?: string;
+      Icono?: string;
       Orden?: number;
     },
   ): Promise<FaqInicio | null> {
@@ -83,6 +94,9 @@ export class FaqInicioService {
     }
     if (cambios.RespuestaEn != null) {
       actual.RespuestaEn = String(cambios.RespuestaEn).trim().slice(0, 4000);
+    }
+    if (cambios.Icono != null) {
+      actual.Icono = limpiarIcono(cambios.Icono);
     }
     if (cambios.Orden != null) {
       actual.Orden = Number(cambios.Orden) || 0;

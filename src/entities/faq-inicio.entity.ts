@@ -17,6 +17,9 @@ export class FaqInicio {
   @Column({ name: 'RespuestaEn', type: 'varchar', length: 4000, default: '' })
   RespuestaEn: string;
 
+  @Column({ name: 'Icono', length: 40, default: '' })
+  Icono: string;
+
   @Column({ name: 'Orden', type: 'int', default: 0 })
   Orden: number;
 }

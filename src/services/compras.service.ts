@@ -28,6 +28,10 @@ import {
 } from './asignaciones-punto-venta.service';
 import { FacturasService } from './facturas.service';
 import { BODEGA_CENTRAL, esPuntoVentaCliente } from './inventario.service';
+import {
+  DiaDisponibilidad,
+  DisponibilidadGruposService,
+} from './disponibilidad-grupos.service';
 
 type CompraBody = Record<string, unknown> | undefined | null;
 
@@ -175,7 +179,24 @@ export class ComprasService {
     private readonly notificacionesService?: FacturasNotificacionesService,
     @Optional()
     private readonly asignacionesPunto?: AsignacionesPuntoVentaService,
+    @Optional()
+    private readonly disponibilidad?: DisponibilidadGruposService,
   ) {}
+
+  /** Punto de venta y próximos días para retirar, para el correo de compra aceptada. */
+  private async horarioRetiroDeCompra(
+    compra: Compra,
+  ): Promise<{ punto: string; dias: DiaDisponibilidad[] } | undefined> {
+    if (!this.disponibilidad) return undefined;
+    const ubicacionId = Number(compra.UbicacionId) || null;
+    const ubicacion = ubicacionId
+      ? await this.dataSource.manager.findOne(InventarioUbicacion, {
+          where: { Id: ubicacionId },
+        })
+      : null;
+    const dias = await this.disponibilidad.proximosDiasCompra(ubicacionId);
+    return { punto: ubicacion?.Nombre || '', dias };
+  }
 
   async registrar(body: CompraBody, usuarioId: number | null): Promise<CompraDetalle> {
     const itemsRaw = this.extraerItemsRaw(body);
@@ -478,10 +499,19 @@ export class ComprasService {
             }
 
             if (this.notificacionesService) {
+              let horarioRetiro:
+                | { punto: string; dias: DiaDisponibilidad[] }
+                | undefined;
+              if (nuevoEstado === 'Aceptado') {
+                horarioRetiro = await this.horarioRetiroDeCompra(compra).catch(
+                  () => undefined,
+                );
+              }
               await this.notificacionesService.enviarActualizacionEstadoCompra(
                 compra,
                 nuevoEstado,
                 adjuntosPdf,
+                horarioRetiro,
               );
             }
           } catch (err) {

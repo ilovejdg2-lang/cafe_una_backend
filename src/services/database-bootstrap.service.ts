@@ -401,6 +401,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.asegurarTablaAjustesEIdiomas();
       await this.asegurarEquipoSobreNosotros();
       await this.asegurarHistoriaCompleta();
+      await this.asegurarCatalogosSistema();
     await this.asegurarTablaAuditoria();
     await this.asegurarTriggersAuditoria();
     await this.asegurarTraduccionesInglesVacias();
@@ -811,6 +812,10 @@ export class DatabaseBootstrapService implements OnModuleInit {
         "CupoMaximo" integer NULL,
         "Nota" varchar(300) NOT NULL DEFAULT ''
       );
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE disponibilidad_grupos
+        ADD COLUMN IF NOT EXISTS "UbicacionId" integer NULL;
     `);
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS "IDX_disponibilidad_grupos_tipo_fecha"
@@ -1532,6 +1537,56 @@ export class DatabaseBootstrapService implements OnModuleInit {
     `);
   }
 
+  private async asegurarCatalogosSistema(): Promise<void> {
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS catalogo_sistema (
+        "Id" serial PRIMARY KEY,
+        "Tipo" varchar(40) NOT NULL,
+        "Nombre" varchar(120) NOT NULL,
+        "Icono" varchar(60) NOT NULL DEFAULT '',
+        "Orden" integer NOT NULL DEFAULT 0,
+        "Activo" boolean NOT NULL DEFAULT true
+      );
+      CREATE UNIQUE INDEX IF NOT EXISTS "UQ_catalogo_sistema_tipo_nombre"
+        ON catalogo_sistema ("Tipo", LOWER("Nombre"));
+      ALTER TABLE categorias
+        ADD COLUMN IF NOT EXISTS "Icono" varchar(60) NOT NULL DEFAULT '';
+    `);
+
+    const iniciales: Record<string, string[]> = {
+      estado_articulo_donacion: [
+        'Nuevo',
+        'Usado en buen estado',
+        'Usado con desgaste',
+        'Para reparar',
+      ],
+      metodo_pago: ['Efectivo', 'Tarjeta', 'SINPE Móvil', 'Transferencia'],
+      unidad_presentacion: ['g', 'kg', 'ml', 'L'],
+    };
+    const pesos = (await this.dataSource.query(`
+      SELECT DISTINCT TRIM("Peso") AS "Peso" FROM productos
+      WHERE TRIM(COALESCE("Peso", '')) <> '' ORDER BY 1
+    `)) as Array<{ Peso: string }>;
+    iniciales.presentacion_producto = pesos.length
+      ? pesos.map((p) => p.Peso)
+      : ['250 g', '500 g', '1 kg'];
+
+    for (const [tipo, nombres] of Object.entries(iniciales)) {
+      const [{ total }] = (await this.dataSource.query(
+        `SELECT COUNT(*)::int AS total FROM catalogo_sistema WHERE "Tipo" = $1`,
+        [tipo],
+      )) as Array<{ total: number }>;
+      if (total > 0) continue;
+      for (const [i, nombre] of nombres.entries()) {
+        await this.dataSource.query(
+          `INSERT INTO catalogo_sistema ("Tipo", "Nombre", "Orden")
+           VALUES ($1, $2, $3) ON CONFLICT DO NOTHING`,
+          [tipo, nombre.slice(0, 120), i + 1],
+        );
+      }
+    }
+  }
+
   private async asegurarFaqInicio(): Promise<void> {
     await this.dataSource.query(`
       CREATE TABLE IF NOT EXISTS faq_inicio (
@@ -1542,6 +1597,10 @@ export class DatabaseBootstrapService implements OnModuleInit {
         "RespuestaEn" varchar(4000) NOT NULL DEFAULT '',
         "Orden" integer NOT NULL DEFAULT 0
       );
+    `);
+    await this.dataSource.query(`
+      ALTER TABLE faq_inicio
+        ADD COLUMN IF NOT EXISTS "Icono" varchar(40) NOT NULL DEFAULT '';
     `);
 
     await this.dataSource.query(`
