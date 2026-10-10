@@ -130,6 +130,11 @@ export const PERMISOS_SEED: readonly PermisoSeed[] = [
     roles: admins,
   },
   {
+    codigo: 'ingresar_propuesta_productor',
+    nombre: 'Ingresar una propuesta de productor',
+    roles: logueados,
+  },
+  {
     codigo: 'administrar_solicitudes_productores',
     nombre: 'Administrar solicitudes de productores',
     roles: admins,

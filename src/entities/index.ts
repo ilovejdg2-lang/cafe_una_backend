@@ -51,6 +51,9 @@ import { CarritoItem } from './carrito-item.entity';
 import { HistoriaCompleta } from './historia-completa.entity';
 import { CatalogoSistemaItem } from './catalogo-sistema-item.entity';
 import { VendedorPuntoVenta } from './vendedor-punto-venta.entity';
+import { PropuestaProductor } from './propuesta-productor.entity';
+import { Notificacion } from './notificacion.entity';
+import { CorreoSalida } from './correo-salida.entity';
 
 export const entities = [
   Usuario,
@@ -106,6 +109,9 @@ export const entities = [
   HistoriaCompleta,
   CatalogoSistemaItem,
   VendedorPuntoVenta,
+  PropuestaProductor,
+  Notificacion,
+  CorreoSalida,
 ];
 
 export * from './usuario.entity';
@@ -161,3 +167,6 @@ export * from './carrito-item.entity';
 export * from './historia-completa.entity';
 export * from './catalogo-sistema-item.entity';
 export * from './vendedor-punto-venta.entity';
+export * from './propuesta-productor.entity';
+export * from './notificacion.entity';
+export * from './correo-salida.entity';

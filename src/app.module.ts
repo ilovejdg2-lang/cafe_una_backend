@@ -27,6 +27,7 @@ import { DocumentosModule } from './modules/documentos.module';
 import { FacturasModule } from './modules/facturas.module';
 import { SolicitudesClienteModule } from './modules/solicitudes-cliente.module';
 import { CarritoModule } from './modules/carrito.module';
+import { PropuestasProductoresModule } from './modules/propuestas-productores.module';
 
 @Module({
   imports: [
@@ -58,6 +59,7 @@ import { CarritoModule } from './modules/carrito.module';
     AuditoriaModule,
     AjustesModule,
     DocumentosModule,
+    PropuestasProductoresModule,
   ],
   controllers: [HealthController],
   providers: [
