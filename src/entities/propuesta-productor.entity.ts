@@ -8,9 +8,8 @@ import {
 } from 'typeorm';
 
 /**
- * La publicación pública es esta misma fila cuando Estado = Aprobada.
- * No hay una segunda entidad: así no se duplican nombre, imagen ni redes,
- * y la ficha pública queda ligada a la propuesta que la originó.
+ * Al aprobarse, los datos se copian a productores_activos (ProductorActivo),
+ * que es lo que lee el sitio público.
  */
 @Entity('propuestas_productores')
 @Index('IX_propuestas_productores_usuario', ['UsuarioId'])
@@ -90,4 +89,12 @@ export class PropuestaProductor {
 
   @Column({ name: 'MotivoRechazo', type: 'varchar', length: 1000, nullable: true })
   MotivoRechazo: string | null;
+
+  /** Sugerencias para el productor al rechazar; se incluyen en el correo. */
+  @Column({ name: 'Sugerencias', type: 'varchar', length: 1000, nullable: true })
+  Sugerencias: string | null;
+
+  /** Solo administradores; nunca se envía al productor ni al sitio público. */
+  @Column({ name: 'NotaInterna', type: 'varchar', length: 2000, nullable: true })
+  NotaInterna: string | null;
 }

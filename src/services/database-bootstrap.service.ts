@@ -402,6 +402,11 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.asegurarEquipoSobreNosotros();
       await this.asegurarHistoriaCompleta();
       await this.asegurarCatalogosSistema();
+      await this.asegurarRevisionPropuestasProductores().catch((error) =>
+        this.logger.warn(
+          `No se pudo preparar la revisión de propuestas: ${error instanceof Error ? error.message : String(error)}`,
+        ),
+      );
     await this.asegurarTablaAuditoria();
     await this.asegurarTriggersAuditoria();
     await this.asegurarTraduccionesInglesVacias();
@@ -1585,6 +1590,81 @@ export class DatabaseBootstrapService implements OnModuleInit {
         );
       }
     }
+  }
+
+  private async asegurarRevisionPropuestasProductores(): Promise<void> {
+    const [{ existe }] = (await this.dataSource.query(
+      `SELECT to_regclass('propuestas_productores') IS NOT NULL AS existe`,
+    )) as Array<{ existe: boolean }>;
+    if (!existe) return;
+
+    await this.dataSource.query(`
+      ALTER TABLE propuestas_productores
+        ADD COLUMN IF NOT EXISTS "Sugerencias" varchar(1000) NULL,
+        ADD COLUMN IF NOT EXISTS "NotaInterna" varchar(2000) NULL;
+      ALTER TABLE propuestas_productores
+        DROP CONSTRAINT IF EXISTS "CK_propuestas_productores_estado";
+      ALTER TABLE propuestas_productores
+        ADD CONSTRAINT "CK_propuestas_productores_estado"
+        CHECK ("Estado" IN ('Pendiente', 'En revisión', 'Aprobada', 'Rechazada'));
+
+      CREATE TABLE IF NOT EXISTS productores_activos (
+        "Id" serial PRIMARY KEY,
+        "PropuestaId" bigint NOT NULL,
+        "UsuarioId" integer NOT NULL,
+        "NombreEmprendimiento" varchar(100) NOT NULL,
+        "ImagenReferencia" varchar(200) NOT NULL,
+        "Provincia" varchar(80) NULL,
+        "Canton" varchar(80) NULL,
+        "Distrito" varchar(80) NULL,
+        "Direccion" varchar(500) NOT NULL,
+        "EnlaceUbicacion" varchar(500) NOT NULL,
+        "Descripcion" varchar(2000) NOT NULL,
+        "Facebook" varchar(500) NULL,
+        "Instagram" varchar(500) NULL,
+        "Whatsapp" varchar(80) NULL,
+        "SitioWeb" varchar(500) NULL,
+        "CorreoContacto" varchar(200) NOT NULL,
+        "TelefonoContacto" varchar(20) NOT NULL,
+        "Activo" boolean NOT NULL DEFAULT true,
+        "PublicadoEn" timestamptz NOT NULL DEFAULT NOW(),
+        "ActualizadoEn" timestamptz NOT NULL DEFAULT NOW(),
+        CONSTRAINT "UQ_productores_activos_propuesta" UNIQUE ("PropuestaId"),
+        CONSTRAINT "FK_productores_activos_propuesta"
+          FOREIGN KEY ("PropuestaId") REFERENCES propuestas_productores ("Id") ON DELETE CASCADE
+      );
+
+      CREATE TABLE IF NOT EXISTS propuestas_productores_historial (
+        "Id" serial PRIMARY KEY,
+        "PropuestaId" bigint NOT NULL,
+        "Accion" varchar(20) NOT NULL,
+        "EstadoAnterior" varchar(20) NULL,
+        "EstadoNuevo" varchar(20) NULL,
+        "Comentario" varchar(2000) NULL,
+        "AdminId" integer NULL,
+        "CreadoEn" timestamptz NOT NULL DEFAULT NOW(),
+        CONSTRAINT "FK_propuestas_historial_propuesta"
+          FOREIGN KEY ("PropuestaId") REFERENCES propuestas_productores ("Id") ON DELETE CASCADE,
+        CONSTRAINT "FK_propuestas_historial_admin"
+          FOREIGN KEY ("AdminId") REFERENCES usuarios ("Id") ON DELETE SET NULL
+      );
+      CREATE INDEX IF NOT EXISTS "IX_propuestas_historial_propuesta"
+        ON propuestas_productores_historial ("PropuestaId");
+
+      INSERT INTO productores_activos (
+        "PropuestaId", "UsuarioId", "NombreEmprendimiento", "ImagenReferencia",
+        "Provincia", "Canton", "Distrito", "Direccion", "EnlaceUbicacion", "Descripcion",
+        "Facebook", "Instagram", "Whatsapp", "SitioWeb", "CorreoContacto", "TelefonoContacto",
+        "PublicadoEn"
+      )
+      SELECT "Id", "UsuarioId", "NombreEmprendimiento", "ImagenReferencia",
+        "Provincia", "Canton", "Distrito", "Direccion", "EnlaceUbicacion", "Descripcion",
+        "Facebook", "Instagram", "Whatsapp", "SitioWeb", "CorreoContacto", "TelefonoContacto",
+        COALESCE("RevisadoEn", "CreadoEn")
+      FROM propuestas_productores
+      WHERE "Estado" = 'Aprobada'
+      ON CONFLICT ("PropuestaId") DO NOTHING;
+    `);
   }
 
   private async asegurarFaqInicio(): Promise<void> {

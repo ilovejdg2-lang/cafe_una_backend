@@ -4,7 +4,9 @@ import {
   Controller,
   Get,
   Param,
+  Patch,
   Post,
+  Put,
   Query,
   Req,
   UploadedFile,
@@ -76,10 +78,57 @@ export class PropuestasProductoresController {
     return this.propuestas.obtenerAdmin(id);
   }
 
+  @Put(':id')
+  @RequierePermiso('administrar_solicitudes_productores')
+  actualizar(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.propuestas.actualizarAdmin(id, req.user.userId, body ?? {});
+  }
+
+  @Patch(':id/estado')
+  @RequierePermiso('administrar_solicitudes_productores')
+  cambiarEstado(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.propuestas.cambiarEstadoRevision(
+      id,
+      req.user.userId,
+      body?.estado ?? body?.Estado,
+      body?.comentario ?? body?.Comentario,
+    );
+  }
+
+  @Put(':id/nota-interna')
+  @RequierePermiso('administrar_solicitudes_productores')
+  guardarNotaInterna(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.propuestas.guardarNotaInterna(
+      id,
+      req.user.userId,
+      body?.nota ?? body?.Nota ?? body?.notaInterna ?? body?.NotaInterna,
+    );
+  }
+
   @Post(':id/aprobar')
   @RequierePermiso('administrar_solicitudes_productores')
-  aprobar(@Req() req: RequestUsuario, @Param('id') id: string) {
-    return this.propuestas.aprobar(id, req.user.userId);
+  aprobar(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body?: Record<string, unknown>,
+  ) {
+    return this.propuestas.aprobar(
+      id,
+      req.user.userId,
+      body?.comentario ?? body?.Comentario,
+    );
   }
 
   @Post(':id/rechazar')
@@ -93,6 +142,12 @@ export class PropuestasProductoresController {
     if (motivo == null || String(motivo).trim() === '') {
       throw new BadRequestException('El motivo del rechazo es obligatorio.');
     }
-    return this.propuestas.rechazar(id, req.user.userId, motivo);
+    return this.propuestas.rechazar(
+      id,
+      req.user.userId,
+      motivo,
+      body.sugerencias ?? body.Sugerencias,
+      body.comentario ?? body.Comentario,
+    );
   }
 }

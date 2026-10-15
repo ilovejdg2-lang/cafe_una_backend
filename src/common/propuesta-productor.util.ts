@@ -11,12 +11,21 @@ export const DIVISION_MAX = 80;
 export const URL_MAX = 500;
 export const MOTIVO_MIN = 10;
 export const MOTIVO_MAX = 1000;
+export const SUGERENCIAS_MAX = 1000;
+export const NOTA_INTERNA_MAX = 2000;
+export const COMENTARIO_MAX = 1000;
 export const IMAGEN_MAX_BYTES = 5 * 1024 * 1024;
 export const TERMINOS_VERSION = 'propuesta-productor-v1';
 export const TERMINOS_TEXTO =
   'Autorizo la publicación de la información de mi emprendimiento en el sitio web de Café UNA si mi propuesta es aprobada. Entiendo que cualquier cambio posterior deberá solicitarse por correo al administrador';
 
-export const ESTADOS_PROPUESTA = ['Pendiente', 'Aprobada', 'Rechazada'] as const;
+export const ESTADO_EN_REVISION = 'En revisión';
+export const ESTADOS_PROPUESTA = [
+  'Pendiente',
+  ESTADO_EN_REVISION,
+  'Aprobada',
+  'Rechazada',
+] as const;
 export type EstadoPropuesta = (typeof ESTADOS_PROPUESTA)[number];
 
 const HOSTS_FACEBOOK = new Set([
@@ -325,8 +334,29 @@ export function escapeHtml(valor: unknown): string {
     .replace(/'/g, '&#39;');
 }
 
+/** Texto opcional: vacío → null; valida el largo máximo. */
+export function textoOpcional(
+  valor: unknown,
+  etiqueta: string,
+  max: number,
+): string | null {
+  const texto = String(valor ?? '')
+    .replace(/\u0000/g, '')
+    .trim();
+  if (!texto) return null;
+  if (texto.length > max) {
+    throw new Error(`${etiqueta} admite como máximo ${max} caracteres.`);
+  }
+  return texto;
+}
+
+export function esEstadoAbierto(estado: string): boolean {
+  return estado === 'Pendiente' || estado === ESTADO_EN_REVISION;
+}
+
+/** Solo una propuesta Pendiente o En revisión se puede aprobar, rechazar o editar. */
 export function assertTransicionDesdePendiente(estado: string): void {
-  if (estado !== 'Pendiente') {
+  if (!esEstadoAbierto(estado)) {
     throw new Error(
       'Esta propuesta ya fue revisada. Actualizá la página para ver el resultado.',
     );
