@@ -1,13 +1,19 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { InjectDataSource } from '@nestjs/typeorm';
 import * as fs from 'fs/promises';
 import * as nodemailer from 'nodemailer';
 import * as path from 'path';
+import sharp from 'sharp';
+import { DataSource } from 'typeorm';
 import { resolverSedeFinca, type SedeFinca } from './sede-finca';
 import {
   CODIGO_DIGITOS,
   TOKEN_LIFETIME_MINUTES,
 } from './verificacion-correo.util';
+
+export const LOGO_PLACEHOLDER = '{{logoUrl}}';
+const LOGO_CID = 'logo-cafe-una';
 
 @Injectable()
 export class EmailService {
@@ -43,7 +49,72 @@ export class EmailService {
     'alerta-stock.html',
   );
 
-  constructor(private readonly config: ConfigService) {}
+  private logoCache: { png: Buffer | null; vence: number } | null = null;
+
+  constructor(
+    private readonly config: ConfigService,
+    @Optional() @InjectDataSource() private readonly dataSource?: DataSource,
+  ) {}
+
+  /** Logo con letras oscuras (fondo blanco) que la administración define en el navbar o footer. */
+  private async logoCorreoUrl(): Promise<string> {
+    let url = '';
+    try {
+      const filas: Array<{ LogoUrl: string | null }> | undefined = await this.dataSource?.query(
+        `SELECT "LogoUrl" FROM informacion_navbar WHERE COALESCE("LogoUrl", '') <> ''
+         UNION ALL
+         SELECT "LogoUrl" FROM informacion_footer WHERE COALESCE("LogoUrl", '') <> ''
+         LIMIT 1`,
+      );
+      url = filas?.[0]?.LogoUrl?.trim() || '';
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo leer el logo para correos: ${error instanceof Error ? error.message : error}`,
+      );
+    }
+    return url;
+  }
+
+  /** Gmail y Outlook no muestran bien WebP enlazado: el logo viaja adjunto en PNG. */
+  private async logoCorreoPng(): Promise<Buffer | null> {
+    if (this.logoCache && this.logoCache.vence > Date.now()) return this.logoCache.png;
+    let png: Buffer | null = null;
+    const url = await this.logoCorreoUrl();
+    if (url) {
+      try {
+        const respuesta = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+        if (!respuesta.ok) throw new Error(`HTTP ${respuesta.status}`);
+        const original = Buffer.from(await respuesta.arrayBuffer());
+        png = await sharp(original).resize({ width: 400, withoutEnlargement: true }).png().toBuffer();
+      } catch (error) {
+        this.logger.warn(
+          `No se pudo preparar el logo para correos (${url}): ${error instanceof Error ? error.message : error}`,
+        );
+      }
+    }
+    this.logoCache = { png, vence: Date.now() + (png ? 10 * 60_000 : 60_000) };
+    return png;
+  }
+
+  private async aplicarLogo(
+    html: string,
+  ): Promise<{ html: string; adjunto: { filename: string; content: Buffer; cid: string; contentType: string } | null }> {
+    if (!html.includes(LOGO_PLACEHOLDER)) return { html, adjunto: null };
+    const png = await this.logoCorreoPng();
+    if (png) {
+      return {
+        html: html.replaceAll(LOGO_PLACEHOLDER, `cid:${LOGO_CID}`),
+        adjunto: { filename: 'logo-cafe-una.png', content: png, cid: LOGO_CID, contentType: 'image/png' },
+      };
+    }
+    return {
+      html: html.replace(
+        /<img[^>]*\{\{logoUrl\}\}[^>]*>/g,
+        '<p style="margin:0;font-size:22px;font-weight:700;color:#C41E3A;">Café UNA</p>',
+      ),
+      adjunto: null,
+    };
+  }
 
   async enviarCodigoRegistro(
     destinatario: string,
@@ -243,7 +314,7 @@ export class EmailService {
         <table role="presentation" width="560" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #e6eaf2;">
           <tr>
             <td align="center" style="padding:28px 20px 16px;">
-              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
+              <img src="{{logoUrl}}" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
             </td>
           </tr>
           <tr>
@@ -534,7 +605,7 @@ export class EmailService {
           <!-- Logo Oficial Café UNA -->
           <tr>
             <td align="center" bgcolor="#ffffff" style="padding: 28px 24px 18px; background-color: #ffffff;">
-              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="190" style="display: block; width: 190px; max-width: 190px; height: auto; margin: 0 auto;" />
+              <img src="{{logoUrl}}" alt="Café UNA" width="190" style="display: block; width: 190px; max-width: 190px; height: auto; margin: 0 auto;" />
             </td>
           </tr>
 
@@ -737,13 +808,15 @@ export class EmailService {
         },
       });
 
+      const conLogo = await this.aplicarLogo(htmlBody);
+      const adjuntos = [...(attachments ?? []), ...(conLogo.adjunto ? [conLogo.adjunto] : [])];
       await transporter.sendMail({
         from: `"${fromName}" <${fromEmail}>`,
         to: destinatario.trim(),
         subject,
-        html: htmlBody,
+        html: conLogo.html,
         text: textBody || undefined,
-        attachments: attachments && attachments.length > 0 ? attachments : undefined,
+        attachments: adjuntos.length > 0 ? adjuntos : undefined,
       });
 
       this.logger.log(`Correo enviado correctamente a ${destinatario}.`);
@@ -966,7 +1039,7 @@ export class EmailService {
         <table role="presentation" width="560" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #e6eaf2;">
           <tr>
             <td align="center" style="padding:28px 20px 16px;">
-              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
+              <img src="{{logoUrl}}" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
             </td>
           </tr>
           <tr>
@@ -1116,7 +1189,7 @@ export class EmailService {
         <table role="presentation" width="560" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #e6eaf2;">
           <tr>
             <td align="center" style="padding:28px 20px 16px;">
-              <img src="https://i.ibb.co/gbQgcRq3/Captura-de-pantalla-2026-06-15-011218.webp" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
+              <img src="{{logoUrl}}" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
             </td>
           </tr>
           <tr>

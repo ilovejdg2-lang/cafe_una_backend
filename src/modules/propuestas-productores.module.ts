@@ -7,6 +7,8 @@ import { PropuestasProductoresController } from '../controllers/propuestas-produ
 import { CorreoSalida } from '../entities/correo-salida.entity';
 import { InformacionFooter } from '../entities/informacion-footer.entity';
 import { Notificacion } from '../entities/notificacion.entity';
+import { ProductorActivo } from '../entities/productor-activo.entity';
+import { PropuestaHistorial } from '../entities/propuesta-historial.entity';
 import { PropuestaProductor } from '../entities/propuesta-productor.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { CorreosSalidaService } from '../services/correos-salida.service';
@@ -21,6 +23,8 @@ import { UsuariosModule } from './usuarios.module';
   imports: [
     TypeOrmModule.forFeature([
       PropuestaProductor,
+      ProductorActivo,
+      PropuestaHistorial,
       Notificacion,
       CorreoSalida,
       InformacionFooter,
