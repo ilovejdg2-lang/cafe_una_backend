@@ -11,7 +11,10 @@ import {
   assertTransicionDesdePendiente,
 } from './propuesta-productor.util';
 import { PERMISOS_SEED } from './permisos-seed';
-import { contenidoCorreoPropuesta } from './propuesta-correo';
+import {
+  contenidoCorreoPropuesta,
+  contenidoCorreoRecepcionPropuesta,
+} from './propuesta-correo';
 
 describe('propuesta de productor', () => {
   const base = {
@@ -96,6 +99,52 @@ describe('propuesta de productor', () => {
   it('impide una segunda revisión cuando ya no está pendiente', () => {
     expect(() => assertTransicionDesdePendiente('Aprobada')).toThrow(/ya fue revisada/);
     expect(() => assertTransicionDesdePendiente('Pendiente')).not.toThrow();
+    expect(() => assertTransicionDesdePendiente('En revisión')).not.toThrow();
+    expect(() => assertTransicionDesdePendiente('Rechazada')).toThrow(/ya fue revisada/);
+  });
+
+  it('arma el correo de aprobación con enlace al perfil y aviso de cambios', () => {
+    const correo = contenidoCorreoPropuesta({
+      nombreEmprendimiento: 'Finca Luz',
+      id: '15',
+      resultado: 'Aprobada',
+      fechaRevision: '10/10/2026, 08:00',
+      enlaceMisPropuestas: 'https://cafe.una/perfil/propuestas/15',
+      enlacePerfilPublico: 'https://cafe.una/productores?productor=15',
+      correoInstitucional: 'contacto@cafeuna.ac.cr',
+    });
+    expect(correo.asunto).toBe('¡Tu propuesta ha sido aprobada!');
+    expect(correo.html).toContain('https://cafe.una/productores?productor=15');
+    expect(correo.texto).toContain('debe solicitarse por correo al administrador');
+  });
+
+  it('arma el correo de rechazo con motivo, sugerencias e invitación', () => {
+    const correo = contenidoCorreoPropuesta({
+      nombreEmprendimiento: 'Finca Luz',
+      id: '16',
+      resultado: 'Rechazada',
+      fechaRevision: '10/10/2026, 08:00',
+      enlaceMisPropuestas: 'https://cafe.una/perfil/propuestas/16',
+      enlaceNuevaPropuesta: 'https://cafe.una/productores/propuesta',
+      motivo: 'La imagen no muestra el producto.',
+      sugerencias: 'Subí una foto del café.',
+    });
+    expect(correo.asunto).toBe('Estado de tu propuesta');
+    expect(correo.texto).toContain('Sugerencias: Subí una foto del café.');
+    expect(correo.html).toContain('https://cafe.una/productores/propuesta');
+  });
+
+  it('arma el correo de recepción con el número y el enlace a Mis propuestas', () => {
+    const correo = contenidoCorreoRecepcionPropuesta({
+      nombreEmprendimiento: 'Finca <Luz>',
+      id: '17',
+      fechaEnvio: '14/10/2026, 23:35',
+      enlaceMisPropuestas: 'https://cafe.una/perfil/propuestas/17',
+    });
+    expect(correo.asunto).toBe('Recibimos tu propuesta');
+    expect(correo.html).toContain('Finca &lt;Luz&gt;');
+    expect(correo.html).toContain('https://cafe.una/perfil/propuestas/17');
+    expect(correo.texto).toContain('Propuesta: #17');
   });
 
   it('no entrega la revisión administrativa al rol vendedor', () => {

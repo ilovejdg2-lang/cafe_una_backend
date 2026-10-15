@@ -54,6 +54,8 @@ import { VendedorPuntoVenta } from './vendedor-punto-venta.entity';
 import { PropuestaProductor } from './propuesta-productor.entity';
 import { Notificacion } from './notificacion.entity';
 import { CorreoSalida } from './correo-salida.entity';
+import { ProductorActivo } from './productor-activo.entity';
+import { PropuestaHistorial } from './propuesta-historial.entity';
 
 export const entities = [
   Usuario,
@@ -112,6 +114,8 @@ export const entities = [
   PropuestaProductor,
   Notificacion,
   CorreoSalida,
+  ProductorActivo,
+  PropuestaHistorial,
 ];
 
 export * from './usuario.entity';
@@ -170,3 +174,5 @@ export * from './vendedor-punto-venta.entity';
 export * from './propuesta-productor.entity';
 export * from './notificacion.entity';
 export * from './correo-salida.entity';
+export * from './productor-activo.entity';
+export * from './propuesta-historial.entity';

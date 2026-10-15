@@ -4,7 +4,10 @@ import { Test } from '@nestjs/testing';
 import { getDataSourceToken, getRepositoryToken } from '@nestjs/typeorm';
 
 import { InformacionFooter } from '../entities/informacion-footer.entity';
+import { ProductorActivo } from '../entities/productor-activo.entity';
+import { PropuestaHistorial } from '../entities/propuesta-historial.entity';
 import { PropuestaProductor } from '../entities/propuesta-productor.entity';
+import { Usuario } from '../entities/usuario.entity';
 import { CorreosSalidaService } from './correos-salida.service';
 import { NotificacionesPropuestasService } from './notificaciones-propuestas.service';
 import { PropuestaImagenStorage } from './propuesta-imagen.storage';
@@ -31,6 +34,7 @@ describe('PropuestasProductoresService', () => {
   let service: PropuestasProductoresService;
   let findOne: jest.Mock;
   let find: jest.Mock;
+  let findActivos: jest.Mock;
   let guardar: jest.Mock;
   let eliminar: jest.Mock;
   let transaction: jest.Mock;
@@ -39,6 +43,7 @@ describe('PropuestasProductoresService', () => {
   beforeEach(async () => {
     findOne = jest.fn();
     find = jest.fn().mockResolvedValue([]);
+    findActivos = jest.fn().mockResolvedValue([]);
     guardar = jest.fn().mockResolvedValue('propuesta-nueva.jpg');
     eliminar = jest.fn().mockResolvedValue(undefined);
     intentarClave = jest.fn().mockResolvedValue('enviado');
@@ -55,6 +60,18 @@ describe('PropuestasProductoresService', () => {
         {
           provide: getRepositoryToken(InformacionFooter),
           useValue: { find: jest.fn().mockResolvedValue([{ Correo: 'contacto@cafeuna.ac.cr', Telefono: '2222-2222' }]) },
+        },
+        {
+          provide: getRepositoryToken(ProductorActivo),
+          useValue: { find: findActivos },
+        },
+        {
+          provide: getRepositoryToken(PropuestaHistorial),
+          useValue: { find: jest.fn().mockResolvedValue([]) },
+        },
+        {
+          provide: getRepositoryToken(Usuario),
+          useValue: { find: jest.fn().mockResolvedValue([{ Id: 3, Nombre: 'Ana Admin' }]) },
         },
         {
           provide: PropuestaImagenStorage,
@@ -128,8 +145,9 @@ describe('PropuestasProductoresService', () => {
     expect(intentarClave).not.toHaveBeenCalled();
   });
 
-  it('conserva la decisión aunque el correo no salga', async () => {
+  it('conserva la decisión aunque el correo no salga y copia a productores activos', async () => {
     intentarClave.mockRejectedValue(new Error('smtp caído'));
+    const publicados = jest.fn(async (valor: unknown) => valor);
     transaction.mockImplementation(async (fn: (manager: unknown) => Promise<unknown>) => {
       const fila = {
         Id: '9',
@@ -164,7 +182,19 @@ describe('PropuestasProductoresService', () => {
         }),
         save: async (valor: typeof fila) => valor,
       };
-      const manager = { getRepository: () => repo };
+      const activos = {
+        findOne: async () => null,
+        create: (valor: Record<string, unknown>) => valor,
+        save: publicados,
+      };
+      const historial = {
+        create: (valor: Record<string, unknown>) => valor,
+        save: async (valor: unknown) => valor,
+      };
+      const manager = {
+        getRepository: (entidad: unknown) =>
+          entidad === ProductorActivo ? activos : entidad === PropuestaHistorial ? historial : repo,
+      };
       return fn(manager);
     });
 
@@ -172,13 +202,19 @@ describe('PropuestasProductoresService', () => {
 
     expect(resultado.estado).toBe('Aprobada');
     expect('revisadoPorId' in resultado && resultado.revisadoPorId).toBe(3);
-    expect(resultado.correo).toEqual({ estado: 'pendiente' });
+    expect(resultado.revisadoPorNombre).toBe('Ana Admin');
+    expect(resultado.envioCorreo).toEqual({ estado: 'pendiente' });
+    expect(resultado.correo).toBe('hola@cafetal.com');
+    expect(publicados).toHaveBeenCalledWith(
+      expect.objectContaining({ PropuestaId: '9', NombreEmprendimiento: 'Cafetal Don Juan', Activo: true }),
+    );
   });
 
-  it('publica solo datos visibles y omite contacto y revisión', async () => {
-    find.mockResolvedValue([
+  it('publica solo datos visibles de productores activos y omite contacto', async () => {
+    findActivos.mockResolvedValue([
       {
-        Id: '3',
+        Id: 1,
+        PropuestaId: '3',
         UsuarioId: 99,
         NombreEmprendimiento: 'Finca Luz',
         ImagenReferencia: 'propuesta-3.jpg',
@@ -191,15 +227,17 @@ describe('PropuestasProductoresService', () => {
         SitioWeb: null,
         CorreoContacto: 'secreto@finca.com',
         TelefonoContacto: '+50688888888',
-        Estado: 'Aprobada',
-        MotivoRechazo: 'no debe salir',
-        RevisadoPorId: 2,
+        Activo: true,
       },
     ]);
 
     const publicados = await service.listarPublicas();
+    expect(findActivos).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { Activo: true } }),
+    );
     expect(publicados).toHaveLength(1);
     expect(publicados[0]).toMatchObject({
+      id: '3',
       nombre: 'Finca Luz',
       whatsapp: 'https://wa.me/50688888888',
     });
