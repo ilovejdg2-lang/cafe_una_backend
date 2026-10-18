@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { InventarioController } from '../controllers/inventario.controller';
+import { UbicacionImagenesController } from '../controllers/ubicacion-imagenes.controller';
 import { MovimientosController } from '../controllers/movimientos.controller';
 import { TransferenciasController } from '../controllers/transferencias.controller';
 import { VentasPresencialesController } from '../controllers/ventas-presenciales.controller';
@@ -40,6 +41,7 @@ import { AsignacionesPuntoVentaModule } from './asignaciones-punto-venta.module'
   ],
   controllers: [
     InventarioController,
+    UbicacionImagenesController,
     MovimientosController,
     TransferenciasController,
     VentasPresencialesController,

@@ -185,9 +185,9 @@ describe('InventarioService central stock compatibility', () => {
     ]);
 
     await expect(service.obtenerUbicaciones()).resolves.toEqual([
-      { id: 1, code: 'BODEGA_CENTRAL', name: 'Bodega Central', activo: true },
-      { id: 2, code: 'POS_FUNA_UNA', name: 'FUNA-UNA', activo: true },
-      { id: 4, code: 'POS_STAND_FERIAS', name: 'Stand Ferias', activo: true },
+      { id: 1, code: 'BODEGA_CENTRAL', name: 'Bodega Central', activo: true, imagenUrl: null, direccion: null, mapsUrl: null, telefono: null, horario: null, imagenes: [] },
+      { id: 2, code: 'POS_FUNA_UNA', name: 'FUNA-UNA', activo: true, imagenUrl: null, direccion: null, mapsUrl: null, telefono: null, horario: null, imagenes: [] },
+      { id: 4, code: 'POS_STAND_FERIAS', name: 'Stand Ferias', activo: true, imagenUrl: null, direccion: null, mapsUrl: null, telefono: null, horario: null, imagenes: [] },
     ]);
 
     expect(locationsRepository.save).not.toHaveBeenCalled();

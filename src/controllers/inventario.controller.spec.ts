@@ -107,10 +107,10 @@ describe('InventarioController location reads', () => {
       .get('/api/inventario/ubicaciones')
       .expect(200)
       .expect([
-        { id: 1, code: 'BODEGA_CENTRAL', name: 'Bodega Central', activo: true },
-        { id: 2, code: 'POS_FUNA_UNA', name: 'FUNA-UNA', activo: true },
-        { id: 3, code: 'POS_EDITORIAL', name: 'Editorial', activo: true },
-        { id: 4, code: 'POS_STAND_FERIAS', name: 'Stand Ferias', activo: false },
+        { id: 1, code: 'BODEGA_CENTRAL', name: 'Bodega Central', activo: true, imagenUrl: null, direccion: null, mapsUrl: null, telefono: null, horario: null, imagenes: [] },
+        { id: 2, code: 'POS_FUNA_UNA', name: 'FUNA-UNA', activo: true, imagenUrl: null, direccion: null, mapsUrl: null, telefono: null, horario: null, imagenes: [] },
+        { id: 3, code: 'POS_EDITORIAL', name: 'Editorial', activo: true, imagenUrl: null, direccion: null, mapsUrl: null, telefono: null, horario: null, imagenes: [] },
+        { id: 4, code: 'POS_STAND_FERIAS', name: 'Stand Ferias', activo: false, imagenUrl: null, direccion: null, mapsUrl: null, telefono: null, horario: null, imagenes: [] },
       ]);
   });
 
