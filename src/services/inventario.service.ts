@@ -19,6 +19,15 @@ import {
   insertarMovimientoInventario,
   TIPO_MOVIMIENTO,
 } from '../common/movimiento-inventario.util';
+import {
+  listarImagenesPunto,
+  normalizarDireccionPunto,
+  normalizarHorarioPunto,
+  normalizarImagenesPunto,
+  normalizarImagenPunto,
+  normalizarMapsUrl,
+  normalizarTelefonoPunto,
+} from '../common/punto-venta-presentacion';
 
 export const CANONICAL_LOCATIONS = [
   { code: 'BODEGA_CENTRAL', name: 'Bodega Central' },
@@ -46,6 +55,12 @@ export type DisponibilidadPuntoVenta = {
   id: number;
   code: string;
   name: string;
+  imagenUrl: string | null;
+  direccion: string | null;
+  mapsUrl: string | null;
+  telefono: string | null;
+  horario: string | null;
+  imagenes: string[];
 };
 
 export type DisponibilidadPuntosVentaResponse = {
@@ -63,6 +78,12 @@ export type InventoryLocationResponse = {
   code: string;
   name: string;
   activo: boolean;
+  imagenUrl: string | null;
+  direccion: string | null;
+  mapsUrl: string | null;
+  telefono: string | null;
+  horario: string | null;
+  imagenes: string[];
 };
 
 export type InventoryLocationStockResponse = {
@@ -755,6 +776,7 @@ export class InventarioService {
       id: Number(ubicacion.Id),
       code: ubicacion.Codigo,
       name: ubicacion.Nombre,
+      ...this.datosPresentacion(ubicacion),
     }));
 
     if (productIds.length === 0 || ubicaciones.length === 0) {
@@ -793,6 +815,18 @@ export class InventarioService {
     Codigo?: unknown;
     nombre?: unknown;
     Nombre?: unknown;
+    imagenUrl?: unknown;
+    ImagenUrl?: unknown;
+    direccion?: unknown;
+    Direccion?: unknown;
+    mapsUrl?: unknown;
+    MapsUrl?: unknown;
+    telefono?: unknown;
+    Telefono?: unknown;
+    horario?: unknown;
+    Horario?: unknown;
+    imagenes?: unknown;
+    Imagenes?: unknown;
   }): Promise<InventoryLocationResponse> {
     const nombre = this.validarNombre(
       Object.prototype.hasOwnProperty.call(body ?? {}, 'nombre')
@@ -822,11 +856,18 @@ export class InventarioService {
       );
     }
 
+    const presentacion = this.leerPresentacion(body);
     const creada = await this.locationsRepository.save(
       this.locationsRepository.create({
         Codigo: codigo,
         Nombre: nombre,
         Activo: true,
+        ImagenUrl: presentacion.imagenUrl,
+        Direccion: presentacion.direccion,
+        MapsUrl: presentacion.mapsUrl,
+        Telefono: presentacion.telefono,
+        Horario: presentacion.horario,
+        Imagenes: presentacion.imagenes,
       }),
     );
 
@@ -846,6 +887,18 @@ export class InventarioService {
       Nombre?: unknown;
       activo?: unknown;
       Activo?: unknown;
+      imagenUrl?: unknown;
+      ImagenUrl?: unknown;
+      direccion?: unknown;
+      Direccion?: unknown;
+      mapsUrl?: unknown;
+      MapsUrl?: unknown;
+      telefono?: unknown;
+      Telefono?: unknown;
+      horario?: unknown;
+      Horario?: unknown;
+      imagenes?: unknown;
+      Imagenes?: unknown;
     },
   ): Promise<InventoryLocationResponse> {
     const code = this.normalizarCodigoEntrada(locationCode);
@@ -868,8 +921,18 @@ export class InventarioService {
     const hasActivo =
       Object.prototype.hasOwnProperty.call(body ?? {}, 'activo') ||
       Object.prototype.hasOwnProperty.call(body ?? {}, 'Activo');
+    const presentacion = this.leerPresentacion(body);
 
-    if (!hasNombre && !hasActivo) {
+    if (
+      !hasNombre &&
+      !hasActivo &&
+      !presentacion.incluyeImagen &&
+      !presentacion.incluyeDireccion &&
+      !presentacion.incluyeMaps &&
+      !presentacion.incluyeTelefono &&
+      !presentacion.incluyeHorario &&
+      !presentacion.incluyeImagenes
+    ) {
       throw new BadRequestException(
         'Debe indicar al menos nombre o activo para actualizar.',
       );
@@ -889,6 +952,12 @@ export class InventarioService {
           : body.Activo,
       );
     }
+    if (presentacion.incluyeImagen) location.ImagenUrl = presentacion.imagenUrl;
+    if (presentacion.incluyeDireccion) location.Direccion = presentacion.direccion;
+    if (presentacion.incluyeMaps) location.MapsUrl = presentacion.mapsUrl;
+    if (presentacion.incluyeTelefono) location.Telefono = presentacion.telefono;
+    if (presentacion.incluyeHorario) location.Horario = presentacion.horario;
+    if (presentacion.incluyeImagenes) location.Imagenes = presentacion.imagenes;
 
     const guardada = await this.locationsRepository.save(location);
     await this.registrarAuditoriaUbicacion(
@@ -1032,6 +1101,82 @@ export class InventarioService {
       code: location.Codigo,
       name: location.Nombre,
       activo: location.Activo !== false,
+      ...this.datosPresentacion(location),
+    };
+  }
+
+  private datosPresentacion(location: InventarioUbicacion) {
+    return {
+      imagenUrl: location.ImagenUrl?.trim() || null,
+      direccion: location.Direccion?.trim() || null,
+      mapsUrl: location.MapsUrl?.trim() || null,
+      telefono: location.Telefono?.trim() || null,
+      horario: location.Horario?.trim() || null,
+      imagenes: listarImagenesPunto(location.Imagenes),
+    };
+  }
+
+  private leerPresentacion(body: object | null | undefined): {
+    incluyeImagen: boolean;
+    incluyeDireccion: boolean;
+    incluyeMaps: boolean;
+    incluyeTelefono: boolean;
+    incluyeHorario: boolean;
+    incluyeImagenes: boolean;
+    imagenUrl: string | null;
+    direccion: string | null;
+    mapsUrl: string | null;
+    telefono: string | null;
+    horario: string | null;
+    imagenes: string | null;
+  } {
+    const origen = body ?? {};
+    const incluyeImagen =
+      Object.prototype.hasOwnProperty.call(origen, 'imagenUrl') ||
+      Object.prototype.hasOwnProperty.call(origen, 'ImagenUrl');
+    const incluyeDireccion =
+      Object.prototype.hasOwnProperty.call(origen, 'direccion') ||
+      Object.prototype.hasOwnProperty.call(origen, 'Direccion');
+    const incluyeMaps =
+      Object.prototype.hasOwnProperty.call(origen, 'mapsUrl') ||
+      Object.prototype.hasOwnProperty.call(origen, 'MapsUrl');
+    const incluyeTelefono =
+      Object.prototype.hasOwnProperty.call(origen, 'telefono') ||
+      Object.prototype.hasOwnProperty.call(origen, 'Telefono');
+    const incluyeHorario =
+      Object.prototype.hasOwnProperty.call(origen, 'horario') ||
+      Object.prototype.hasOwnProperty.call(origen, 'Horario');
+    const incluyeImagenes =
+      Object.prototype.hasOwnProperty.call(origen, 'imagenes') ||
+      Object.prototype.hasOwnProperty.call(origen, 'Imagenes');
+    const registro = origen as Record<string, unknown>;
+    const valor = (camel: string, pascal: string) =>
+      Object.prototype.hasOwnProperty.call(origen, camel) ? registro[camel] : registro[pascal];
+    return {
+      incluyeImagen,
+      incluyeDireccion,
+      incluyeMaps,
+      incluyeTelefono,
+      incluyeHorario,
+      incluyeImagenes,
+      imagenUrl: incluyeImagen
+        ? normalizarImagenPunto(
+            Object.prototype.hasOwnProperty.call(origen, 'imagenUrl')
+              ? registro.imagenUrl
+              : registro.ImagenUrl,
+          )
+        : null,
+      direccion: incluyeDireccion
+        ? normalizarDireccionPunto(
+            Object.prototype.hasOwnProperty.call(origen, 'direccion')
+              ? registro.direccion
+              : registro.Direccion,
+          )
+        : null,
+      mapsUrl: incluyeMaps ? normalizarMapsUrl(valor('mapsUrl', 'MapsUrl')) : null,
+      telefono: incluyeTelefono ? normalizarTelefonoPunto(valor('telefono', 'Telefono')) : null,
+      horario: incluyeHorario ? normalizarHorarioPunto(valor('horario', 'Horario')) : null,
+      imagenes: incluyeImagenes ? normalizarImagenesPunto(valor('imagenes', 'Imagenes')) : null,
     };
   }
 
