@@ -257,6 +257,30 @@ export class DatabaseBootstrapService implements OnModuleInit {
         ADD COLUMN IF NOT EXISTS "Activo" boolean NOT NULL DEFAULT true;
       `);
       await this.dataSource.query(`
+        ALTER TABLE inventario_ubicaciones
+        ADD COLUMN IF NOT EXISTS "ImagenUrl" varchar(500) NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE inventario_ubicaciones
+        ADD COLUMN IF NOT EXISTS "Direccion" varchar(300) NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE inventario_ubicaciones
+        ADD COLUMN IF NOT EXISTS "MapsUrl" varchar(500) NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE inventario_ubicaciones
+        ADD COLUMN IF NOT EXISTS "Telefono" varchar(40) NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE inventario_ubicaciones
+        ADD COLUMN IF NOT EXISTS "Horario" varchar(300) NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE inventario_ubicaciones
+        ADD COLUMN IF NOT EXISTS "Imagenes" text NULL;
+      `);
+      await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS vendedor_punto_venta (
           "Id" serial PRIMARY KEY,
           "VendedorId" integer NOT NULL,

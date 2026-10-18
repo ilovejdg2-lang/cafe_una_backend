@@ -60,6 +60,12 @@ export class InventarioController {
       Codigo?: unknown;
       nombre?: unknown;
       Nombre?: unknown;
+      imagenUrl?: unknown;
+      ImagenUrl?: unknown;
+      direccion?: unknown;
+      Direccion?: unknown;
+      mapsUrl?: unknown;
+      MapsUrl?: unknown;
     },
   ) {
     return this.inventarioService.crearUbicacion(body ?? {});
@@ -75,6 +81,12 @@ export class InventarioController {
       Nombre?: unknown;
       activo?: unknown;
       Activo?: unknown;
+      imagenUrl?: unknown;
+      ImagenUrl?: unknown;
+      direccion?: unknown;
+      Direccion?: unknown;
+      mapsUrl?: unknown;
+      MapsUrl?: unknown;
     },
   ) {
     return this.inventarioService.actualizarUbicacion(locationCode, body ?? {});
