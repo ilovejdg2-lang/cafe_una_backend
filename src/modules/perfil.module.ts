@@ -1,6 +1,8 @@
 import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { PerfilController } from '../controllers/perfil.controller';
+import { PerfilImagenesController } from '../controllers/perfil-imagenes.controller';
+import { PerfilImagenStorage } from '../services/perfil-imagen.storage';
 import { CambioCorreoPendiente } from '../entities/cambio-correo-pendiente.entity';
 import { Usuario } from '../entities/usuario.entity';
 import { PerfilService } from '../services/perfil.service';
@@ -13,8 +15,8 @@ import { UsuariosModule } from './usuarios.module';
     forwardRef(() => UsuariosModule),
     forwardRef(() => AuthModule),
   ],
-  controllers: [PerfilController],
-  providers: [PerfilService],
+  controllers: [PerfilController, PerfilImagenesController],
+  providers: [PerfilService, PerfilImagenStorage],
   exports: [PerfilService],
 })
 export class PerfilModule {}
