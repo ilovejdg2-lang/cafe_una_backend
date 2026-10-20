@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   Patch,
@@ -57,6 +58,74 @@ export class PropuestasProductoresController {
   @RequierePermiso('ingresar_propuesta_productor', 'ver_solicitudes_propias')
   obtenerMia(@Req() req: RequestUsuario, @Param('id') id: string) {
     return this.propuestas.obtenerMia(req.user.userId, id);
+  }
+
+  @Put('mias/:id')
+  @RequierePermiso('ingresar_propuesta_productor', 'ver_solicitudes_propias')
+  @UseInterceptors(
+    FileInterceptor('imagen', {
+      storage: memoryStorage(),
+      limits: { fileSize: IMAGEN_MAX_BYTES },
+    }),
+  )
+  editarMia(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+    @UploadedFile()
+    archivo?: { buffer: Buffer; size?: number; mimetype?: string; originalname?: string },
+  ) {
+    return this.propuestas.editarMia(req.user.userId, id, body, archivo);
+  }
+
+  @Delete('mias/:id')
+  @RequierePermiso('ingresar_propuesta_productor', 'ver_solicitudes_propias')
+  eliminarMia(@Req() req: RequestUsuario, @Param('id') id: string) {
+    return this.propuestas.eliminarMia(req.user.userId, id);
+  }
+
+  @Post('mias/:id/solicitar-edicion')
+  @RequierePermiso('ingresar_propuesta_productor', 'ver_solicitudes_propias')
+  @UseInterceptors(
+    FileInterceptor('imagen', {
+      storage: memoryStorage(),
+      limits: { fileSize: IMAGEN_MAX_BYTES },
+    }),
+  )
+  solicitarEdicionMia(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+    @UploadedFile()
+    archivo?: { buffer: Buffer; size?: number; mimetype?: string; originalname?: string },
+  ) {
+    return this.propuestas.solicitarEdicionMia(req.user.userId, id, body, archivo);
+  }
+
+  @Delete('mias/:id/solicitar-edicion')
+  @RequierePermiso('ingresar_propuesta_productor', 'ver_solicitudes_propias')
+  cancelarSolicitudEdicionMia(@Req() req: RequestUsuario, @Param('id') id: string) {
+    return this.propuestas.cancelarSolicitudEdicionMia(req.user.userId, id);
+  }
+
+  @Post('mias/:id/solicitar-eliminacion')
+  @RequierePermiso('ingresar_propuesta_productor', 'ver_solicitudes_propias')
+  solicitarEliminacionMia(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    return this.propuestas.solicitarEliminacionMia(
+      req.user.userId,
+      id,
+      body?.motivo ?? body?.Motivo,
+    );
+  }
+
+  @Delete('mias/:id/solicitar-eliminacion')
+  @RequierePermiso('ingresar_propuesta_productor', 'ver_solicitudes_propias')
+  cancelarSolicitudEliminacionMia(@Req() req: RequestUsuario, @Param('id') id: string) {
+    return this.propuestas.cancelarSolicitudEliminacionMia(req.user.userId, id);
   }
 
   @Get()
@@ -148,6 +217,58 @@ export class PropuestasProductoresController {
       motivo,
       body.sugerencias ?? body.Sugerencias,
       body.comentario ?? body.Comentario,
+    );
+  }
+
+  @Post(':id/resolver-edicion')
+  @RequierePermiso('administrar_solicitudes_productores')
+  resolverEdicion(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const accion = String(body.accion ?? body.Accion ?? '').toLowerCase();
+    if (accion !== 'aprobar' && accion !== 'rechazar') {
+      throw new BadRequestException('La acción debe ser aprobar o rechazar.');
+    }
+    return this.propuestas.resolverSolicitudEdicion(
+      id,
+      req.user.userId,
+      accion as 'aprobar' | 'rechazar',
+      body.comentario ?? body.Comentario,
+    );
+  }
+
+  @Post(':id/resolver-eliminacion')
+  @RequierePermiso('administrar_solicitudes_productores')
+  resolverEliminacion(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body: Record<string, unknown>,
+  ) {
+    const accion = String(body.accion ?? body.Accion ?? '').toLowerCase();
+    if (accion !== 'aprobar' && accion !== 'rechazar') {
+      throw new BadRequestException('La acción debe ser aprobar o rechazar.');
+    }
+    return this.propuestas.resolverSolicitudEliminacion(
+      id,
+      req.user.userId,
+      accion as 'aprobar' | 'rechazar',
+      body.comentario ?? body.Comentario,
+    );
+  }
+
+  @Delete(':id')
+  @RequierePermiso('administrar_solicitudes_productores')
+  eliminarAdmin(
+    @Req() req: RequestUsuario,
+    @Param('id') id: string,
+    @Body() body?: Record<string, unknown>,
+  ) {
+    return this.propuestas.eliminarAdmin(
+      id,
+      req.user.userId,
+      body?.comentario ?? body?.Comentario,
     );
   }
 }

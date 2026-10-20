@@ -34,4 +34,29 @@ export class TextoInstitucional {
 
   @Column({ name: 'LinkTextEn', type: 'varchar', length: 200, nullable: true })
   LinkTextEn: string | null;
+
+  @Column({ name: 'SecondaryButtonText', type: 'varchar', length: 200, nullable: true })
+  SecondaryButtonText: string | null;
+
+  @Column({ name: 'SecondaryButtonTextEn', type: 'varchar', length: 200, nullable: true })
+  SecondaryButtonTextEn: string | null;
+
+  @Column({ name: 'SecondaryButtonUrl', type: 'varchar', length: 500, nullable: true })
+  SecondaryButtonUrl: string | null;
+
+  @Column({ name: 'TertiaryButtonText', type: 'varchar', length: 200, nullable: true })
+  TertiaryButtonText: string | null;
+
+  @Column({ name: 'TertiaryButtonTextEn', type: 'varchar', length: 200, nullable: true })
+  TertiaryButtonTextEn: string | null;
+
+  @Column({ name: 'TertiaryButtonUrl', type: 'varchar', length: 500, nullable: true })
+  TertiaryButtonUrl: string | null;
+
+  @Column({ name: 'FooterText', type: 'varchar', length: 200, nullable: true })
+  FooterText: string | null;
+
+  @Column({ name: 'FooterTextEn', type: 'varchar', length: 200, nullable: true })
+  FooterTextEn: string | null;
 }
+

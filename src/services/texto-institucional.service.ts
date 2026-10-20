@@ -14,6 +14,7 @@ const CLAVES_VALIDAS = new Set([
   'homeFaq',
   'homeDocumentacion',
   'homedocumentacion',
+  'productores',
 ]);
 
 @Injectable()
@@ -24,7 +25,7 @@ export class TextoInstitucionalService {
   ) {}
 
   esClaveValida(clave: string): boolean {
-    return CLAVES_VALIDAS.has(clave);
+    return CLAVES_VALIDAS.has(clave) || CLAVES_VALIDAS.has(clave.toLowerCase());
   }
 
   async obtener(clave: string): Promise<TextoInstitucional | null> {
@@ -39,15 +40,41 @@ export class TextoInstitucionalService {
     clave: string,
     cambios: {
       Eyebrow?: string | null;
+      eyebrow?: string | null;
       EyebrowEn?: string | null;
+      eyebrowEn?: string | null;
       Title?: string;
+      title?: string;
       TitleEn?: string | null;
+      titleEn?: string | null;
       Description?: string;
+      description?: string;
       DescriptionEn?: string | null;
+      descriptionEn?: string | null;
       Image?: string | null;
+      image?: string | null;
       LinkUrl?: string | null;
+      linkUrl?: string | null;
       LinkText?: string | null;
+      linkText?: string | null;
       LinkTextEn?: string | null;
+      linkTextEn?: string | null;
+      SecondaryButtonText?: string | null;
+      secondaryButtonText?: string | null;
+      SecondaryButtonTextEn?: string | null;
+      secondaryButtonTextEn?: string | null;
+      SecondaryButtonUrl?: string | null;
+      secondaryButtonUrl?: string | null;
+      TertiaryButtonText?: string | null;
+      tertiaryButtonText?: string | null;
+      TertiaryButtonTextEn?: string | null;
+      tertiaryButtonTextEn?: string | null;
+      TertiaryButtonUrl?: string | null;
+      tertiaryButtonUrl?: string | null;
+      FooterText?: string | null;
+      footerText?: string | null;
+      FooterTextEn?: string | null;
+      footerTextEn?: string | null;
     },
   ): Promise<TextoInstitucional | null> {
     if (!this.esClaveValida(clave)) return null;
@@ -58,36 +85,42 @@ export class TextoInstitucionalService {
       actual = this.repo.create({ Clave: claveNormalizada });
     }
 
-    if (cambios.Title?.trim()) actual.Title = cambios.Title.trim();
-    if (cambios.TitleEn != null) actual.TitleEn = cambios.TitleEn.trim();
-    if (cambios.Description?.trim()) actual.Description = cambios.Description.trim();
-    if (cambios.DescriptionEn != null) {
-      actual.DescriptionEn = cambios.DescriptionEn.trim();
-    }
-    if (cambios.Eyebrow != null) {
-      actual.Eyebrow = cambios.Eyebrow.trim() ? cambios.Eyebrow.trim() : null;
-    }
-    if (cambios.EyebrowEn != null) {
-      actual.EyebrowEn = cambios.EyebrowEn.trim()
-        ? cambios.EyebrowEn.trim()
-        : null;
-    }
-    if (cambios.Image != null) {
-      actual.Image = cambios.Image.trim() ? cambios.Image.trim() : null;
-    }
-    if (cambios.LinkUrl != null) {
-      actual.LinkUrl = cambios.LinkUrl.trim() ? cambios.LinkUrl.trim() : null;
-    }
-    if (cambios.LinkText != null) {
-      actual.LinkText = cambios.LinkText.trim() ? cambios.LinkText.trim() : null;
-    }
-    if (cambios.LinkTextEn != null) {
-      actual.LinkTextEn = cambios.LinkTextEn.trim()
-        ? cambios.LinkTextEn.trim()
-        : null;
-    }
+    const titleVal = cambios.Title ?? cambios.title;
+    if (titleVal?.trim()) actual.Title = titleVal.trim();
+    const titleEnVal = cambios.TitleEn ?? cambios.titleEn;
+    if (titleEnEnVal(titleEnVal)) actual.TitleEn = titleEnVal.trim();
+
+    const descVal = cambios.Description ?? cambios.description;
+    if (descVal?.trim()) actual.Description = descVal.trim();
+    const descEnVal = cambios.DescriptionEn ?? cambios.descriptionEn;
+    if (descEnVal != null) actual.DescriptionEn = descEnVal.trim();
+
+    const setOpcional = (campo: keyof TextoInstitucional, val: string | null | undefined) => {
+      if (val !== undefined) {
+        (actual as unknown as Record<string, unknown>)[campo] = val && val.trim() ? val.trim() : null;
+      }
+    };
+
+    setOpcional('Eyebrow', cambios.Eyebrow ?? cambios.eyebrow);
+    setOpcional('EyebrowEn', cambios.EyebrowEn ?? cambios.eyebrowEn);
+    setOpcional('Image', cambios.Image ?? cambios.image);
+    setOpcional('LinkUrl', cambios.LinkUrl ?? cambios.linkUrl);
+    setOpcional('LinkText', cambios.LinkText ?? cambios.linkText);
+    setOpcional('LinkTextEn', cambios.LinkTextEn ?? cambios.linkTextEn);
+    setOpcional('SecondaryButtonText', cambios.SecondaryButtonText ?? cambios.secondaryButtonText);
+    setOpcional('SecondaryButtonTextEn', cambios.SecondaryButtonTextEn ?? cambios.secondaryButtonTextEn);
+    setOpcional('SecondaryButtonUrl', cambios.SecondaryButtonUrl ?? cambios.secondaryButtonUrl);
+    setOpcional('TertiaryButtonText', cambios.TertiaryButtonText ?? cambios.tertiaryButtonText);
+    setOpcional('TertiaryButtonTextEn', cambios.TertiaryButtonTextEn ?? cambios.tertiaryButtonTextEn);
+    setOpcional('TertiaryButtonUrl', cambios.TertiaryButtonUrl ?? cambios.tertiaryButtonUrl);
+    setOpcional('FooterText', cambios.FooterText ?? cambios.footerText);
+    setOpcional('FooterTextEn', cambios.FooterTextEn ?? cambios.footerTextEn);
 
     const saved = await this.repo.save(actual);
     return { ...saved };
   }
+}
+
+function titleEnEnVal(val: unknown): val is string {
+  return typeof val === 'string';
 }
