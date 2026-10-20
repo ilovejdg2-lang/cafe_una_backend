@@ -25,6 +25,7 @@ export const ESTADOS_PROPUESTA = [
   ESTADO_EN_REVISION,
   'Aprobada',
   'Rechazada',
+  'Eliminada',
 ] as const;
 export type EstadoPropuesta = (typeof ESTADOS_PROPUESTA)[number];
 

@@ -23,6 +23,7 @@ import {
   validarClaveIdempotencia,
   validarMotivoRechazo,
   validarPropuestaEntrada,
+  PropuestaNormalizada,
 } from '../common/propuesta-productor.util';
 import { InformacionFooter } from '../entities/informacion-footer.entity';
 import { ProductorActivo } from '../entities/productor-activo.entity';
@@ -443,7 +444,13 @@ export class PropuestasProductoresService {
   }
 
   async leerImagen(nombre: string, usuarioId: number | null, esAdmin: boolean) {
-    const fila = await this.repo.findOne({ where: { ImagenReferencia: nombre } });
+    let fila = await this.repo.findOne({ where: { ImagenReferencia: nombre } });
+    if (!fila) {
+      fila = await this.repo
+        .createQueryBuilder('p')
+        .where("p.SolicitudEdicion->>'imagenNueva' = :nombre", { nombre })
+        .getOne();
+    }
     if (!fila) throw new NotFoundException('No se encontró la imagen.');
     const publica = fila.Estado === 'Aprobada';
     const propia = usuarioId != null && fila.UsuarioId === usuarioId;
@@ -453,6 +460,350 @@ export class PropuestasProductoresService {
     const archivo = await this.imagenes.leer(nombre);
     if (!archivo) throw new NotFoundException('No se encontró la imagen.');
     return archivo;
+  }
+
+  async editarMia(usuarioId: number, id: string, body: Record<string, unknown>, archivo?: ArchivoImagen) {
+    const fila = await this.buscarPropia(usuarioId, id);
+    if (fila.Estado === 'Aprobada' || fila.Estado === 'Eliminada') {
+      throw new BadRequestException('Esta propuesta no se puede editar directamente. Para emprendimientos activos debés enviar una solicitud de cambios.');
+    }
+    let datos: PropuestaNormalizada;
+    try {
+      datos = validarPropuestaEntrada({ ...body, aceptaTerminos: true });
+    } catch (error) {
+      throw errorValidacion(error, 'Los datos no son válidos.');
+    }
+
+    let nombreArchivo = fila.ImagenReferencia;
+    let imagenAnteriorParaBorrar: string | null = null;
+    if (archivo?.buffer?.length) {
+      const detectada = this.imagenes.validar(archivo.buffer);
+      nombreArchivo = await this.imagenes.guardar(archivo.buffer, detectada);
+      imagenAnteriorParaBorrar = fila.ImagenReferencia;
+    }
+
+    const anteriorEstado = fila.Estado;
+    fila.NombreEmprendimiento = datos.nombre;
+    fila.Provincia = datos.provincia;
+    fila.Canton = datos.canton;
+    fila.Distrito = datos.distrito;
+    fila.Direccion = datos.direccion;
+    fila.EnlaceUbicacion = datos.enlaceUbicacion;
+    fila.Descripcion = datos.descripcion;
+    fila.Facebook = datos.facebook;
+    fila.Instagram = datos.instagram;
+    fila.Whatsapp = datos.whatsapp;
+    fila.SitioWeb = datos.sitioWeb;
+    fila.CorreoContacto = datos.correo;
+    fila.TelefonoContacto = datos.telefono;
+    fila.ImagenReferencia = nombreArchivo;
+    fila.ActualizadoEn = new Date();
+
+    if (fila.Estado === 'Rechazada') {
+      fila.Estado = 'Pendiente';
+      fila.MotivoRechazo = null;
+      fila.Sugerencias = null;
+      fila.RevisadoEn = null;
+      fila.RevisadoPorId = null;
+    }
+
+    const guardada = await this.repo.save(fila);
+    if (imagenAnteriorParaBorrar && imagenAnteriorParaBorrar !== nombreArchivo) {
+      await this.imagenes.eliminar(imagenAnteriorParaBorrar).catch(() => undefined);
+    }
+
+    await this.registrarHistorialSimple(
+      guardada.Id,
+      'edicion',
+      anteriorEstado,
+      guardada.Estado,
+      'El productor editó los datos de la propuesta.',
+      null,
+    );
+
+    return this.vistaPropia(guardada, true);
+  }
+
+  async eliminarMia(usuarioId: number, id: string) {
+    const fila = await this.buscarPropia(usuarioId, id);
+    if (fila.Estado === 'Aprobada') {
+      throw new BadRequestException('Para dar de baja un emprendimiento activo debés solicitar la baja/eliminación.');
+    }
+    fila.Estado = 'Eliminada';
+    fila.ActualizadoEn = new Date();
+    const guardada = await this.repo.save(fila);
+
+    await this.registrarHistorialSimple(
+      guardada.Id,
+      'eliminacion',
+      fila.Estado,
+      'Eliminada',
+      'El productor canceló/eliminó su solicitud.',
+      null,
+    );
+
+    return { exito: true, mensaje: 'Solicitud eliminada correctamente.' };
+  }
+
+  async solicitarEdicionMia(usuarioId: number, id: string, body: Record<string, unknown>, archivo?: ArchivoImagen) {
+    const fila = await this.buscarPropia(usuarioId, id);
+    if (fila.Estado !== 'Aprobada') {
+      throw new BadRequestException('Solo podés solicitar cambios para emprendimientos que ya han sido aprobados.');
+    }
+    let datos: PropuestaNormalizada;
+    try {
+      datos = validarPropuestaEntrada({ ...body, aceptaTerminos: true });
+    } catch (error) {
+      throw errorValidacion(error, 'Los datos solicitados no son válidos.');
+    }
+
+    let nombreArchivo: string | null = null;
+    if (archivo?.buffer?.length) {
+      const detectada = this.imagenes.validar(archivo.buffer);
+      nombreArchivo = await this.imagenes.guardar(archivo.buffer, detectada);
+    }
+
+    const motivo = String(body.motivo || body.Motivo || '').trim();
+    fila.SolicitudEdicion = {
+      datos,
+      motivo: motivo || null,
+      imagenNueva: nombreArchivo,
+      fechaSolicitud: new Date().toISOString(),
+    };
+    fila.ActualizadoEn = new Date();
+    const guardada = await this.repo.save(fila);
+
+    await this.registrarHistorialSimple(
+      guardada.Id,
+      'solicitud_edicion',
+      fila.Estado,
+      fila.Estado,
+      motivo ? `Solicitó cambios: ${motivo}` : 'El productor envió una solicitud de cambios para su emprendimiento.',
+      null,
+    );
+
+    return this.vistaPropia(guardada, true);
+  }
+
+  async cancelarSolicitudEdicionMia(usuarioId: number, id: string) {
+    const fila = await this.buscarPropia(usuarioId, id);
+    if (fila.SolicitudEdicion && typeof fila.SolicitudEdicion === 'object') {
+      const sol = fila.SolicitudEdicion as { imagenNueva?: string | null };
+      if (sol.imagenNueva) {
+        await this.imagenes.eliminar(String(sol.imagenNueva)).catch(() => undefined);
+      }
+    }
+    fila.SolicitudEdicion = null;
+    fila.ActualizadoEn = new Date();
+    const guardada = await this.repo.save(fila);
+    return this.vistaPropia(guardada, true);
+  }
+
+  async solicitarEliminacionMia(usuarioId: number, id: string, motivoRaw: unknown) {
+    const fila = await this.buscarPropia(usuarioId, id);
+    if (fila.Estado !== 'Aprobada') {
+      throw new BadRequestException('Solo podés solicitar la baja de emprendimientos aprobados y activos.');
+    }
+    const motivo = String(motivoRaw ?? '').trim();
+    fila.SolicitudEliminacion = {
+      motivo: motivo || 'Solicitud de baja del emprendimiento por parte del productor',
+      fechaSolicitud: new Date().toISOString(),
+    };
+    fila.ActualizadoEn = new Date();
+    const guardada = await this.repo.save(fila);
+
+    await this.registrarHistorialSimple(
+      guardada.Id,
+      'solicitud_eliminacion',
+      fila.Estado,
+      fila.Estado,
+      `Solicitó eliminación del emprendimiento. Motivo: ${motivo || 'Sin motivo especificado'}`,
+      null,
+    );
+
+    return this.vistaPropia(guardada, true);
+  }
+
+  async cancelarSolicitudEliminacionMia(usuarioId: number, id: string) {
+    const fila = await this.buscarPropia(usuarioId, id);
+    fila.SolicitudEliminacion = null;
+    fila.ActualizadoEn = new Date();
+    const guardada = await this.repo.save(fila);
+    return this.vistaPropia(guardada, true);
+  }
+
+  async resolverSolicitudEdicion(
+    id: string,
+    adminId: number,
+    accion: 'aprobar' | 'rechazar',
+    comentarioRaw?: unknown,
+  ) {
+    const fila = await this.repo.findOne({ where: { Id: id } });
+    if (!fila) throw new NotFoundException('No se encontró la propuesta.');
+    if (!fila.SolicitudEdicion) {
+      throw new BadRequestException('Esta propuesta no tiene una solicitud de edición pendiente.');
+    }
+
+    const comentario = String(comentarioRaw ?? '').trim();
+    const sol = fila.SolicitudEdicion as {
+      datos?: Record<string, unknown>;
+      imagenNueva?: string | null;
+    };
+
+    if (accion === 'aprobar') {
+      const d = sol.datos || {};
+      if (d.nombre) fila.NombreEmprendimiento = String(d.nombre);
+      if (d.provincia !== undefined) fila.Provincia = String(d.provincia || '');
+      if (d.canton !== undefined) fila.Canton = String(d.canton || '');
+      if (d.distrito !== undefined) fila.Distrito = String(d.distrito || '');
+      if (d.direccion) fila.Direccion = String(d.direccion);
+      if (d.enlaceUbicacion) fila.EnlaceUbicacion = String(d.enlaceUbicacion);
+      if (d.descripcion) fila.Descripcion = String(d.descripcion);
+      if (d.facebook !== undefined) fila.Facebook = d.facebook ? String(d.facebook) : null;
+      if (d.instagram !== undefined) fila.Instagram = d.instagram ? String(d.instagram) : null;
+      if (d.whatsapp !== undefined) fila.Whatsapp = d.whatsapp ? String(d.whatsapp) : null;
+      if (d.sitioWeb !== undefined) fila.SitioWeb = d.sitioWeb ? String(d.sitioWeb) : null;
+      if (d.correo) fila.CorreoContacto = String(d.correo);
+      if (d.telefono) fila.TelefonoContacto = String(d.telefono);
+
+      if (sol.imagenNueva) {
+        const vieja = fila.ImagenReferencia;
+        fila.ImagenReferencia = sol.imagenNueva;
+        if (vieja && vieja !== sol.imagenNueva) {
+          await this.imagenes.eliminar(vieja).catch(() => undefined);
+        }
+      }
+
+      fila.SolicitudEdicion = null;
+      fila.ActualizadoEn = new Date();
+      await this.repo.save(fila);
+
+      await this.publicar(this.dataSource.manager, fila);
+
+      await this.registrarHistorialSimple(
+        fila.Id,
+        'aprobacion_edicion',
+        fila.Estado,
+        fila.Estado,
+        comentario ? `Aprobó solicitud de edición: ${comentario}` : 'Aprobó la solicitud de cambios del emprendimiento.',
+        adminId,
+      );
+    } else {
+      if (sol.imagenNueva) {
+        await this.imagenes.eliminar(sol.imagenNueva).catch(() => undefined);
+      }
+      fila.SolicitudEdicion = null;
+      fila.ActualizadoEn = new Date();
+      await this.repo.save(fila);
+
+      await this.registrarHistorialSimple(
+        fila.Id,
+        'rechazo_edicion',
+        fila.Estado,
+        fila.Estado,
+        comentario ? `Rechazó solicitud de edición: ${comentario}` : 'Rechazó la solicitud de cambios del emprendimiento.',
+        adminId,
+      );
+    }
+
+    return this.detalleAdmin(fila);
+  }
+
+  async resolverSolicitudEliminacion(
+    id: string,
+    adminId: number,
+    accion: 'aprobar' | 'rechazar',
+    comentarioRaw?: unknown,
+  ) {
+    const fila = await this.repo.findOne({ where: { Id: id } });
+    if (!fila) throw new NotFoundException('No se encontró la propuesta.');
+    if (!fila.SolicitudEliminacion) {
+      throw new BadRequestException('Esta propuesta no tiene una solicitud de eliminación pendiente.');
+    }
+
+    const comentario = String(comentarioRaw ?? '').trim();
+    if (accion === 'aprobar') {
+      fila.Estado = 'Eliminada';
+      fila.SolicitudEliminacion = null;
+      fila.ActualizadoEn = new Date();
+      await this.repo.save(fila);
+
+      await this.activosRepo.delete({ PropuestaId: id });
+
+      await this.registrarHistorialSimple(
+        fila.Id,
+        'eliminacion',
+        'Aprobada',
+        'Eliminada',
+        comentario ? `Aprobó baja de emprendimiento: ${comentario}` : 'Aprobó la solicitud de baja/eliminación del emprendimiento.',
+        adminId,
+      );
+    } else {
+      fila.SolicitudEliminacion = null;
+      fila.ActualizadoEn = new Date();
+      await this.repo.save(fila);
+
+      await this.registrarHistorialSimple(
+        fila.Id,
+        'rechazo_eliminacion',
+        fila.Estado,
+        fila.Estado,
+        comentario ? `Rechazó baja de emprendimiento: ${comentario}` : 'Rechazó la solicitud de baja/eliminación del emprendimiento.',
+        adminId,
+      );
+    }
+
+    return this.detalleAdmin(fila);
+  }
+
+  async eliminarAdmin(id: string, adminId: number, comentarioRaw?: unknown) {
+    const fila = await this.repo.findOne({ where: { Id: id } });
+    if (!fila) throw new NotFoundException('No se encontró la propuesta.');
+
+    const anteriorEstado = fila.Estado;
+    fila.Estado = 'Eliminada';
+    fila.SolicitudEdicion = null;
+    fila.SolicitudEliminacion = null;
+    fila.ActualizadoEn = new Date();
+    await this.repo.save(fila);
+
+    await this.activosRepo.delete({ PropuestaId: id });
+
+    const comentario = String(comentarioRaw ?? '').trim();
+    await this.registrarHistorialSimple(
+      fila.Id,
+      'eliminacion',
+      anteriorEstado,
+      'Eliminada',
+      comentario || 'El administrador eliminó la propuesta / emprendimiento.',
+      adminId,
+    );
+
+    return this.detalleAdmin(fila);
+  }
+
+  private async registrarHistorialSimple(
+    propuestaId: string,
+    accion: string,
+    anterior: string | null,
+    nuevo: string | null,
+    comentario: string | null,
+    adminId: number | null,
+  ) {
+    try {
+      await this.historialRepo.save(
+        this.historialRepo.create({
+          PropuestaId: String(propuestaId),
+          Accion: accion.slice(0, 50),
+          EstadoAnterior: anterior ?? null,
+          EstadoNuevo: nuevo ?? null,
+          Comentario: comentario?.slice(0, NOTA_INTERNA_MAX) ?? null,
+          AdminId: adminId ?? null,
+        }),
+      );
+    } catch {
+      // Ignorar si falla la bitácora
+    }
   }
 
   private async revisar(
@@ -715,6 +1066,14 @@ export class PropuestasProductoresService {
     };
   }
 
+  private formatearSolicitudEdicion(sol: Record<string, unknown> | null) {
+    if (!sol || typeof sol !== 'object') return null;
+    return {
+      ...sol,
+      imagenUrl: sol.imagenNueva ? this.imagenUrl(String(sol.imagenNueva)) : null,
+    };
+  }
+
   private vistaPropia(fila: PropuestaProductor, detalle = false) {
     const base = {
       id: String(fila.Id),
@@ -726,6 +1085,8 @@ export class PropuestasProductoresService {
       fechaRevision: fila.RevisadoEn,
       motivoRechazo: fila.Estado === 'Rechazada' ? fila.MotivoRechazo : null,
       sugerencias: fila.Estado === 'Rechazada' ? fila.Sugerencias : null,
+      solicitudEdicion: this.formatearSolicitudEdicion(fila.SolicitudEdicion),
+      solicitudEliminacion: fila.SolicitudEliminacion,
     };
     if (!detalle) return base;
     return {
@@ -758,6 +1119,8 @@ export class PropuestasProductoresService {
       fechaRevision: fila.RevisadoEn,
       imagenUrl: this.imagenUrl(fila.ImagenReferencia),
       imagenNombre: fila.ImagenReferencia,
+      solicitudEdicion: this.formatearSolicitudEdicion(fila.SolicitudEdicion),
+      solicitudEliminacion: fila.SolicitudEliminacion,
     };
     if (!detalle) return base;
     return {

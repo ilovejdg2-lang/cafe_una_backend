@@ -16,8 +16,8 @@ export class PropuestaHistorial {
   @Column({ name: 'PropuestaId', type: 'bigint' })
   PropuestaId: string;
 
-  /** estado | edicion | nota */
-  @Column({ name: 'Accion', type: 'varchar', length: 20 })
+  /** estado | edicion | nota | solicitud_edicion | solicitud_eliminacion | eliminacion */
+  @Column({ name: 'Accion', type: 'varchar', length: 50 })
   Accion: string;
 
   @Column({ name: 'EstadoAnterior', type: 'varchar', length: 20, nullable: true })

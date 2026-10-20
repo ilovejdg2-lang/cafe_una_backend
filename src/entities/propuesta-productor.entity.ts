@@ -97,4 +97,12 @@ export class PropuestaProductor {
   /** Solo administradores; nunca se envía al productor ni al sitio público. */
   @Column({ name: 'NotaInterna', type: 'varchar', length: 2000, nullable: true })
   NotaInterna: string | null;
+
+  /** Cambios solicitados por el productor para un emprendimiento activo (en espera de aprobación). */
+  @Column({ name: 'SolicitudEdicion', type: 'jsonb', nullable: true })
+  SolicitudEdicion: Record<string, unknown> | null;
+
+  /** Solicitud de baja o eliminación enviada por el productor (en espera de decisión de admin). */
+  @Column({ name: 'SolicitudEliminacion', type: 'jsonb', nullable: true })
+  SolicitudEliminacion: Record<string, unknown> | null;
 }
