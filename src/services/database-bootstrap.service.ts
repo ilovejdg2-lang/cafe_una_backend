@@ -879,6 +879,14 @@ export class DatabaseBootstrapService implements OnModuleInit {
       `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "TitleEn" varchar(500) NOT NULL DEFAULT ''`,
       `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "DescriptionEn" varchar(4000) NOT NULL DEFAULT ''`,
       `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "LinkTextEn" varchar(200) NULL`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "SecondaryButtonText" varchar(200) NULL`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "SecondaryButtonTextEn" varchar(200) NULL`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "SecondaryButtonUrl" varchar(500) NULL`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "TertiaryButtonText" varchar(200) NULL`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "TertiaryButtonTextEn" varchar(200) NULL`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "TertiaryButtonUrl" varchar(500) NULL`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "FooterText" varchar(200) NULL`,
+      `ALTER TABLE textos_institucionales ADD COLUMN IF NOT EXISTS "FooterTextEn" varchar(200) NULL`,
       `ALTER TABLE enlaces_sitio ADD COLUMN IF NOT EXISTS "EtiquetaEn" varchar(200) NOT NULL DEFAULT ''`,
       `ALTER TABLE informacion_footer ADD COLUMN IF NOT EXISTS "FraseMarcaEn" varchar(500) NOT NULL DEFAULT ''`,
       `ALTER TABLE informacion_footer ADD COLUMN IF NOT EXISTS "TextoCopyrightEn" varchar(500) NOT NULL DEFAULT ''`,
@@ -888,7 +896,54 @@ export class DatabaseBootstrapService implements OnModuleInit {
     for (const sql of alters) {
       await this.dataSource.query(sql);
     }
+
+    await this.dataSource.query(`
+      INSERT INTO textos_institucionales (
+        "Clave",
+        "Eyebrow",
+        "EyebrowEn",
+        "Title",
+        "TitleEn",
+        "Description",
+        "DescriptionEn",
+        "Image",
+        "LinkText",
+        "LinkTextEn",
+        "LinkUrl",
+        "SecondaryButtonText",
+        "SecondaryButtonTextEn",
+        "SecondaryButtonUrl",
+        "TertiaryButtonText",
+        "TertiaryButtonTextEn",
+        "TertiaryButtonUrl",
+        "FooterText",
+        "FooterTextEn"
+      )
+      VALUES (
+        'productores',
+        'PRODUCTORES LOCALES',
+        'LOCAL PRODUCERS',
+        'Da a conocer tu emprendimiento',
+        'Promote your venture',
+        'Conecta con amantes del café y dale visibilidad a tus productos en nuestro mapa interactivo.',
+        'Connect with coffee lovers and give visibility to your products on our interactive map.',
+        'https://i.ibb.co/LX9p9NmQ/finca-santa-lucia-mapa-con-nombres-1792378976823.jpg',
+        'Enviar propuesta',
+        'Submit proposal',
+        '/productores/propuesta',
+        'Explorar mapa',
+        'Explore map',
+        '#nuestros-productores',
+        'Mis propuestas',
+        'My proposals',
+        '/perfil/propuestas',
+        '+30 Ubicaciones activas',
+        '+30 Active locations'
+      )
+      ON CONFLICT ("Clave") DO NOTHING;
+    `);
   }
+
 
   /**
    * Si *En está vacío, rellena inglés a partir del español actual
@@ -1238,6 +1293,14 @@ export class DatabaseBootstrapService implements OnModuleInit {
           "EtiquetaEn" = 'Forms'
       WHERE LOWER(TRIM("Seccion")) = 'navbar'
         AND LOWER(TRIM("Etiqueta")) IN ('voluntariado', 'volunteering');
+    `);
+    await this.dataSource.query(`
+      INSERT INTO enlaces_sitio ("Etiqueta", "EtiquetaEn", "Ruta", "Seccion", "Orden", "AbrirEnNuevaPestana")
+      SELECT 'Productores', 'Producers', '/productores', 'Navbar', 4, false
+      WHERE NOT EXISTS (
+        SELECT 1 FROM enlaces_sitio WHERE LOWER(TRIM("Ruta")) = '/productores' AND LOWER(TRIM("Seccion")) = 'navbar'
+      );
+      UPDATE enlaces_sitio SET "Orden" = 5 WHERE LOWER(TRIM("Ruta")) = '/repositorio' AND LOWER(TRIM("Seccion")) = 'navbar';
     `);
     await this.dataSource.query(`
       INSERT INTO donacion_necesidades ("Titulo", "Descripcion", "Prioridad", "CantidadRequerida", "Estado")
@@ -1625,12 +1688,14 @@ export class DatabaseBootstrapService implements OnModuleInit {
     await this.dataSource.query(`
       ALTER TABLE propuestas_productores
         ADD COLUMN IF NOT EXISTS "Sugerencias" varchar(1000) NULL,
-        ADD COLUMN IF NOT EXISTS "NotaInterna" varchar(2000) NULL;
+        ADD COLUMN IF NOT EXISTS "NotaInterna" varchar(2000) NULL,
+        ADD COLUMN IF NOT EXISTS "SolicitudEdicion" jsonb NULL,
+        ADD COLUMN IF NOT EXISTS "SolicitudEliminacion" jsonb NULL;
       ALTER TABLE propuestas_productores
         DROP CONSTRAINT IF EXISTS "CK_propuestas_productores_estado";
       ALTER TABLE propuestas_productores
         ADD CONSTRAINT "CK_propuestas_productores_estado"
-        CHECK ("Estado" IN ('Pendiente', 'En revisión', 'Aprobada', 'Rechazada'));
+        CHECK ("Estado" IN ('Pendiente', 'En revisión', 'Aprobada', 'Rechazada', 'Eliminada'));
 
       CREATE TABLE IF NOT EXISTS productores_activos (
         "Id" serial PRIMARY KEY,
@@ -1674,6 +1739,8 @@ export class DatabaseBootstrapService implements OnModuleInit {
       );
       CREATE INDEX IF NOT EXISTS "IX_propuestas_historial_propuesta"
         ON propuestas_productores_historial ("PropuestaId");
+      ALTER TABLE propuestas_productores_historial
+        ALTER COLUMN "Accion" TYPE varchar(50);
 
       INSERT INTO productores_activos (
         "PropuestaId", "UsuarioId", "NombreEmprendimiento", "ImagenReferencia",
