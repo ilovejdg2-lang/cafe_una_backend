@@ -478,7 +478,11 @@ export class ComprasService {
                 );
                 const resultadoFactura =
                   await this.facturasService.enviarFacturaPorCompra(compra.Id);
-                if (resultadoFactura?.buffer && resultadoFactura?.filename) {
+                if (
+                  resultadoFactura?.buffer &&
+                  resultadoFactura?.filename &&
+                  resultadoFactura.enviado === false
+                ) {
                   adjuntosPdf = [
                     {
                       filename: resultadoFactura.filename,

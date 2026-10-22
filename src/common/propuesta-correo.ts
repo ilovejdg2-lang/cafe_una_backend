@@ -29,10 +29,10 @@ export type DatosCorreoRecepcionPropuesta = {
 
 type Acento = { color: string; suave: string };
 
-/** Mismo diseño que los correos de código (Templates/Email/codigo-verificacion.html), con otro color de acento. */
+/** Misma franja roja, tarjeta blanca y pie que el resto de correos de Café UNA. */
 const ACENTOS = {
-  recepcion: { color: '#8a5a2b', suave: '#fbf6f0' },
-  aprobada: { color: '#286f54', suave: '#f1f7f4' },
+  recepcion: { color: '#0D1B3E', suave: '#f7f9fc' },
+  aprobada: { color: '#0D1B3E', suave: '#f7f9fc' },
   rechazada: { color: '#C41E3A', suave: '#fdf2f4' },
 } satisfies Record<string, Acento>;
 
@@ -81,7 +81,7 @@ function recuadro(titulo: string, contenido: string, borde: string, fondo: strin
 }
 
 function plantilla(p: Plantilla): string {
-  const { color, suave } = p.acento;
+  const { suave } = p.acento;
   const filas = p.filas
     .map(
       (f) =>
@@ -91,7 +91,7 @@ function plantilla(p: Plantilla): string {
   const botones = p.botones
     .map(
       (b) =>
-        `<a href="${escapeHtml(b.enlace)}" style="display:inline-block;margin:6px 4px 0;padding:12px 22px;background-color:${color};color:#ffffff !important;font-size:15px;font-weight:700;text-decoration:none;border-radius:999px;">${escapeHtml(b.texto)}</a>`,
+        `<a href="${escapeHtml(b.enlace)}" style="color:#0D1B3E;font-weight:700;text-decoration:underline;font-size:15px;">${escapeHtml(b.texto)}</a>`,
     )
     .join('');
   const correo = p.correoInstitucional ? escapeHtml(p.correoInstitucional) : '';
@@ -99,7 +99,7 @@ function plantilla(p: Plantilla): string {
   const contacto =
     correo || telefono
       ? `¿Tenés dudas? Escribinos${
-          correo ? ` a <a href="mailto:${correo}" style="color:${color};font-weight:700;">${correo}</a>` : ''
+          correo ? ` a <a href="mailto:${correo}" style="color:#0D1B3E;font-weight:700;">${correo}</a>` : ''
         }${telefono ? `${correo ? ' o llamanos al' : ' al'} ${telefono}` : ''}.`
       : '';
 
@@ -123,7 +123,7 @@ function plantilla(p: Plantilla): string {
             </td>
           </tr>
           <tr>
-            <td bgcolor="${color}" style="background-color:${color} !important;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+            <td bgcolor="#C41E3A" style="background-color:#C41E3A !important;height:4px;font-size:0;line-height:0;">&nbsp;</td>
           </tr>
           <tr>
             <td class="email-content" bgcolor="#ffffff" style="background-color:#ffffff !important;padding:32px 28px 8px;">
@@ -134,11 +134,11 @@ function plantilla(p: Plantilla): string {
           </tr>
           <tr>
             <td align="center" bgcolor="#ffffff" style="background-color:#ffffff !important;padding:24px 28px 8px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${suave}" style="background-color:${suave} !important;border:1px solid #dfe6f0;border-top:3px solid ${color};">
+              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f9fc" style="background-color:#f7f9fc !important;border:1px solid #dfe6f0;">
                 <tr>
                   <td align="center" bgcolor="${suave}" style="background-color:${suave} !important;padding:20px 24px 8px;">
                     <p style="margin:0 0 6px;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;color:#8a96ad !important;">Tu propuesta</p>
-                    <p style="margin:0;font-size:32px;font-weight:700;letter-spacing:3px;color:${color} !important;font-family:Consolas,'Courier New',monospace;">#${escapeHtml(p.id)}</p>
+                    <p style="margin:0;font-size:32px;font-weight:700;letter-spacing:3px;color:#0D1B3E !important;font-family:Consolas,'Courier New',monospace;">#${escapeHtml(p.id)}</p>
                     <p style="margin:6px 0 0;font-size:17px;font-weight:700;color:#0D1B3E !important;">${escapeHtml(p.nombreEmprendimiento)}</p>
                   </td>
                 </tr>
@@ -158,7 +158,7 @@ function plantilla(p: Plantilla): string {
           }
           <tr>
             <td bgcolor="#ffffff" style="background-color:#ffffff !important;padding:20px 28px 28px;">
-              <p style="margin:0;font-size:13px;line-height:1.7;color:#6b7a99 !important;">Podés ver el estado en cualquier momento en <a href="${escapeHtml(p.enlaceMis)}" style="color:${color};font-weight:700;">Mis propuestas</a>.${contacto ? ` ${contacto}` : ''}</p>
+              <p style="margin:0;font-size:13px;line-height:1.7;color:#6b7a99 !important;">Podés ver el estado en cualquier momento en <a href="${escapeHtml(p.enlaceMis)}" style="color:#0D1B3E;font-weight:700;">Mis propuestas</a>.${contacto ? ` ${contacto}` : ''}</p>
             </td>
           </tr>
           <tr>
@@ -168,7 +168,7 @@ function plantilla(p: Plantilla): string {
           </tr>
           <tr>
             <td align="center" bgcolor="#ffffff" style="background-color:#ffffff !important;padding:0 28px 28px;">
-              <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:${color} !important;">Café UNA</p>
+              <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#C41E3A !important;">Café UNA</p>
               <p style="margin:0;font-size:12px;line-height:1.6;color:#8a96ad !important;">Universidad Nacional, Costa Rica</p>
             </td>
           </tr>
@@ -267,8 +267,8 @@ export function contenidoCorreoPropuesta(datos: DatosCorreoPropuesta): {
         recuadro(
           'Te esperamos de nuevo',
           'Te invitamos a hacer los ajustes y enviar una nueva propuesta. Con gusto la revisaremos.',
-          '#286f54',
-          '#f1f7f4',
+          '#0D1B3E',
+          '#f7f9fc',
         ),
       ].join('');
 

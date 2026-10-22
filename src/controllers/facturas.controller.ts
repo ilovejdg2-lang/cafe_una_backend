@@ -49,7 +49,7 @@ export class FacturasController {
     this.validarAccesoFactura(factura, req.user);
 
     const { filePath, filename } =
-      await this.facturasService.obtenerRutaArchivoPdf(cid);
+      await this.facturasService.obtenerRutaArchivoPdfPorCompra(cid);
 
     return new StreamableFile(createReadStream(filePath), {
       type: 'application/pdf',

@@ -7,10 +7,10 @@ import {
   NotFoundException,
   StreamableFile,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import {
   createReadStream,
-  createWriteStream,
   existsSync,
   mkdirSync,
   readFileSync,
@@ -25,9 +25,25 @@ import { DescargaDocumento } from '../entities/descarga-documento.entity';
 import { SolicitudDocumento } from '../entities/solicitud-documento.entity';
 import { CategoriasService, TIPO_CATEGORIA_DOCUMENTO } from './categorias.service';
 import { EmailService } from '../common/email.service';
+import { tienePermiso } from '../common/permisos';
 import { SupabaseStorageService } from './supabase-storage.service';
 
 export const DOCUMENTOS_DIR = join(process.cwd(), 'uploads', 'documentos');
+
+type ActorDocumento = {
+  role?: string | string[];
+  roles?: string[];
+};
+
+/** El JWT trae `role` (texto o lista). La descarga no pasa por el guard, así que la matriz se aplica aquí. */
+export function puedeVerDocumentoPrivado(usuario?: ActorDocumento | null): boolean {
+  const role = usuario?.role;
+  const roles = [
+    ...(Array.isArray(usuario?.roles) ? usuario.roles : []),
+    ...(role == null ? [] : Array.isArray(role) ? role : [role]),
+  ];
+  return tienePermiso(roles, 'ver_documentacion_privada');
+}
 
 /** Multer entrega el nombre del archivo leído como latin1; lo devuelve en UTF-8 si así venía. */
 export function nombreArchivoUtf8(nombre: string | null | undefined): string {
@@ -86,6 +102,17 @@ export interface ActualizarDocumentoDto {
 export class DocumentosService {
   private readonly logger = new Logger(DocumentosService.name);
 
+  private enlaceDescargaSolicitud(token: string | null | undefined): string | null {
+    const limpio = String(token || '').trim();
+    if (!limpio) return null;
+    const base =
+      this.config.get<string>('PUBLIC_API_URL')?.trim() ||
+      this.config.get<string>('FRONTEND_URL')?.trim() ||
+      '';
+    if (!base) return null;
+    return `${base.replace(/\/$/, '')}/api/documentos/descarga-token/${encodeURIComponent(limpio)}`;
+  }
+
   constructor(
     @InjectRepository(Documento)
     private readonly docRepo: Repository<Documento>,
@@ -96,6 +123,7 @@ export class DocumentosService {
     private readonly categoriasService: CategoriasService,
     private readonly emailService: EmailService,
     private readonly supabaseStorageService: SupabaseStorageService,
+    private readonly config: ConfigService,
   ) {
     asegurarDirectorioDocumentos();
   }
@@ -500,7 +528,7 @@ export class DocumentosService {
    */
   async descargar(
     id: string,
-    usuario?: { id?: string; name?: string; username?: string; role?: string; roles?: string[] },
+    usuario?: ActorDocumento & { id?: string; name?: string; username?: string },
     ip?: string,
     esDescargaEfectiva = true,
   ): Promise<{ stream: StreamableFile; nombreOriginal: string; mimeType: string }> {
@@ -511,25 +539,10 @@ export class DocumentosService {
     }
 
     // Control de acceso a documentos privados
-    if (doc.EsPrivado) {
-      const esAdmin =
-        usuario?.role?.toLowerCase() === 'admin' ||
-        usuario?.roles?.some((r) =>
-          ['admin', 'superadmin'].includes(String(r).toLowerCase()),
-        );
-
-      const puedeVerPrivado =
-        esAdmin ||
-        (Array.isArray(usuario?.roles) &&
-          usuario.roles.some((r) =>
-            ['admin', 'superadmin', 'vendedor'].includes(String(r).toLowerCase()),
-          ));
-
-      if (!puedeVerPrivado) {
-        throw new ForbiddenException(
-          'Este documento es privado. Para acceder a él, envíe una solicitud de archivo.',
-        );
-      }
+    if (doc.EsPrivado && !puedeVerDocumentoPrivado(usuario)) {
+      throw new ForbiddenException(
+        'Este documento es privado. Para acceder a él, envíe una solicitud de archivo.',
+      );
     }
 
     // Incrementar contador y registrar auditoría únicamente si es descarga real/efectiva (no visualización)
@@ -537,7 +550,7 @@ export class DocumentosService {
       await this.registrarDescarga(doc.Id, usuario, ip);
     }
 
-    const ruta = await this.obtenerRutaSegura(doc.NombreArchivo, doc);
+    const ruta = await this.obtenerRutaSegura(doc.NombreArchivo);
     const stream = createReadStream(ruta);
     return {
       stream: new StreamableFile(stream),
@@ -567,18 +580,28 @@ export class DocumentosService {
       );
     }
 
-    if (!solicitud.DocumentoId) {
+    const documentoId = solicitud.PublicadoDocumentoId || solicitud.DocumentoId;
+    if (!documentoId && solicitud.NombreArchivo) {
+      const rutaAdjunto = await this.obtenerRutaSegura(solicitud.NombreArchivo);
+      return {
+        stream: new StreamableFile(createReadStream(rutaAdjunto)),
+        nombreOriginal: solicitud.NombreOriginal || solicitud.NombreArchivo,
+        mimeType: solicitud.MimeType || 'application/octet-stream',
+      };
+    }
+
+    if (!documentoId) {
       throw new NotFoundException('Esta solicitud no tiene un documento asociado para descargar.');
     }
 
-    const doc = await this.obtenerPorId(solicitud.DocumentoId);
+    const doc = await this.obtenerPorId(documentoId);
     await this.registrarDescarga(
       doc.Id,
       { name: solicitud.NombreSolicitante, username: solicitud.CorreoSolicitante },
       ip,
     );
 
-    const ruta = await this.obtenerRutaSegura(doc.NombreArchivo, doc);
+    const ruta = await this.obtenerRutaSegura(doc.NombreArchivo);
     const stream = createReadStream(ruta);
     return {
       stream: new StreamableFile(stream),
@@ -664,6 +687,15 @@ export class DocumentosService {
 
     const guardada = await this.solicitudRepo.save(solicitud);
 
+    void this.emailService
+      .enviarConfirmacionSolicitudDocumento(correo, {
+        nombreSolicitante: nombre,
+        tituloDocumento: docTitulo,
+      })
+      .catch((err) => {
+        this.logger.warn(`No se pudo enviar la confirmación de la solicitud: ${err}`);
+      });
+
     if (file && this.supabaseStorageService.estaHabilitado() && file.path && existsSync(file.path)) {
       try {
         const fileBuffer = readFileSync(file.path);
@@ -690,9 +722,7 @@ export class DocumentosService {
     if (!sol || !sol.NombreArchivo) {
       throw new NotFoundException('Esta solicitud no cuenta con un archivo adjunto.');
     }
-    const ruta = await this.obtenerRutaSegura(sol.NombreArchivo, {
-      Titulo: sol.NombreOriginal || 'Archivo adjunto de solicitud',
-    });
+    const ruta = await this.obtenerRutaSegura(sol.NombreArchivo);
     const stream = createReadStream(ruta);
     return {
       stream: new StreamableFile(stream),
@@ -781,16 +811,21 @@ export class DocumentosService {
 
     const guardado = await this.solicitudRepo.save(sol);
 
-    // Intentar enviar notificación si está disponible
-    try {
-      if (data.estado === 'Aprobada') {
-        this.logger.log(
-          `Solicitud ${id} aprobada para ${sol.CorreoSolicitante}. Token: ${sol.TokenDescarga}`,
-        );
-      }
-    } catch (err) {
-      this.logger.warn(`No se pudo enviar correo de notificación: ${err}`);
-    }
+    const titulo =
+      sol.DocumentoTitulo || sol.NombreOriginal || 'Documento del repositorio';
+    void this.emailService
+      .enviarActualizacionSolicitudDocumento(sol.CorreoSolicitante, {
+        nombreSolicitante: sol.NombreSolicitante,
+        tituloDocumento: titulo,
+        estado: data.estado,
+        notasRespuesta: sol.RespuestaAdmin,
+        tieneArchivoAdjunto: Boolean(sol.PublicadoDocumentoId || sol.NombreArchivo),
+        enlaceDescarga:
+          data.estado === 'Aprobada' ? this.enlaceDescargaSolicitud(sol.TokenDescarga) : null,
+      })
+      .catch((err) => {
+        this.logger.warn(`No se pudo enviar el correo de la solicitud ${id}: ${err}`);
+      });
 
     return guardado;
   }
@@ -921,10 +956,7 @@ export class DocumentosService {
     }
   }
 
-  private async obtenerRutaSegura(
-    nombreArchivo: string,
-    docInfo?: Partial<Documento>,
-  ): Promise<string> {
+  private async obtenerRutaSegura(nombreArchivo: string): Promise<string> {
     const root = resolve(DOCUMENTOS_DIR);
     const absolute = resolve(root, nombreArchivo);
     const rel = relative(root, absolute);
@@ -951,120 +983,12 @@ export class DocumentosService {
         }
       }
 
-      // 2. Si no estaba en Supabase ni en disco, generar PDF oficial de respaldo
       if (!restaurado) {
-        try {
-          await this.generarPdfRespaldo(absolute, docInfo);
-          // Respaldar inmediatamente el nuevo PDF en Supabase Storage
-          if (this.supabaseStorageService.estaHabilitado() && existsSync(absolute)) {
-            const buf = readFileSync(absolute);
-            await this.supabaseStorageService.subirArchivo(
-              nombreArchivo,
-              buf,
-              docInfo?.MimeType || 'application/pdf',
-            );
-          }
-        } catch (err) {
-          this.logger.warn(`No se pudo generar PDF de respaldo para ${nombreArchivo}: ${err}`);
-          throw new NotFoundException('El archivo físico no existe en el servidor.');
-        }
+        throw new NotFoundException('El archivo físico no existe en el servidor.');
       }
     }
 
     return absolute;
-  }
-
-  private generarPdfRespaldo(
-    destinoPath: string,
-    docInfo?: Partial<Documento>,
-  ): Promise<void> {
-    return new Promise((resolvePromise, rejectPromise) => {
-      try {
-        const PDFDoc = require('pdfkit');
-        const doc = new PDFDoc({
-          size: 'LETTER',
-          margin: 50,
-          info: {
-            Title: docInfo?.Titulo || 'Documento Oficial - Café UNA',
-            Author: docInfo?.Autor || 'Proyecto Café-UNA',
-            Subject: 'Documentación Institucional',
-          },
-        });
-
-        const writeStream = createWriteStream(destinoPath);
-        doc.pipe(writeStream);
-
-        // Barra superior
-        doc.rect(0, 0, doc.page.width, 90).fill('#0f172a');
-        doc.fillColor('#ffffff').fontSize(22).font('Helvetica-Bold')
-          .text('CAFÉ UNA', 50, 28);
-        doc.fontSize(10).font('Helvetica')
-          .text('Repositorio Institucional de Documentación', 50, 56);
-
-        // Título principal
-        doc.moveDown(4);
-        doc.fillColor('#0f172a').fontSize(18).font('Helvetica-Bold')
-          .text(docInfo?.Titulo || 'Documento Institucional', 50, 120);
-
-        doc.moveDown(0.5);
-        doc.strokeColor('#cbd5e1').lineWidth(1).moveTo(50, doc.y).lineTo(560, doc.y).stroke();
-        doc.moveDown(1);
-
-        // Metadatos
-        doc.fillColor('#334155').fontSize(10);
-        if (docInfo?.Categoria) {
-          doc.font('Helvetica-Bold').text('Categoría: ', { continued: true })
-            .font('Helvetica').text(`${docInfo.Categoria}${docInfo.Subcategoria ? ' / ' + docInfo.Subcategoria : ''}`);
-        }
-        if (docInfo?.Autor) {
-          doc.font('Helvetica-Bold').text('Autor / Responsable: ', { continued: true })
-            .font('Helvetica').text(docInfo.Autor);
-        }
-        if (docInfo?.Version) {
-          doc.font('Helvetica-Bold').text('Versión: ', { continued: true })
-            .font('Helvetica').text(docInfo.Version);
-        }
-        doc.font('Helvetica-Bold').text('Fecha de Registro: ', { continued: true })
-          .font('Helvetica').text(new Date().toLocaleDateString('es-CR'));
-
-        doc.moveDown(1.5);
-
-        // Caja de descripción
-        doc.rect(50, doc.y, 512, docInfo?.Descripcion ? 120 : 80).fill('#f8fafc').stroke('#e2e8f0');
-        const boxY = doc.y + 12;
-        doc.fillColor('#0f172a').font('Helvetica-Bold').fontSize(11)
-          .text('Descripción del Documento:', 65, boxY);
-        doc.fillColor('#475569').font('Helvetica').fontSize(10)
-          .text(
-            docInfo?.Descripcion || 'Documento activo registrado en el repositorio digital del Proyecto Café-UNA.',
-            65,
-            boxY + 20,
-            { width: 480 },
-          );
-
-        doc.moveDown(4);
-        doc.fillColor('#065f46').font('Helvetica-Bold').fontSize(11)
-          .text('Aviso del Repositorio Digital:', 50);
-        doc.fillColor('#334155').font('Helvetica').fontSize(9)
-          .text(
-            'Este documento digital forma parte del catálogo oficial del Proyecto Café-UNA. Para consultas sobre el material o requerimientos técnicos, puede dirigirse al portal oficial del proyecto o enviar una solicitud desde el repositorio.',
-            50,
-            doc.y + 4,
-            { width: 512 },
-          );
-
-        // Pie de página
-        doc.fontSize(8).fillColor('#94a3b8')
-          .text('Proyecto Café-UNA • Universidad Nacional • Todos los derechos reservados', 50, 720, { align: 'center', width: 512 });
-
-        doc.end();
-
-        writeStream.on('finish', () => resolvePromise());
-        writeStream.on('error', (err) => rejectPromise(err));
-      } catch (err) {
-        rejectPromise(err);
-      }
-    });
   }
 
   private eliminarArchivoFisico(nombreArchivo: string): void {
