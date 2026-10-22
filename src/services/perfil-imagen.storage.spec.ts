@@ -5,11 +5,19 @@ import {
 import { mkdir, mkdtemp, readFile, readdir, rm, writeFile } from 'fs/promises';
 import { join } from 'path';
 import { tmpdir } from 'os';
+import { Readable } from 'stream';
 import sharp from 'sharp';
 import {
   MAX_PROFILE_IMAGE_BYTES,
   PerfilImagenStorage,
 } from './perfil-imagen.storage';
+
+async function readStream(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream)
+    chunks.push(Buffer.from(chunk as Uint8Array));
+  return Buffer.concat(chunks);
+}
 
 describe('PerfilImagenStorage', () => {
   let directory: string;
@@ -36,7 +44,7 @@ describe('PerfilImagenStorage', () => {
         .toBuffer();
       const name = await storage.guardar(input);
       expect(name).toMatch(/^[a-f0-9-]{36}\.webp$/);
-      const output = await storage.leer(name);
+      const output = await readStream(await storage.leer(name));
       expect(output).toEqual(await readFile(join(directory, name)));
       const metadata = await sharp(output).metadata();
       expect(metadata.format).toBe('webp');
@@ -44,6 +52,22 @@ describe('PerfilImagenStorage', () => {
       expect(metadata.icc).toBeUndefined();
     },
   );
+
+  it('streams saved WebP bytes rather than returning a full buffer', async () => {
+    const input = await sharp({
+      create: { width: 2, height: 2, channels: 3, background: 'red' },
+    })
+      .png()
+      .toBuffer();
+    const name = await storage.guardar(input);
+
+    const output = await storage.leer(name);
+
+    expect(output).toBeInstanceOf(Readable);
+    expect(await readStream(output)).toEqual(
+      await readFile(join(directory, name)),
+    );
+  });
 
   it.each(['empty', 'html', 'svg', 'truncated', 'oversized'] as const)(
     'rejects %s input without a file',
