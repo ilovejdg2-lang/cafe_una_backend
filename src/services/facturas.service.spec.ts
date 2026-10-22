@@ -191,4 +191,34 @@ describe('FacturasService', () => {
       expect(mockFacturaRepo.listarTodas).toHaveBeenCalled();
     });
   });
+
+  describe('descarga del PDF', () => {
+    it('no toma un id numérico de factura como id de compra', async () => {
+      const porId = { ...facturaPrueba, Id: '101', ArchivoPdf: 'factura-101.pdf' };
+      const porCompra = { ...facturaPrueba, Id: 'FAC-OTRA', CompraId: 101 };
+      (mockFacturaRepo.obtenerPorId as jest.Mock).mockImplementation((id: string) =>
+        Promise.resolve(id === '101' ? porId : null),
+      );
+      (mockFacturaRepo.obtenerPorCompraId as jest.Mock).mockResolvedValue(porCompra);
+
+      await service.obtenerRutaArchivoPdf('101');
+
+      expect(mockFacturaRepo.obtenerPorCompraId).not.toHaveBeenCalled();
+      expect(mockFacturaRepo.obtenerPorId).toHaveBeenCalledWith('101');
+      expect(mockFacturaRepo.actualizarUrlPdf).toHaveBeenCalledWith(
+        '101',
+        expect.any(String),
+        expect.any(String),
+      );
+    });
+
+    it('busca la factura de una compra solo por el id de esa compra', async () => {
+      (mockFacturaRepo.obtenerPorCompraId as jest.Mock).mockResolvedValue(facturaPrueba);
+
+      await service.obtenerRutaArchivoPdfPorCompra(101);
+
+      expect(mockFacturaRepo.obtenerPorCompraId).toHaveBeenCalledWith(101);
+      expect(mockFacturaRepo.obtenerPorId).not.toHaveBeenCalled();
+    });
+  });
 });

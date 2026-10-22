@@ -241,19 +241,20 @@ export class EmailService {
     },
   ): Promise<boolean> {
     const sede = this.sedeFinca();
-    const html = `<div style="font-family: sans-serif; max-width: 520px; margin: 0 auto; padding: 24px; background: #ffffff; border-radius: 12px; border: 1px solid #e5e7eb;">
-      <h2 style="color: #286f54; margin-top: 0;">Solicitud de Visita Grupal Recibida</h2>
-      <p>Hola, <strong>${this.escapeHtml(datos.nombreEncargado)}</strong>:</p>
-      <p>Su solicitud para una visita grupal de <strong>${datos.cantidad} personas</strong> el día <strong>${this.escapeHtml(datos.fechaVisita)}</strong> ha sido recibida correctamente en <strong>Café UNA</strong>.</p>
-      <p style="background: #f0fdf4; padding: 12px; border-radius: 8px; border-left: 4px solid #286f54; color: #166534;">
-        Su registro se encuentra actualmente en <strong>Estado Pendiente</strong>. El equipo coordinador evaluará la disponibilidad y se comunicará con usted.
-      </p>
-      ${this.bloqueSedeHtml(
-        sede,
-        `Las visitas se realizan en <strong>${this.escapeHtml(sede.nombre)}</strong>.`,
-      )}
-      <p style="font-size: 13px; color: #6b7280; margin-top: 24px;">Este es un mensaje automático de Café UNA - Universidad Nacional.</p>
-    </div>`;
+    const html = this.plantillaInstitucional({
+      saludo: `Hola, ${datos.nombreEncargado}`,
+      titulo: 'Solicitud de visita grupal recibida',
+      cuerpo: `
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#3a4a6b;">Su solicitud para una visita grupal de <strong>${datos.cantidad} personas</strong> el día <strong>${this.escapeHtml(datos.fechaVisita)}</strong> fue recibida en Café UNA.</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f9fc" style="margin:0 0 16px;background-color:#f7f9fc;border:1px solid #dfe6f0;">
+          <tr>
+            <td style="padding:16px 20px;border-left:4px solid #0D1B3E;">
+              <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;">El registro está en estado <strong>Pendiente</strong>. El equipo coordinador evaluará la disponibilidad y se comunicará con usted.</p>
+            </td>
+          </tr>
+        </table>
+        ${this.bloqueSedeHtml(sede, `Las visitas se realizan en <strong>${this.escapeHtml(sede.nombre)}</strong>.`)}`,
+    });
     return this.enviar(
       destinatario,
       'Solicitud de Visita Grupal recibida - Café UNA',
@@ -304,54 +305,15 @@ export class EmailService {
           </table>`
       : '';
 
-    const html = `<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="UTF-8" /></head>
-<body style="margin:0;padding:0;background-color:#f4f5f8;font-family:Arial,Helvetica,sans-serif;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" bgcolor="#f4f5f8" style="background-color:#f4f5f8;padding:32px 16px;">
-    <tr>
-      <td align="center">
-        <table role="presentation" width="560" cellpadding="0" cellspacing="0" bgcolor="#ffffff" style="width:100%;max-width:560px;background-color:#ffffff;border:1px solid #e6eaf2;">
-          <tr>
-            <td align="center" style="padding:28px 20px 16px;">
-              <img src="{{logoUrl}}" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;" />
-            </td>
-          </tr>
-          <tr>
-            <td bgcolor="#C41E3A" style="background-color:#C41E3A;height:4px;font-size:0;line-height:0;">&nbsp;</td>
-          </tr>
-          <tr>
-            <td style="padding:32px 28px 8px;">
-              <p style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#5f6b82;">Hola, ${this.escapeHtml(datos.nombreEncargado)}</p>
-              <h1 style="margin:0 0 12px;font-size:24px;line-height:1.35;color:#0D1B3E;font-weight:700;">Actualización de Solicitud de Visita Grupal</h1>
-              <p style="margin:0;font-size:15px;line-height:1.7;color:#3a4a6b;">
-                Le informamos que su solicitud para la visita grupal programada para el <strong>${this.escapeHtml(datos.fechaVisita)}</strong> ha cambiado al estado: <strong style="text-transform: uppercase;">${this.escapeHtml(datos.estado)}</strong>.
-              </p>
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 28px;">
-              ${bloqueAprobada}
-              ${bloqueMotivo}
-            </td>
-          </tr>
-          <tr>
-            <td style="padding:8px 28px 24px;">
-              <p style="margin:0;font-size:13px;line-height:1.7;color:#6b7a99;">Fecha de actualización: ${this.escapeHtml(datos.fechaActualizacion)}</p>
-            </td>
-          </tr>
-          <tr>
-            <td align="center" style="padding:16px 28px 28px;border-top:1px solid #e8edf5;">
-              <p style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#C41E3A;">Café UNA</p>
-              <p style="margin:0;font-size:12px;line-height:1.6;color:#8a96ad;">Universidad Nacional, Costa Rica</p>
-            </td>
-          </tr>
-        </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+    const html = this.plantillaInstitucional({
+      saludo: `Hola, ${datos.nombreEncargado}`,
+      titulo: 'Actualización de solicitud de visita grupal',
+      cuerpo: `
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#3a4a6b;">Su solicitud para la visita del <strong>${this.escapeHtml(datos.fechaVisita)}</strong> cambió al estado <strong>${this.escapeHtml(datos.estado)}</strong>.</p>
+        ${bloqueAprobada}
+        ${bloqueMotivo}
+        <p style="margin:16px 0 0;font-size:13px;line-height:1.7;color:#6b7a99;">Fecha de actualización: ${this.escapeHtml(datos.fechaActualizacion)}</p>`,
+    });
     return this.enviar(
       destinatario,
       `Actualización de Visita Grupal (${datos.estado}) - Café UNA`,
@@ -366,31 +328,22 @@ export class EmailService {
       tituloDocumento: string;
     },
   ): Promise<boolean> {
-    const html = `<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="utf-8"/></head>
-<body style="margin:0;padding:24px;background:#f4f6fa;font-family:Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
-    <tr><td style="padding:24px 28px;background:#286f54;color:#fff;">
-      <h1 style="margin:0;font-size:20px;font-weight:700;">Café UNA · Repositorio</h1>
-    </td></tr>
-    <tr><td style="padding:28px;">
-      <h2 style="margin:0 0 12px;color:#1e293b;font-size:18px;">Solicitud de documento recibida</h2>
-      <p style="margin:0 0 16px;color:#475569;font-size:15px;line-height:1.6;">Hola, <strong>${this.escapeHtml(datos.nombreSolicitante)}</strong>:</p>
-      <p style="margin:0 0 16px;color:#475569;font-size:15px;line-height:1.6;">Hemos recibido correctamente tu solicitud para el siguiente material:</p>
-      <div style="background:#f8fafc;border-left:4px solid #286f54;padding:14px 16px;border-radius:4px;margin-bottom:16px;">
-        <span style="font-size:15px;font-weight:600;color:#0f172a;">📄 ${this.escapeHtml(datos.tituloDocumento)}</span>
-      </div>
-      <p style="margin:0 0 16px;color:#475569;font-size:14px;line-height:1.6;">
-        Tu solicitud ha quedado en estado <strong>Pendiente</strong>. El equipo administrativo revisará la disponibilidad del documento y te notificaremos cuando sea atendida.
-      </p>
-      <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:16px;">
-        Repositorio institucional Café-UNA · Universidad Nacional de Costa Rica
-      </p>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+    const html = this.plantillaInstitucional({
+      saludo: `Hola, ${datos.nombreSolicitante}`,
+      titulo: 'Solicitud de documento recibida',
+      cuerpo: `
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#3a4a6b;">Hemos recibido correctamente tu solicitud para el siguiente material:</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f9fc" style="background-color:#f7f9fc;border:1px solid #dfe6f0;">
+          <tr>
+            <td style="padding:16px 20px;border-left:4px solid #0D1B3E;">
+              <p style="margin:0;font-size:15px;font-weight:700;line-height:1.5;color:#0D1B3E;">${this.escapeHtml(datos.tituloDocumento)}</p>
+            </td>
+          </tr>
+        </table>
+        <p style="margin:16px 0 0;font-size:15px;line-height:1.7;color:#3a4a6b;">
+          Tu solicitud quedó en estado <strong>Pendiente</strong>. El equipo administrativo revisará la disponibilidad del documento y te avisaremos cuando sea atendida.
+        </p>`,
+    });
     return this.enviar(
       destinatario,
       'Solicitud de documentación recibida - Café UNA',
@@ -406,50 +359,44 @@ export class EmailService {
       estado: string;
       notasRespuesta?: string | null;
       tieneArchivoAdjunto?: boolean;
+      enlaceDescarga?: string | null;
     },
   ): Promise<boolean> {
     const estadoNorm = datos.estado.trim().toLowerCase();
-    const esAtendida = estadoNorm === 'atendida';
     const esRechazada = estadoNorm === 'rechazada';
-    const colorBorde = esAtendida ? '#166534' : esRechazada ? '#991b1b' : '#d97706';
-    const fondoBadge = esAtendida ? '#f0fdf4' : esRechazada ? '#fef2f2' : '#fffbeb';
+    const colorBorde = esRechazada ? '#C41E3A' : '#0D1B3E';
+    const fondoBadge = esRechazada ? '#fdf2f4' : '#f7f9fc';
+    const bordeCaja = esRechazada ? '#f3d0d6' : '#dfe6f0';
 
-    const html = `<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="utf-8"/></head>
-<body style="margin:0;padding:24px;background:#f4f6fa;font-family:Arial,sans-serif;">
-  <table width="100%" cellpadding="0" cellspacing="0" style="max-width:560px;margin:0 auto;background:#fff;border-radius:12px;border:1px solid #e2e8f0;overflow:hidden;">
-    <tr><td style="padding:24px 28px;background:#286f54;color:#fff;">
-      <h1 style="margin:0;font-size:20px;font-weight:700;">Café UNA · Repositorio</h1>
-    </td></tr>
-    <tr><td style="padding:28px;">
-      <h2 style="margin:0 0 12px;color:#1e293b;font-size:18px;">Actualización de tu solicitud</h2>
-      <p style="margin:0 0 16px;color:#475569;font-size:15px;line-height:1.6;">Hola, <strong>${this.escapeHtml(datos.nombreSolicitante)}</strong>:</p>
-      <p style="margin:0 0 16px;color:#475569;font-size:15px;line-height:1.6;">Tu solicitud referente al documento:</p>
-      <div style="background:#f8fafc;border-left:4px solid #64748b;padding:12px 16px;border-radius:4px;margin-bottom:16px;">
-        <span style="font-size:15px;font-weight:600;color:#0f172a;">📄 ${this.escapeHtml(datos.tituloDocumento)}</span>
-      </div>
-      <div style="background:${fondoBadge};border-left:4px solid ${colorBorde};padding:14px 16px;border-radius:4px;margin-bottom:16px;color:${colorBorde};font-weight:600;">
-        Estado actual: ${this.escapeHtml(datos.estado)}
-      </div>
-      ${datos.notasRespuesta ? `
-      <div style="margin-bottom:16px;">
-        <p style="margin:0 0 6px;font-size:13px;font-weight:700;color:#334155;">Observaciones o respuesta institucional:</p>
-        <p style="margin:0;font-size:14px;color:#475569;background:#f8fafc;padding:12px;border-radius:6px;font-style:italic;">
-          "${this.escapeHtml(datos.notasRespuesta)}"
-        </p>
-      </div>` : ''}
-      ${datos.tieneArchivoAdjunto ? `
-      <p style="margin:16px 0;font-size:14px;color:#166534;font-weight:600;">
-        📎 Se ha adjuntado el archivo solicitado a tu solicitud en la plataforma institucional de Café-UNA.
-      </p>` : ''}
-      <p style="margin:24px 0 0;font-size:12px;color:#94a3b8;border-top:1px solid #f1f5f9;padding-top:16px;">
-        Repositorio institucional Café-UNA · Universidad Nacional de Costa Rica
-      </p>
-    </td></tr>
-  </table>
-</body>
-</html>`;
+    const html = this.plantillaInstitucional({
+      saludo: `Hola, ${datos.nombreSolicitante}`,
+      titulo: 'Actualización de tu solicitud',
+      cuerpo: `
+        <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#3a4a6b;">Tu solicitud referente al documento:</p>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f9fc" style="margin:0 0 16px;background-color:#f7f9fc;border:1px solid #dfe6f0;">
+          <tr>
+            <td style="padding:16px 20px;border-left:4px solid #0D1B3E;">
+              <p style="margin:0;font-size:15px;font-weight:700;line-height:1.5;color:#0D1B3E;">${this.escapeHtml(datos.tituloDocumento)}</p>
+            </td>
+          </tr>
+        </table>
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="${fondoBadge}" style="background-color:${fondoBadge};border:1px solid ${bordeCaja};">
+          <tr>
+            <td style="padding:16px 20px;border-left:4px solid ${colorBorde};">
+              <p style="margin:0;font-size:15px;font-weight:700;line-height:1.5;color:${colorBorde};">Estado actual: ${this.escapeHtml(datos.estado)}</p>
+            </td>
+          </tr>
+        </table>
+        ${datos.notasRespuesta ? `
+        <p style="margin:16px 0 6px;font-size:14px;font-weight:700;color:#0D1B3E;">Observaciones</p>
+        <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;">${this.escapeHtml(datos.notasRespuesta)}</p>` : ''}
+        ${datos.tieneArchivoAdjunto ? `
+        <p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#3a4a6b;">El archivo solicitado quedó disponible en la plataforma de Café UNA.</p>` : ''}
+        ${datos.enlaceDescarga ? `
+        <p style="margin:16px 0 0;font-size:15px;line-height:1.6;">
+          <a href="${this.escapeHtml(datos.enlaceDescarga)}" style="color:#0D1B3E;font-weight:700;text-decoration:underline;">Descargar el documento</a>
+        </p>` : ''}`,
+    });
     return this.enviar(
       destinatario,
       `Actualización de solicitud de documento (${datos.estado}) - Café UNA`,
@@ -574,197 +521,40 @@ export class EmailService {
 
     const numeroComprobante = this.escapeHtml(datos.numero || 'VP-' + Date.now());
 
-    return `<!DOCTYPE html>
-<html lang="es" xmlns="http://www.w3.org/1999/xhtml">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <meta name="color-scheme" content="light only" />
-  <meta name="supported-color-schemes" content="light only" />
-  <title>Comprobante de Venta - Café UNA</title>
-  <style>
-    body, table, td, p, h1, h2, span, a {
-      -webkit-text-size-adjust: 100%;
-      -ms-text-size-adjust: 100%;
-    }
-    img { border: 0; outline: none; text-decoration: none; }
-    @media only screen and (max-width: 600px) {
-      .email-card { width: 100% !important; border-radius: 0 !important; }
-      .email-pad { padding: 20px 16px !important; }
-      .meta-col { display: block !important; width: 100% !important; margin-bottom: 8px !important; }
-    }
-  </style>
-</head>
-<body style="margin: 0; padding: 0; background-color: #f4f5f8; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; color: #0f172a; line-height: 1.5;">
-  <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f5f8" style="background-color: #f4f5f8; width: 100%;">
-    <tr>
-      <td align="center" style="padding: 32px 12px 40px;">
-        <!-- Contenedor Principal / Tarjeta de Factura -->
-        <table role="presentation" class="email-card" width="580" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width: 100%; max-width: 580px; background-color: #ffffff; border-radius: 16px; overflow: hidden; box-shadow: 0 10px 30px rgba(0,0,0,0.07); border: 1px solid #e2e8f0;">
-          
-          <!-- Logo Oficial Café UNA -->
-          <tr>
-            <td align="center" bgcolor="#ffffff" style="padding: 28px 24px 18px; background-color: #ffffff;">
-              <img src="{{logoUrl}}" alt="Café UNA" width="190" style="display: block; width: 190px; max-width: 190px; height: auto; margin: 0 auto;" />
-            </td>
-          </tr>
-
-          <!-- Barra de Acento Rojo Institucional Café UNA -->
-          <tr>
-            <td bgcolor="#C41E3A" style="background-color: #C41E3A; height: 4px; font-size: 0; line-height: 0;">&nbsp;</td>
-          </tr>
-
-          <!-- Cuadro de Datos de la Factura -->
-          <tr>
-            <td class="email-pad" style="padding: 24px 32px 16px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="background-color: #fafaf9; border: 1px solid #e7e5e4; border-radius: 12px; padding: 16px 20px;">
-                <tr>
-                  <td style="padding: 6px 0; font-size: 13px; color: #57534e; width: 45%;" valign="top">
-                    <strong style="color: #1c1917;">Comprobante:</strong>
-                  </td>
-                  <td style="padding: 6px 0; font-size: 13px; color: #1c1917; text-align: right; font-family: Consolas, monospace; font-weight: 700;" valign="top">
-                    ${numeroComprobante}
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 6px 0; font-size: 13px; color: #57534e;" valign="top">
-                    <strong style="color: #1c1917;">Fecha y hora:</strong>
-                  </td>
-                  <td style="padding: 6px 0; font-size: 13px; color: #1c1917; text-align: right; font-weight: 500;" valign="top">
-                    ${fechaFormateada}
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 5px 0; font-size: 13px; color: #57534e;" valign="top">
-                    <strong style="color: #1c1917;">Punto de venta:</strong>
-                  </td>
-                  <td style="padding: 5px 0; font-size: 13px; color: #1c1917; text-align: right; font-weight: 600;" valign="top">
-                    ${this.escapeHtml(datos.puntoVenta || 'Punto Presencial')}
-                  </td>
-                </tr>
-                <tr>
-                  <td style="padding: 5px 0; font-size: 13px; color: #57534e;" valign="top">
-                    <strong style="color: #1c1917;">Atendido por:</strong>
-                  </td>
-                  <td style="padding: 5px 0; font-size: 13px; color: #1c1917; text-align: right;" valign="top">
-                    ${this.escapeHtml(datos.vendedor || 'Personal Café UNA')}
-                  </td>
-                </tr>
-                ${
-                  datos.clienteNombre
-                    ? `<tr>
-                        <td style="padding: 5px 0; font-size: 13px; color: #57534e;" valign="top">
-                          <strong style="color: #1c1917;">Cliente:</strong>
-                        </td>
-                        <td style="padding: 5px 0; font-size: 13px; color: #1c1917; text-align: right; font-weight: 500;" valign="top">
-                          ${this.escapeHtml(datos.clienteNombre)}
-                        </td>
-                      </tr>`
-                    : ''
-                }
-                <tr>
-                  <td style="padding: 5px 0; font-size: 13px; color: #57534e;" valign="top">
-                    <strong style="color: #1c1917;">Método de pago:</strong>
-                  </td>
-                  <td style="padding: 5px 0; font-size: 13px; color: #1c1917; text-align: right; font-weight: 600;" valign="top">
-                    ${this.escapeHtml(datos.metodoPago || 'Efectivo')}
-                  </td>
-                </tr>
-              </table>
-            </td>
-          </tr>
-
-          <!-- Tabla de Productos Desglosada -->
-          <tr>
-            <td class="email-pad" style="padding: 12px 32px 24px;">
-              <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse: collapse; width: 100%;">
-                <thead>
-                  <tr style="background-color: #f8fafc; border-top: 1px solid #e2e8f0; border-bottom: 2px solid #cbd5e1;">
-                    <th style="padding: 10px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; text-align: left;">Producto</th>
-                    <th style="padding: 10px 8px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; text-align: center;">Cant.</th>
-                    <th style="padding: 10px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; text-align: right;">Unitario</th>
-                    <th style="padding: 10px; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: 0.8px; text-align: right;">Subtotal</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  ${itemsRows}
-                </tbody>
-              </table>
-
-              <!-- Desglose de Totales -->
-              <div style="margin-top: 16px; border-top: 1px solid #e2e8f0; padding-top: 12px;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td style="padding: 4px 10px; font-size: 13px; color: #64748b; text-align: right;">Subtotal (sin IVA):</td>
-                    <td style="padding: 4px 10px; font-size: 13px; color: #334155; text-align: right; width: 110px; font-weight: 500;">${fmt(subtotalSinIva)}</td>
-                  </tr>
-                  <tr>
-                    <td style="padding: 4px 10px; font-size: 13px; color: #64748b; text-align: right;">IVA (13% incluido):</td>
-                    <td style="padding: 4px 10px; font-size: 13px; color: #334155; text-align: right; width: 110px; font-weight: 500;">${fmt(ivaMonto)}</td>
-                  </tr>
-                </table>
-              </div>
-
-              <!-- Bloque Prominente del Total Pagado -->
-              <div style="margin-top: 16px; background-color: #0f172a; border-radius: 12px; padding: 18px 20px; color: #ffffff;">
-                <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0">
-                  <tr>
-                    <td valign="middle" style="color: #e2e8f0;">
-                      <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1.5px; font-weight: 700; opacity: 0.8; display: block;">Total Cancelado</span>
-                      <span style="font-size: 13px; color: #94a3b8; margin-top: 2px; display: block;">Moneda de curso legal (CRC)</span>
-                    </td>
-                    <td valign="middle" align="right" style="text-align: right;">
-                      <span style="font-size: 26px; font-weight: 900; color: #ffffff; letter-spacing: -0.5px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                        ${fmt(datos.total)}
-                      </span>
-                    </td>
-                  </tr>
-                </table>
-              </div>
-
-              ${
-                datos.notas?.trim()
-                  ? `<div style="margin-top: 16px; background-color: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #92400e;">
-                      <strong style="color: #78350f;">Notas de la venta:</strong> ${this.escapeHtml(datos.notas.trim())}
-                    </div>`
-                  : ''
-              }
-            </td>
-          </tr>
-
-          <!-- Divisor Sutil -->
-          <tr>
-            <td style="padding: 0 32px;">
-              <div style="border-top: 1px dashed #cbd5e1; height: 1px; line-height: 1px;">&nbsp;</div>
-            </td>
-          </tr>
-
-          <!-- Pie de Página Institucional -->
-          <tr>
-            <td class="email-pad" align="center" style="padding: 24px 32px 30px; text-align: center; background-color: #ffffff;">
-              <p style="margin: 0 0 6px; font-size: 13px; font-weight: 700; color: #C41E3A; letter-spacing: 1.2px; text-transform: uppercase;">
-                Café UNA
-              </p>
-              <p style="margin: 0 0 4px; font-size: 12px; font-weight: 600; color: #334155;">
-                Universidad Nacional de Costa Rica
-              </p>
-              <p style="margin: 0 0 14px; font-size: 11px; color: #94a3b8; line-height: 1.5;">
-                Campus Omar Dengo, Heredia · Fomentando la cultura y excelencia del café costarricense
-              </p>
-              <p style="margin: 0; font-size: 10px; color: #cbd5e1; font-family: Consolas, monospace; letter-spacing: 2px;">
-                |||| | |||| ||| || |||||| | ||||| ||| |||
-              </p>
-              <p style="margin: 4px 0 0; font-size: 10px; color: #94a3b8;">
-                Documento de compra emitido electrónicamente.
-              </p>
-            </td>
-          </tr>
+    return this.plantillaInstitucional({
+      saludo: 'Hola',
+      titulo: 'Comprobante de compra',
+      cuerpo: `
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f9fc" style="margin:0 0 16px;background-color:#f7f9fc;border:1px solid #dfe6f0;">
+          <tr><td style="padding:16px 20px;">
+            <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Comprobante:</strong> ${numeroComprobante}</p>
+            <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Fecha y hora:</strong> ${this.escapeHtml(fechaFormateada)}</p>
+            <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Punto de venta:</strong> ${this.escapeHtml(datos.puntoVenta || 'Punto presencial')}</p>
+            <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Atendido por:</strong> ${this.escapeHtml(datos.vendedor || 'Personal Café UNA')}</p>
+            ${datos.clienteNombre ? `<p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Cliente:</strong> ${this.escapeHtml(datos.clienteNombre)}</p>` : ''}
+            <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Método de pago:</strong> ${this.escapeHtml(datos.metodoPago || 'Efectivo')}</p>
+          </td></tr>
         </table>
-      </td>
-    </tr>
-  </table>
-</body>
-</html>`;
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
+          <thead>
+            <tr>
+              <th align="left" style="padding:8px 0;font-size:13px;color:#5f6b82;border-bottom:1px solid #e6eaf2;">Producto</th>
+              <th align="center" style="padding:8px 0;font-size:13px;color:#5f6b82;border-bottom:1px solid #e6eaf2;">Cant.</th>
+              <th align="right" style="padding:8px 0;font-size:13px;color:#5f6b82;border-bottom:1px solid #e6eaf2;">Unitario</th>
+              <th align="right" style="padding:8px 0;font-size:13px;color:#5f6b82;border-bottom:1px solid #e6eaf2;">Subtotal</th>
+            </tr>
+          </thead>
+          <tbody>${itemsRows}</tbody>
+        </table>
+        <p style="margin:12px 0 4px;font-size:14px;line-height:1.6;color:#3a4a6b;text-align:right;">Subtotal sin IVA: ${fmt(subtotalSinIva)}</p>
+        <p style="margin:0 0 8px;font-size:14px;line-height:1.6;color:#3a4a6b;text-align:right;">IVA 13%: ${fmt(ivaMonto)}</p>
+        <p style="margin:0;font-size:16px;line-height:1.6;font-weight:700;color:#C41E3A;text-align:right;">Total: ${fmt(datos.total)}</p>
+        ${
+          datos.notas?.trim()
+            ? `<p style="margin:16px 0 0;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Notas:</strong> ${this.escapeHtml(datos.notas.trim())}</p>`
+            : ''
+        }`,
+    });
   }
 
   async enviar(
@@ -897,6 +687,73 @@ export class EmailService {
       .replaceAll('{{nota}}', this.escapeHtml(datos.nota));
   }
 
+  private plantillaInstitucional(datos: {
+    saludo: string;
+    titulo: string;
+    cuerpo: string;
+  }): string {
+    const saludo = this.escapeHtml(datos.saludo);
+    const titulo = this.escapeHtml(datos.titulo);
+    return `<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="color-scheme" content="light only" />
+  <meta name="supported-color-schemes" content="light only" />
+  <style>
+    :root { color-scheme: light only; supported-color-schemes: light only; }
+    @media (prefers-color-scheme: dark) {
+      .email-outer, .email-outer td { background-color: #f4f5f8 !important; }
+      .email-card, .email-card td, .email-logo, .email-logo td, .email-content, .email-content td, .email-footer, .email-footer td, .logo-bg { background-color: #ffffff !important; }
+      .text-muted { color: #5f6b82 !important; }
+      .text-title { color: #0D1B3E !important; }
+      .text-note { color: #6b7a99 !important; }
+      .text-brand { color: #C41E3A !important; }
+      .text-footer { color: #8a96ad !important; }
+      .bar-red { background-color: #C41E3A !important; }
+    }
+  </style>
+</head>
+<body class="email-outer" style="margin:0;padding:0;background-color:#f4f5f8 !important;font-family:Arial,Helvetica,sans-serif;color-scheme:light only;">
+  <table role="presentation" class="email-outer" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f4f5f8" style="background-color:#f4f5f8 !important;padding:32px 16px;">
+    <tr>
+      <td align="center" bgcolor="#f4f5f8" style="background-color:#f4f5f8 !important;">
+        <table role="presentation" class="email-card" width="560" cellpadding="0" cellspacing="0" border="0" bgcolor="#ffffff" style="width:100%;max-width:560px;background-color:#ffffff !important;border:1px solid #e6eaf2;">
+          <tr>
+            <td class="email-logo logo-bg" align="center" bgcolor="#ffffff" style="background-color:#ffffff !important;padding:28px 20px 16px;">
+              <img src="{{logoUrl}}" alt="Café UNA" width="200" style="display:block;width:200px;max-width:200px;height:auto;border:0;margin:0 auto;background-color:#ffffff;" />
+            </td>
+          </tr>
+          <tr>
+            <td class="bar-red" bgcolor="#C41E3A" style="background-color:#C41E3A !important;height:4px;font-size:0;line-height:0;">&nbsp;</td>
+          </tr>
+          <tr>
+            <td class="email-content" bgcolor="#ffffff" style="background-color:#ffffff !important;padding:32px 28px 8px;">
+              <p class="text-muted" style="margin:0 0 8px;font-size:15px;line-height:1.6;color:#5f6b82 !important;">${saludo}</p>
+              <h1 class="text-title" style="margin:0 0 16px;font-size:24px;line-height:1.35;color:#0D1B3E !important;font-weight:700;">${titulo}</h1>
+              ${datos.cuerpo}
+            </td>
+          </tr>
+          <tr>
+            <td class="email-content" bgcolor="#ffffff" style="background-color:#ffffff !important;padding:8px 28px 24px;">
+              <p class="text-note" style="margin:0;font-size:13px;line-height:1.7;color:#6b7a99 !important;">Este es un correo automático de Café UNA. No es necesario responderlo.</p>
+            </td>
+          </tr>
+          <tr>
+            <td class="email-footer" align="center" bgcolor="#ffffff" style="background-color:#ffffff !important;padding:16px 28px 28px;border-top:1px solid #e8edf5;">
+              <p class="text-brand" style="margin:0 0 4px;font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase;color:#C41E3A !important;">Café UNA</p>
+              <p class="text-footer" style="margin:0;font-size:12px;line-height:1.6;color:#8a96ad !important;">Universidad Nacional, Costa Rica</p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`;
+  }
+
   private escapeHtml(value: string): string {
     return value
       .replaceAll('&', '&amp;')
@@ -933,27 +790,14 @@ export class EmailService {
         .replaceAll('{{saludo}}', saludo)
         .replaceAll('{{bloqueSede}}', bloqueSede);
     } catch {
-      // Fallback inline template if file doesn't exist
-      return `
-<!DOCTYPE html>
-<html lang="es">
-<head><meta charset="UTF-8"></head>
-<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #f9fafb; padding: 40px 20px;">
-  <div style="max-width: 480px; margin: 0 auto; background: #ffffff; border-radius: 12px; padding: 40px 32px; box-shadow: 0 4px 16px rgba(0,0,0,0.06);">
-    <h2 style="color: #286f54; margin: 0 0 16px; font-size: 22px;">${saludo}</h2>
-    <p style="color: #374151; line-height: 1.7; margin: 0 0 16px;">
-      Su solicitud de voluntariado fue <strong>recibida correctamente</strong> y está siendo revisada por el equipo de Café UNA.
-    </p>
-    <p style="color: #374151; line-height: 1.7; margin: 0 0 16px;">
-      Recibirá información sobre el resultado de su solicitud en su correo electrónico.
-    </p>
-    ${bloqueSede}
-    <p style="color: #6b7280; font-size: 14px; margin: 24px 0 0; padding-top: 16px; border-top: 1px solid #e5e7eb;">
-      Este es un correo automático de Café UNA. No es necesario responderlo.
-    </p>
-  </div>
-</body>
-</html>`;
+      return this.plantillaInstitucional({
+        saludo: nombre?.trim() ? `Hola, ${nombre.trim()}` : 'Hola',
+        titulo: 'Solicitud de voluntariado recibida',
+        cuerpo: `
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#3a4a6b;">Su solicitud de voluntariado fue <strong>recibida correctamente</strong> y está siendo revisada por el equipo de Café UNA.</p>
+          <p style="margin:0 0 16px;font-size:15px;line-height:1.7;color:#3a4a6b;">Recibirá información sobre el resultado de su solicitud en su correo electrónico.</p>
+          ${bloqueSede}`,
+      });
     }
   }
 
