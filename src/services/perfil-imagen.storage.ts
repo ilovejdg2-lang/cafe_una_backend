@@ -7,7 +7,7 @@ import {
   Optional,
 } from '@nestjs/common';
 import { randomUUID } from 'crypto';
-import { mkdir, readFile, writeFile } from 'fs/promises';
+import { mkdir, open, writeFile } from 'fs/promises';
 import { join } from 'path';
 import sharp from 'sharp';
 
@@ -65,12 +65,16 @@ export class PerfilImagenStorage {
     return name;
   }
 
-  async leer(name: string): Promise<Buffer> {
+  async leer(name: string) {
     if (!SAFE_NAME.test(name))
       throw new BadRequestException('Nombre de imagen inválido.');
+    let file: Awaited<ReturnType<typeof open>> | undefined;
     try {
-      return await readFile(join(this.directory, name));
+      file = await open(join(this.directory, name), 'r');
+      if (!(await file.stat()).isFile()) throw new Error('Not a file');
+      return file.createReadStream();
     } catch (error) {
+      await file?.close();
       if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
         throw new NotFoundException('No se encontró la imagen.');
       }
