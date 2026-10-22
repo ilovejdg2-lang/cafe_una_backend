@@ -22,15 +22,13 @@ export class PermisosGuard implements CanActivate {
     }
 
     const request = context.switchToHttp().getRequest<{
-      user?: { roles?: string[]; role?: string };
+      user?: { roles?: string[]; role?: string | string[] };
     }>();
-    const rawRoles = request.user?.roles ?? (request.user?.role ? [request.user.role] : []);
-    const esSuperAdmin = rawRoles.some((r) =>
-      ['superadmin', 'superadministrador'].includes(String(r).toLowerCase()),
-    );
-    if (esSuperAdmin) {
-      return true;
-    }
+    const role = request.user?.role;
+    const rawRoles = [
+      ...(request.user?.roles ?? []),
+      ...(role == null ? [] : Array.isArray(role) ? role : [role]),
+    ];
 
     if (tieneAlgunPermiso(rawRoles, permisos)) {
       return true;

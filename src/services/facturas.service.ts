@@ -47,6 +47,7 @@ export class FacturasService {
     compraId: number,
     usuarioId?: number | null,
     manager?: EntityManager,
+    opciones?: { notificar?: boolean },
   ): Promise<Factura> {
     const cid = Number(compraId);
     if (!Number.isFinite(cid) || cid <= 0) {
@@ -111,22 +112,25 @@ export class FacturasService {
       factura.UrlPdf = url;
       factura.ArchivoPdf = filename;
 
-      // 5. Envío en segundo plano para no demorar la respuesta al usuario
-      setImmediate(async () => {
-        try {
-          await this.notificacionesService.enviarFacturaPorCorreo(
-            factura,
-            buffer,
-            filename,
-          );
-        } catch (err) {
-          this.logger.error(
-            `Fallo en el listener de envío de correo para factura ${factura.Id}: ${
-              err instanceof Error ? err.message : String(err)
-            }`,
-          );
-        }
-      });
+      // El llamador que ya envía el correo (aceptar la orden) pide notificar: false
+      // para no mandar la misma factura dos veces.
+      if (opciones?.notificar !== false) {
+        setImmediate(async () => {
+          try {
+            await this.notificacionesService.enviarFacturaPorCorreo(
+              factura,
+              buffer,
+              filename,
+            );
+          } catch (err) {
+            this.logger.error(
+              `Fallo en el listener de envío de correo para factura ${factura.Id}: ${
+                err instanceof Error ? err.message : String(err)
+              }`,
+            );
+          }
+        });
+      }
     } catch (err) {
       this.logger.error(
         `Error al generar PDF de factura para compra #${cid}: ${
@@ -155,7 +159,9 @@ export class FacturasService {
 
     let factura = await this.facturaRepo.obtenerPorCompraId(cid);
     if (!factura) {
-      factura = await this.generarFacturaParaCompra(cid);
+      factura = await this.generarFacturaParaCompra(cid, undefined, undefined, {
+        notificar: false,
+      });
     }
 
     if (!factura) {
@@ -250,24 +256,35 @@ export class FacturasService {
   }
 
   /**
-   * Resuelve la ruta física del archivo PDF de la factura para streaming seguro.
+   * PDF de una factura por su id. Un id numérico no se busca como compra.
    */
-  async obtenerRutaArchivoPdf(idOrCompraId: string | number): Promise<{
+  async obtenerRutaArchivoPdf(facturaId: string): Promise<{
     filePath: string;
     filename: string;
   }> {
-    let factura: Factura | null = null;
-    if (typeof idOrCompraId === 'number' || /^\d+$/.test(String(idOrCompraId))) {
-      factura = await this.facturaRepo.obtenerPorCompraId(Number(idOrCompraId));
-    }
-    if (!factura && typeof idOrCompraId === 'string') {
-      factura = await this.facturaRepo.obtenerPorId(idOrCompraId);
-    }
-
+    const factura = await this.facturaRepo.obtenerPorId(String(facturaId));
     if (!factura) {
       throw new NotFoundException('La factura solicitada no existe.');
     }
+    return this.resolverArchivoPdf(factura);
+  }
 
+  /** PDF de la factura ligada a una compra. */
+  async obtenerRutaArchivoPdfPorCompra(compraId: number): Promise<{
+    filePath: string;
+    filename: string;
+  }> {
+    const factura = await this.facturaRepo.obtenerPorCompraId(Number(compraId));
+    if (!factura) {
+      throw new NotFoundException('La factura solicitada no existe.');
+    }
+    return this.resolverArchivoPdf(factura);
+  }
+
+  private async resolverArchivoPdf(factura: Factura): Promise<{
+    filePath: string;
+    filename: string;
+  }> {
     let absolute = factura.ArchivoPdf
       ? resolverArchivoUpload(FACTURAS_SUBDIR, factura.ArchivoPdf)
       : null;
