@@ -27,6 +27,7 @@ import { extname, join, relative, resolve, sep } from 'path';
 import { validarIdentificacionFormulario } from '../common/cliente-registro.util';
 import { EmailService } from '../common/email.service';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
+import { hoyIsoEnZona } from '../common/timezone.util';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { VoluntariadoService } from '../services/voluntariado.service';
@@ -336,8 +337,7 @@ export class VoluntariadoController {
     const email = String(actualizada.Email ?? '').trim().toLowerCase();
 
     if (estadoNuevo && estadoAnterior !== estadoNuevo && email) {
-      const hoy = new Date();
-      const fechaActualizacion = `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth() + 1).padStart(2, '0')}-${String(hoy.getUTCDate()).padStart(2, '0')}`;
+      const fechaActualizacion = hoyIsoEnZona();
 
       try {
         await this.emailService.enviarActualizacionEstadoVoluntariado(email, {

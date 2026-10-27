@@ -1,6 +1,7 @@
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { hoyIsoEnZona } from '../common/timezone.util';
 import { SolicitudVoluntariado } from '../entities/solicitud-voluntariado.entity';
 import { FechasVoluntariadoService } from './fechas-voluntariado.service';
 
@@ -114,6 +115,13 @@ export class VoluntariadoService {
       );
     }
     const fechaSolicitada = matchFecha[0];
+    const hoyEnZona = hoyIsoEnZona();
+
+    if (fechaSolicitada < hoyEnZona) {
+      throw new BadRequestException(
+        'No se pueden solicitar voluntariados en fechas pasadas.',
+      );
+    }
 
     const validacion = await this.fechasService.estaFechaYHorarioHabilitada(
       tipo,
@@ -127,8 +135,7 @@ export class VoluntariadoService {
       );
     }
 
-    const hoy = new Date();
-    const fecha = `${hoy.getUTCFullYear()}-${String(hoy.getUTCMonth() + 1).padStart(2, '0')}-${String(hoy.getUTCDate()).padStart(2, '0')}`;
+    const fecha = hoyEnZona;
 
     const solicitud = this.repo.create({
       UserId: request.UserId.trim(),

@@ -1,11 +1,20 @@
 import {
   BadRequestException,
+  ConflictException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import { EmailService } from '../common/email.service';
+import {
+  fechaHoraIsoEnZona,
+  hoyIsoEnZona,
+  obtenerZonaHoraria,
+} from '../common/timezone.util';
 import { FechaVoluntariado } from '../entities/fecha-voluntariado.entity';
+import { SolicitudVoluntariado } from '../entities/solicitud-voluntariado.entity';
 
 const FECHA_ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -38,35 +47,56 @@ function normalizarHorarios(horarios?: unknown): string[] {
   return [];
 }
 
-function hoyIso(): string {
-  const hoy = new Date();
-  const yyyy = hoy.getFullYear();
-  const mm = String(hoy.getMonth() + 1).padStart(2, '0');
-  const dd = String(hoy.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
+const ESTADOS_CANCELADOS = ['cancelada', 'cancelado'];
+const ESTADOS_RECHAZADOS = ['rechazada', 'rechazado'];
 
 @Injectable()
 export class FechasVoluntariadoService {
+  private readonly logger = new Logger(FechasVoluntariadoService.name);
+
   constructor(
     @InjectRepository(FechaVoluntariado)
     private readonly repo: Repository<FechaVoluntariado>,
+    @InjectRepository(SolicitudVoluntariado)
+    private readonly solicitudRepo: Repository<SolicitudVoluntariado>,
+    private readonly emailService: EmailService,
   ) {}
 
   /**
+   * Información de configuración de zona horaria y fecha vigente actual.
+   */
+  obtenerConfigZonaHoraria(): {
+    zonaHoraria: string;
+    hoy: string;
+    fechaHoraActual: string;
+  } {
+    const tz = obtenerZonaHoraria();
+    return {
+      zonaHoraria: tz,
+      hoy: hoyIsoEnZona(tz),
+      fechaHoraActual: fechaHoraIsoEnZona(tz),
+    };
+  }
+
+  /**
    * Obtener fechas habilitadas disponibles a partir de hoy (acceso público).
-   * Si se provee `tipo`, filtra específicamente por ese tipo de voluntariado.
+   * Se calculan exclusivamente fechas vigentes (Fecha >= hoy) según la zona horaria configurada.
+   * Incluso si se pasa un parámetro `desde` manipulado en el pasado, se descarta y se fija como mínimo hoy.
    */
   async listarDisponibles(
     tipo?: string,
     desde?: string,
     hasta?: string,
   ): Promise<FechaVoluntariado[]> {
-    const fechaInicio = desde && FECHA_ISO_RE.test(desde) ? desde : hoyIso();
+    const hoy = hoyIsoEnZona();
+    const fechaInicio =
+      desde && FECHA_ISO_RE.test(desde) && desde > hoy ? desde : hoy;
     const qb = this.repo.createQueryBuilder('fv');
 
-    qb.where('fv.Habilitada = :habilitada', { habilitada: true })
-      .andWhere('fv.Fecha >= :inicio', { inicio: fechaInicio });
+    qb.where('fv.Habilitada = :habilitada', { habilitada: true }).andWhere(
+      'fv.Fecha >= :inicio',
+      { inicio: fechaInicio },
+    );
 
     if (tipo && tipo.trim()) {
       if (tipo.trim().toLowerCase() === 'apoyo general') {
@@ -89,10 +119,10 @@ export class FechasVoluntariadoService {
   }
 
   /**
-   * Obtener resumen de disponibilidad por tipo de voluntariado a partir de hoy.
+   * Obtener resumen de disponibilidad por tipo de voluntariado a partir de hoy en la zona horaria configurada.
    */
   async obtenerResumenTipos(): Promise<{ tipo: string; total: number }[]> {
-    const hoy = hoyIso();
+    const hoy = hoyIsoEnZona();
     const qb = this.repo
       .createQueryBuilder('fv')
       .select('fv.TipoVoluntariado', 'tipo')
@@ -116,7 +146,7 @@ export class FechasVoluntariadoService {
   }
 
   /**
-   * Obtener todas las fechas registradas para el panel administrativo.
+   * Obtener todas las fechas registradas para el panel administrativo (incluye históricas).
    */
   async listarTodas(
     tipo?: string,
@@ -149,6 +179,271 @@ export class FechasVoluntariadoService {
   }
 
   /**
+   * Detecta y devuelve solicitudes vinculadas a una fecha y tipo de voluntariado.
+   */
+  async obtenerSolicitudesVinculadas(
+    tipo: string,
+    fecha: string,
+  ): Promise<{
+    fecha: string;
+    tipo: string;
+    total: number;
+    activas: number;
+    canceladasPreviamente: number;
+    solicitudes: SolicitudVoluntariado[];
+  }> {
+    const f = normalizarFecha(fecha);
+    const t = normalizarTipo(tipo);
+
+    const qb = this.solicitudRepo.createQueryBuilder('sol');
+    qb.where('sol.Dias LIKE :fechaParam', { fechaParam: `%${f}%` });
+
+    if (t.toLowerCase() === 'apoyo general') {
+      qb.andWhere(
+        '(LOWER(sol.TipoVoluntariado) = LOWER(:t) OR sol.TipoVoluntariado = :gen OR sol.TipoVoluntariado IS NULL)',
+        { t, gen: 'General' },
+      );
+    } else {
+      qb.andWhere(
+        '(LOWER(sol.TipoVoluntariado) = LOWER(:t) OR sol.TipoVoluntariado IS NULL)',
+        { t },
+      );
+    }
+
+    const vinculadas = await qb.orderBy('sol.Id', 'ASC').getMany();
+
+    let activas = 0;
+    let canceladasPreviamente = 0;
+
+    for (const s of vinculadas) {
+      const estadoNorm = String(s.Estado || '').trim().toLowerCase();
+      if (ESTADOS_CANCELADOS.includes(estadoNorm)) {
+        canceladasPreviamente++;
+      } else if (!ESTADOS_RECHAZADOS.includes(estadoNorm)) {
+        activas++;
+      }
+    }
+
+    return {
+      fecha: f,
+      tipo: t,
+      total: vinculadas.length,
+      activas,
+      canceladasPreviamente,
+      solicitudes: vinculadas,
+    };
+  }
+
+  /**
+   * Cancela la actividad de una fecha futura:
+   * 1. Conserva las solicitudes asociadas en la base de datos (no se borran).
+   * 2. Actualiza el estado a 'Cancelada' y anota la observación administrativa.
+   * 3. Notifica a cada participante que la actividad se canceló, con fecha, tipo y orientación.
+   * 4. Registra NotificacionCancelacionEnviada = true para que reintentos NO dupliquen avisos.
+   * 5. Retira la fecha según la acción solicitada ('deshabilitar' o 'eliminar').
+   */
+  async cancelarActividadYRetirarFecha(
+    tipo: string,
+    fecha: string,
+    accion: 'deshabilitar' | 'eliminar',
+    orientacion?: string,
+  ): Promise<{
+    ok: boolean;
+    accion: string;
+    fecha: string;
+    tipo: string;
+    solicitudesCanceladas: number;
+    notificacionesExitosas: number;
+    notificacionesFallidas: number;
+    fallidos: Array<{ id: string; email: string; error?: string }>;
+  }> {
+    const f = normalizarFecha(fecha);
+    const t = normalizarTipo(tipo);
+    const info = await this.obtenerSolicitudesVinculadas(t, f);
+
+    const fallidos: Array<{ id: string; email: string; error?: string }> = [];
+    let solicitudesCanceladas = 0;
+    let notificacionesExitosas = 0;
+    let notificacionesFallidas = 0;
+
+    const fechaHora = fechaHoraIsoEnZona();
+    const textoOrientacion = orientacion?.trim() || '';
+    const notaCancelacion = textoOrientacion
+      ? `Actividad cancelada el ${fechaHora}. Orientación: ${textoOrientacion}`
+      : `Actividad cancelada el ${fechaHora} por la administración.`;
+
+    for (const solicitud of info.solicitudes) {
+      const estadoNorm = String(solicitud.Estado || '').trim().toLowerCase();
+
+      // Si ya está rechazada, no interfiere
+      if (ESTADOS_RECHAZADOS.includes(estadoNorm)) {
+        continue;
+      }
+
+      // Si no estaba cancelada aún, cambiar su estado a 'Cancelada' y guardar la orientación
+      if (!ESTADOS_CANCELADOS.includes(estadoNorm)) {
+        solicitud.Estado = 'Cancelada';
+        const obsAnterior = solicitud.ObservacionesAdmin
+          ? `${solicitud.ObservacionesAdmin}\n`
+          : '';
+        solicitud.ObservacionesAdmin = `${obsAnterior}[${notaCancelacion}]`;
+        await this.solicitudRepo.save(solicitud);
+        solicitudesCanceladas++;
+      }
+
+      // Enviar notificación por correo si no se ha enviado previamente (idempotencia ante reintentos)
+      if (!solicitud.NotificacionCancelacionEnviada) {
+        const email = String(solicitud.Email || '').trim();
+        if (email) {
+          try {
+            const enviado =
+              await this.emailService.enviarCancelacionActividadVoluntariado(
+                email,
+                {
+                  nombre: solicitud.Nombre || 'Voluntario/a',
+                  tipoVoluntariado: solicitud.TipoVoluntariado || t,
+                  fechaActividad: f,
+                  horario: solicitud.Horario,
+                  orientacion: textoOrientacion || undefined,
+                },
+              );
+
+            if (enviado) {
+              solicitud.NotificacionCancelacionEnviada = true;
+              await this.solicitudRepo.save(solicitud);
+              notificacionesExitosas++;
+            } else {
+              notificacionesFallidas++;
+              fallidos.push({
+                id: String(solicitud.Id),
+                email,
+                error: 'El servicio de correo no pudo entregar el mensaje.',
+              });
+            }
+          } catch (err) {
+            notificacionesFallidas++;
+            const msg = err instanceof Error ? err.message : String(err);
+            this.logger.error(
+              `Error al notificar cancelación a ${email}: ${msg}`,
+            );
+            fallidos.push({ id: String(solicitud.Id), email, error: msg });
+          }
+        }
+      }
+    }
+
+    // Retirar la fecha en fechas_voluntariado según la acción solicitada
+    const whereConditions: Array<Record<string, unknown>> = [
+      { TipoVoluntariado: t, Fecha: f },
+    ];
+    if (t.toLowerCase() === 'apoyo general') {
+      whereConditions.push({ TipoVoluntariado: 'General', Fecha: f });
+    }
+
+    const registro = await this.repo.findOne({ where: whereConditions });
+
+    if (accion === 'eliminar') {
+      if (registro) {
+        await this.repo.remove(registro);
+      }
+    } else {
+      // deshabilitar
+      if (registro) {
+        registro.Habilitada = false;
+        await this.repo.save(registro);
+      } else {
+        const nuevo = this.repo.create({
+          TipoVoluntariado: t,
+          Fecha: f,
+          Habilitada: false,
+          Horarios: [],
+        });
+        await this.repo.save(nuevo);
+      }
+    }
+
+    return {
+      ok: true,
+      accion: accion === 'eliminar' ? 'eliminada' : 'deshabilitada',
+      fecha: f,
+      tipo: t,
+      solicitudesCanceladas,
+      notificacionesExitosas,
+      notificacionesFallidas,
+      fallidos,
+    };
+  }
+
+  /**
+   * Reintenta el envío de notificaciones pendientes para solicitudes canceladas.
+   * Solo envía a participantes cuya `NotificacionCancelacionEnviada` sea false,
+   * garantizando que los reintentos NO dupliquen avisos a los ya notificados.
+   */
+  async reintentarNotificaciones(
+    tipo: string,
+    fecha: string,
+    orientacion?: string,
+  ): Promise<{
+    totalPendientes: number;
+    notificacionesExitosas: number;
+    notificacionesFallidas: number;
+    fallidos: Array<{ id: string; email: string; error?: string }>;
+  }> {
+    const f = normalizarFecha(fecha);
+    const t = normalizarTipo(tipo);
+    const info = await this.obtenerSolicitudesVinculadas(t, f);
+
+    const pendientes = info.solicitudes.filter(
+      (s) =>
+        ESTADOS_CANCELADOS.includes(String(s.Estado || '').trim().toLowerCase()) &&
+        !s.NotificacionCancelacionEnviada &&
+        Boolean(s.Email?.trim()),
+    );
+
+    let notificacionesExitosas = 0;
+    let notificacionesFallidas = 0;
+    const fallidos: Array<{ id: string; email: string; error?: string }> = [];
+
+    for (const solicitud of pendientes) {
+      const email = String(solicitud.Email || '').trim();
+      try {
+        const enviado =
+          await this.emailService.enviarCancelacionActividadVoluntariado(email, {
+            nombre: solicitud.Nombre || 'Voluntario/a',
+            tipoVoluntariado: solicitud.TipoVoluntariado || t,
+            fechaActividad: f,
+            horario: solicitud.Horario,
+            orientacion: orientacion?.trim() || undefined,
+          });
+
+        if (enviado) {
+          solicitud.NotificacionCancelacionEnviada = true;
+          await this.solicitudRepo.save(solicitud);
+          notificacionesExitosas++;
+        } else {
+          notificacionesFallidas++;
+          fallidos.push({
+            id: String(solicitud.Id),
+            email,
+            error: 'Fallo al entregar correo en el reintento.',
+          });
+        }
+      } catch (err) {
+        notificacionesFallidas++;
+        const msg = err instanceof Error ? err.message : String(err);
+        fallidos.push({ id: String(solicitud.Id), email, error: msg });
+      }
+    }
+
+    return {
+      totalPendientes: pendientes.length,
+      notificacionesExitosas,
+      notificacionesFallidas,
+      fallidos,
+    };
+  }
+
+  /**
    * Habilitar o crear una fecha disponible para un tipo de voluntariado específico.
    */
   async habilitarFecha(
@@ -160,7 +455,7 @@ export class FechasVoluntariadoService {
   ): Promise<FechaVoluntariado> {
     const f = normalizarFecha(fecha);
     const t = normalizarTipo(tipo);
-    const hoy = hoyIso();
+    const hoy = hoyIsoEnZona();
 
     if (f < hoy) {
       throw new BadRequestException('No se pueden habilitar fechas pasadas.');
@@ -193,45 +488,58 @@ export class FechasVoluntariadoService {
   }
 
   /**
-   * Deshabilitar una fecha existente para un tipo de voluntariado.
-   */
-  async deshabilitarFecha(tipo: string, fecha: string): Promise<FechaVoluntariado> {
-    const f = normalizarFecha(fecha);
-    const t = normalizarTipo(tipo);
-
-    let registro = await this.repo.findOne({
-      where: { TipoVoluntariado: t, Fecha: f },
-    });
-
-    if (!registro) {
-      registro = this.repo.create({
-        TipoVoluntariado: t,
-        Fecha: f,
-        Habilitada: false,
-        Horarios: [],
-      });
-    } else {
-      registro.Habilitada = false;
-    }
-
-    return this.repo.save(registro);
-  }
-
-  /**
    * Alternar estado habilitado/deshabilitado de una fecha para un tipo.
    */
-  async toggleFecha(tipo: string, fecha: string): Promise<FechaVoluntariado> {
+  async toggleFecha(
+    tipo: string,
+    fecha: string,
+    confirmarCancelacion = false,
+    motivoCancelacion?: string,
+  ): Promise<
+    | FechaVoluntariado
+    | {
+        ok: boolean;
+        accion: string;
+        fecha: string;
+        solicitudesCanceladas: number;
+        notificacionesExitosas: number;
+      }
+  > {
     const f = normalizarFecha(fecha);
     const t = normalizarTipo(tipo);
-    const hoy = hoyIso();
+    const hoy = hoyIsoEnZona();
 
     if (f < hoy) {
       throw new BadRequestException('No se pueden modificar fechas pasadas.');
     }
 
+    const whereConditions: Array<Record<string, unknown>> = [
+      { TipoVoluntariado: t, Fecha: f },
+    ];
+    if (t.toLowerCase() === 'apoyo general') {
+      whereConditions.push({ TipoVoluntariado: 'General', Fecha: f });
+    }
+
     let registro = await this.repo.findOne({
-      where: { TipoVoluntariado: t, Fecha: f },
+      where: whereConditions,
     });
+
+    const estadoActual = registro ? registro.Habilitada : false;
+    const nuevoEstado = !estadoActual;
+
+    // Si se va a deshabilitar y es fecha futura, verificar participantes vinculados
+    if (!nuevoEstado) {
+      return this.actualizarEstado(
+        t,
+        f,
+        false,
+        registro?.Horarios ?? [],
+        registro?.CupoMaximo,
+        registro?.Observaciones,
+        confirmarCancelacion,
+        motivoCancelacion,
+      );
+    }
 
     if (!registro) {
       registro = this.repo.create({
@@ -241,7 +549,7 @@ export class FechasVoluntariadoService {
         Horarios: [],
       });
     } else {
-      registro.Habilitada = !registro.Habilitada;
+      registro.Habilitada = true;
     }
 
     return this.repo.save(registro);
@@ -249,6 +557,9 @@ export class FechasVoluntariadoService {
 
   /**
    * Actualizar estado específico de una fecha para un tipo de voluntariado.
+   * Si se va a deshabilitar una fecha futura con participantes vinculados:
+   * - Si confirmarCancelacion es false: lanza ConflictException con la lista de solicitudes.
+   * - Si confirmarCancelacion es true: cancela las solicitudes, conserva registros y notifica.
    */
   async actualizarEstado(
     tipo: string,
@@ -257,19 +568,58 @@ export class FechasVoluntariadoService {
     horarios?: string[],
     cupoMaximo?: number | null,
     observaciones?: string,
-  ): Promise<FechaVoluntariado> {
+    confirmarCancelacion = false,
+    motivoCancelacion?: string,
+  ): Promise<any> {
     const f = normalizarFecha(fecha);
     const t = normalizarTipo(tipo);
-    const hoy = hoyIso();
+    const hoy = hoyIsoEnZona();
 
     if (habilitada && f < hoy) {
       throw new BadRequestException('No se pueden habilitar fechas pasadas.');
     }
 
+    // Si se va a retirar/deshabilitar una fecha futura, verificar participantes
+    if (!habilitada && f >= hoy) {
+      const info = await this.obtenerSolicitudesVinculadas(t, f);
+      if (info.activas > 0) {
+        if (!confirmarCancelacion) {
+          throw new ConflictException({
+            message: `Existen ${info.activas} participante(s) con solicitud activa vinculada a esta fecha. Se requiere confirmar la cancelación para conservar las solicitudes y notificarles.`,
+            requiereConfirmacion: true,
+            solicitudesVinculadas: info.solicitudes.filter(
+              (s) =>
+                !ESTADOS_CANCELADOS.includes(
+                  String(s.Estado || '').trim().toLowerCase(),
+                ) &&
+                !ESTADOS_RECHAZADOS.includes(
+                  String(s.Estado || '').trim().toLowerCase(),
+                ),
+            ),
+          });
+        }
+
+        // Si se confirmó la cancelación, ejecutar cancelación segura y notificaciones
+        return this.cancelarActividadYRetirarFecha(
+          t,
+          f,
+          'deshabilitar',
+          motivoCancelacion,
+        );
+      }
+    }
+
     const horariosNormalizados = normalizarHorarios(horarios);
 
+    const whereConditions: Array<Record<string, unknown>> = [
+      { TipoVoluntariado: t, Fecha: f },
+    ];
+    if (t.toLowerCase() === 'apoyo general') {
+      whereConditions.push({ TipoVoluntariado: 'General', Fecha: f });
+    }
+
     let registro = await this.repo.findOne({
-      where: { TipoVoluntariado: t, Fecha: f },
+      where: whereConditions,
     });
 
     if (!registro) {
@@ -294,13 +644,58 @@ export class FechasVoluntariadoService {
 
   /**
    * Eliminar registro de fecha para un tipo de voluntariado.
+   * Si es una fecha futura con participantes vinculados:
+   * - Si confirmarCancelacion es false: lanza ConflictException.
+   * - Si confirmarCancelacion es true: cancela solicitudes, notifica y remueve la fecha.
    */
-  async eliminarFecha(tipo: string, fecha: string): Promise<void> {
+  async eliminarFecha(
+    tipo: string,
+    fecha: string,
+    confirmarCancelacion = false,
+    motivoCancelacion?: string,
+  ): Promise<any> {
     const f = normalizarFecha(fecha);
     const t = normalizarTipo(tipo);
+    const hoy = hoyIsoEnZona();
+
+    if (f >= hoy) {
+      const info = await this.obtenerSolicitudesVinculadas(t, f);
+      if (info.activas > 0) {
+        if (!confirmarCancelacion) {
+          throw new ConflictException({
+            message: `Existen ${info.activas} participante(s) con solicitud activa vinculada a esta fecha. Se requiere confirmar la cancelación para conservar las solicitudes y notificarles.`,
+            requiereConfirmacion: true,
+            solicitudesVinculadas: info.solicitudes.filter(
+              (s) =>
+                !ESTADOS_CANCELADOS.includes(
+                  String(s.Estado || '').trim().toLowerCase(),
+                ) &&
+                !ESTADOS_RECHAZADOS.includes(
+                  String(s.Estado || '').trim().toLowerCase(),
+                ),
+            ),
+          });
+        }
+
+        // Si se confirmó, cancelar y retirar mediante eliminación
+        return this.cancelarActividadYRetirarFecha(
+          t,
+          f,
+          'eliminar',
+          motivoCancelacion,
+        );
+      }
+    }
+
+    const whereConditions: Array<Record<string, unknown>> = [
+      { TipoVoluntariado: t, Fecha: f },
+    ];
+    if (t.toLowerCase() === 'apoyo general') {
+      whereConditions.push({ TipoVoluntariado: 'General', Fecha: f });
+    }
 
     const registro = await this.repo.findOne({
-      where: { TipoVoluntariado: t, Fecha: f },
+      where: whereConditions,
     });
 
     if (!registro) {
@@ -313,6 +708,7 @@ export class FechasVoluntariadoService {
 
   /**
    * Valida si una fecha y horario específicos están habilitados para un tipo de voluntariado.
+   * Rechaza estrictamente fechas pasadas según la zona horaria configurada.
    */
   async estaFechaYHorarioHabilitada(
     tipo: string,
@@ -321,7 +717,7 @@ export class FechasVoluntariadoService {
   ): Promise<{ valida: boolean; mensajeError?: string }> {
     const f = normalizarFecha(fecha);
     const t = normalizarTipo(tipo);
-    const hoy = hoyIso();
+    const hoy = hoyIsoEnZona();
 
     if (f < hoy) {
       return {
@@ -334,7 +730,11 @@ export class FechasVoluntariadoService {
       { TipoVoluntariado: t, Fecha: f, Habilitada: true },
     ];
     if (t.toLowerCase() === 'apoyo general') {
-      whereConditions.push({ TipoVoluntariado: 'General', Fecha: f, Habilitada: true });
+      whereConditions.push({
+        TipoVoluntariado: 'General',
+        Fecha: f,
+        Habilitada: true,
+      });
     }
 
     const registro = await this.repo.findOne({
@@ -349,7 +749,11 @@ export class FechasVoluntariadoService {
     }
 
     // Validar horario si el registro tiene horarios configurados
-    if (registro.Horarios && Array.isArray(registro.Horarios) && registro.Horarios.length > 0) {
+    if (
+      registro.Horarios &&
+      Array.isArray(registro.Horarios) &&
+      registro.Horarios.length > 0
+    ) {
       if (horario) {
         const hTrim = horario.trim();
         const coincide = registro.Horarios.some(
