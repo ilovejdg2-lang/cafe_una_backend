@@ -81,4 +81,11 @@ export class SolicitudVoluntariado {
     nullable: true,
   })
   DocumentoAdjunto: string | null;
+
+  @Column({
+    name: 'NotificacionCancelacionEnviada',
+    type: 'boolean',
+    default: false,
+  })
+  NotificacionCancelacionEnviada: boolean;
 }
