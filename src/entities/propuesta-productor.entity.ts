@@ -42,6 +42,13 @@ export class PropuestaProductor {
   @Column({ name: 'EnlaceUbicacion', type: 'varchar', length: 500 })
   EnlaceUbicacion: string;
 
+  /** Coordenadas confirmadas del lugar (no el centro de cámara del mapa). */
+  @Column({ name: 'Latitud', type: 'double precision', nullable: true })
+  Latitud: number | null;
+
+  @Column({ name: 'Longitud', type: 'double precision', nullable: true })
+  Longitud: number | null;
+
   @Column({ name: 'Descripcion', type: 'varchar', length: 2000 })
   Descripcion: string;
 

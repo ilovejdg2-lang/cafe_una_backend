@@ -1,4 +1,9 @@
 import { validarCorreoCliente, validarTelefono } from './cliente-registro.util';
+import {
+  esUrlMapasOWaze,
+  resolverCoordenadasPropuesta,
+  type Coordenadas,
+} from './ubicacion-maps.util';
 
 /**
  * Límite de la descripción del emprendimiento.
@@ -57,6 +62,8 @@ export type PropuestaNormalizada = {
   distrito: string;
   direccion: string;
   enlaceUbicacion: string;
+  latitud: number | null;
+  longitud: number | null;
   descripcion: string;
   facebook: string | null;
   instagram: string | null;
@@ -107,26 +114,21 @@ export function validarEnlaceUbicacion(valor: unknown): string {
   if (raw.length > URL_MAX) {
     throw new Error(`El enlace de ubicación admite como máximo ${URL_MAX} caracteres.`);
   }
-  const url = urlSegura(raw);
-  if (url.protocol !== 'https:') {
-    throw new Error('El enlace de ubicación debe usar HTTPS.');
+  let url: URL;
+  try {
+    url = urlSegura(raw);
+  } catch {
+    throw new Error(
+      'Ese texto no es un enlace válido. Copiá la URL completa desde Google Maps o Waze.',
+    );
   }
-  const host = url.hostname.toLowerCase();
-  const path = url.pathname || '/';
-  const googleMaps =
-    (host === 'google.com' || host === 'www.google.com') &&
-    (path === '/maps' || path.startsWith('/maps/'));
-  const gooGl =
-    host === 'goo.gl' && (path === '/maps' || path.startsWith('/maps/'));
-  const permitido =
-    host === 'maps.google.com' ||
-    host === 'maps.app.goo.gl' ||
-    host === 'waze.com' ||
-    host === 'www.waze.com' ||
-    googleMaps ||
-    gooGl;
-  if (!permitido) {
-    throw new Error('El enlace debe ser de Google Maps o Waze.');
+  if (url.protocol !== 'https:') {
+    throw new Error('El enlace debe empezar con https://');
+  }
+  if (!esUrlMapasOWaze(url)) {
+    throw new Error(
+      'Ese enlace no es de Google Maps ni de Waze. Abrí el lugar, tocá Compartir y pegá ese enlace aquí.',
+    );
   }
   return url.toString();
 }
@@ -245,7 +247,23 @@ export function aceptaTerminos(valor: unknown): true {
 
 export function validarPropuestaEntrada(
   body: Record<string, unknown>,
+  opciones?: {
+    enlaceAnterior?: string | null;
+    latitudAnterior?: number | null;
+    longitudAnterior?: number | null;
+  },
 ): PropuestaNormalizada {
+  const enlaceUbicacion = validarEnlaceUbicacion(
+    body.enlaceUbicacion ?? body.EnlaceUbicacion ?? body.mapsUrl,
+  );
+  const coords: Coordenadas | null = resolverCoordenadasPropuesta({
+    enlaceUbicacion,
+    latitud: body.latitud ?? body.Latitud,
+    longitud: body.longitud ?? body.Longitud,
+    enlaceAnterior: opciones?.enlaceAnterior,
+    latitudAnterior: opciones?.latitudAnterior,
+    longitudAnterior: opciones?.longitudAnterior,
+  });
   return {
     nombre: exigirTexto(
       body.nombre ?? body.Nombre ?? body.nombreEmprendimiento,
@@ -268,9 +286,9 @@ export function validarPropuestaEntrada(
       'La dirección o señas adicionales',
       DIRECCION_MAX,
     ),
-    enlaceUbicacion: validarEnlaceUbicacion(
-      body.enlaceUbicacion ?? body.EnlaceUbicacion ?? body.mapsUrl,
-    ),
+    enlaceUbicacion,
+    latitud: coords?.latitud ?? null,
+    longitud: coords?.longitud ?? null,
     descripcion: validarDescripcion(body.descripcion ?? body.Descripcion),
     facebook: validarRedSocial(
       body.facebook ?? body.Facebook,
