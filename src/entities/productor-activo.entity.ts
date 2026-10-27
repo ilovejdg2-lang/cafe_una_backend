@@ -39,6 +39,12 @@ export class ProductorActivo {
   @Column({ name: 'EnlaceUbicacion', type: 'varchar', length: 500 })
   EnlaceUbicacion: string;
 
+  @Column({ name: 'Latitud', type: 'double precision', nullable: true })
+  Latitud: number | null;
+
+  @Column({ name: 'Longitud', type: 'double precision', nullable: true })
+  Longitud: number | null;
+
   @Column({ name: 'Descripcion', type: 'varchar', length: 2000 })
   Descripcion: string;
 

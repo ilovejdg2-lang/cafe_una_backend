@@ -16,7 +16,12 @@ function origenPermitido(origen?: string): boolean {
     process.env.CORS_ORIGINS?.split(',')
       .map((item) => item.trim())
       .filter(Boolean) ?? [];
-  const fijos = ['http://localhost:5173', 'http://127.0.0.1:5173', ...extra];
+  const fijos = [
+    'http://localhost:5173',
+    'http://127.0.0.1:5173',
+    'https://cafeunaing.netlify.app',
+    ...extra,
+  ];
   if (fijos.includes(origen)) return true;
 
   try {

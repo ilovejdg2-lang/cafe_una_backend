@@ -48,6 +48,18 @@ export class PropuestasProductoresController {
     return this.propuestas.crear(req.user.userId, body, archivo);
   }
 
+  @Post('resolver-ubicacion')
+  @RequierePermiso(
+    'ingresar_propuesta_productor',
+    'ver_solicitudes_propias',
+    'administrar_solicitudes_productores',
+  )
+  resolverUbicacion(@Body() body: Record<string, unknown>) {
+    return this.propuestas.resolverUbicacionEnlace(
+      body?.enlaceUbicacion ?? body?.EnlaceUbicacion ?? body?.enlace,
+    );
+  }
+
   @Get('mias')
   @RequierePermiso('ingresar_propuesta_productor', 'ver_solicitudes_propias')
   listarMias(@Req() req: RequestUsuario) {
