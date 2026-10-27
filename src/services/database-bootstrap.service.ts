@@ -25,6 +25,8 @@ export class DatabaseBootstrapService implements OnModuleInit {
         ALTER TABLE solicitudes_voluntariado
         ADD COLUMN IF NOT EXISTS "TipoIdentificacion" varchar(20) NULL,
         ADD COLUMN IF NOT EXISTS "Nacionalidad" varchar(2) NULL;
+        ALTER TABLE solicitudes_voluntariado
+        ADD COLUMN IF NOT EXISTS "NotificacionCancelacionEnviada" boolean NOT NULL DEFAULT false;
       `);
       await this.dataSource.query(`
         CREATE TABLE IF NOT EXISTS fechas_voluntariado (

@@ -214,6 +214,24 @@ export class EmailService {
     );
   }
 
+  async enviarCancelacionActividadVoluntariado(
+    destinatario: string,
+    datos: {
+      nombre: string;
+      tipoVoluntariado: string;
+      fechaActividad: string;
+      horario?: string | null;
+      orientacion?: string | null;
+    },
+  ): Promise<boolean> {
+    const html = this.buildCancelacionActividadEmail(datos);
+    return this.enviar(
+      destinatario,
+      `Aviso: Cancelación de actividad de voluntariado (${datos.fechaActividad}) - Café UNA`,
+      html,
+    );
+  }
+
   async enviarActualizacionEstadoDonacion(
     destinatario: string,
     datos: {
@@ -929,6 +947,77 @@ export class EmailService {
 </body>
 </html>`;
     }
+  }
+
+  private buildCancelacionActividadEmail(datos: {
+    nombre: string;
+    tipoVoluntariado: string;
+    fechaActividad: string;
+    horario?: string | null;
+    orientacion?: string | null;
+  }): string {
+    const saludo = datos.nombre?.trim()
+      ? `Estimado/a ${this.escapeHtml(datos.nombre)}`
+      : 'Estimado/a participante';
+
+    const orientacionTexto =
+      datos.orientacion?.trim() ||
+      'La actividad programada para esta fecha ha sido cancelada por motivos de logística o mantenimiento de las áreas de trabajo. Su solicitud ha sido actualizada a estado Cancelada y se conserva en su historial. Le invitamos a ingresar nuevamente a nuestro portal para postular en otra fecha disponible que se ajuste a su disponibilidad.';
+
+    return this.plantillaInstitucional({
+      saludo,
+      titulo: 'Cancelación de actividad de voluntariado',
+      cuerpo: `
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#fdf2f4" style="margin:0 0 18px;background-color:#fdf2f4;border:1px solid #f3d0d6;border-radius:6px;">
+          <tr>
+            <td style="padding:16px 20px;border-left:4px solid #C41E3A;">
+              <p style="margin:0 0 4px;font-size:15px;font-weight:700;color:#991b1b;">
+                Aviso importante sobre su voluntariado
+              </p>
+              <p style="margin:0;font-size:14px;line-height:1.6;color:#7f1d1d;">
+                Le informamos que la jornada de voluntariado programada para la fecha <strong>${this.escapeHtml(datos.fechaActividad)}</strong> no se llevará a cabo y ha sido cancelada.
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" bgcolor="#f7f9fc" style="margin:0 0 18px;background-color:#f7f9fc;border:1px solid #dfe6f0;border-radius:6px;">
+          <tr>
+            <td style="padding:18px 22px;">
+              <p style="margin:0 0 8px;font-size:14px;line-height:1.5;color:#3a4a6b;">
+                <strong>Tipo de voluntariado:</strong> ${this.escapeHtml(datos.tipoVoluntariado || 'General')}
+              </p>
+              <p style="margin:0 0 8px;font-size:14px;line-height:1.5;color:#3a4a6b;">
+                <strong>Fecha cancelada:</strong> ${this.escapeHtml(datos.fechaActividad)}
+              </p>
+              ${
+                datos.horario
+                  ? `<p style="margin:0 0 8px;font-size:14px;line-height:1.5;color:#3a4a6b;">
+                      <strong>Horario programado:</strong> ${this.escapeHtml(datos.horario)}
+                    </p>`
+                  : ''
+              }
+              <p style="margin:0;font-size:14px;line-height:1.5;color:#3a4a6b;">
+                <strong>Estado de su solicitud:</strong> <span style="display:inline-block;padding:2px 8px;font-size:12px;font-weight:700;background-color:#f1f5f9;color:#475569;border-radius:4px;">Cancelada</span>
+              </p>
+            </td>
+          </tr>
+        </table>
+
+        <div style="margin:0 0 20px;">
+          <p style="margin:0 0 8px;font-size:14px;font-weight:700;color:#0D1B3E;">
+            Orientación y próximos pasos:
+          </p>
+          <p style="margin:0;font-size:14px;line-height:1.7;color:#3a4a6b;background:#ffffff;padding:12px;border:1px dashed #cbd5e1;border-radius:6px;">
+            ${this.escapeHtml(orientacionTexto)}
+          </p>
+        </div>
+
+        <p style="margin:16px 0 0;font-size:14px;line-height:1.7;color:#3a4a6b;">
+          Agradecemos profundamente su valioso interés en apoyar las iniciativas socioambientales de Café UNA. Puede consultar su historial en su cuenta de cliente en cualquier momento.
+        </p>
+      `,
+    });
   }
 
   private async buildActualizacionDonacionEmail(datos: {
