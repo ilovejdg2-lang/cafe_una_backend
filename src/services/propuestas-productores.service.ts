@@ -21,10 +21,19 @@ import {
   assertTransicionDesdePendiente,
   textoOpcional,
   validarClaveIdempotencia,
+  validarEnlaceUbicacion,
   validarMotivoRechazo,
   validarPropuestaEntrada,
   PropuestaNormalizada,
 } from '../common/propuesta-productor.util';
+import {
+  extraerCoordenadasDeEnlace,
+  exigirCoordenadasEnCostaRica,
+  resolverEnlaceMapas,
+  estaEnCostaRica,
+  MENSAJE_SOLO_COSTA_RICA,
+} from '../common/ubicacion-maps.util';
+import { baseUrlFrontend } from '../common/url-frontend.util';
 import { InformacionFooter } from '../entities/informacion-footer.entity';
 import { ProductorActivo } from '../entities/productor-activo.entity';
 import { PropuestaHistorial } from '../entities/propuesta-historial.entity';
@@ -55,6 +64,8 @@ const CAMPOS_EDITABLES: Array<{
   { dato: 'distrito', columna: 'Distrito', etiqueta: 'distrito' },
   { dato: 'direccion', columna: 'Direccion', etiqueta: 'dirección' },
   { dato: 'enlaceUbicacion', columna: 'EnlaceUbicacion', etiqueta: 'enlace de ubicación' },
+  { dato: 'latitud', columna: 'Latitud', etiqueta: 'latitud' },
+  { dato: 'longitud', columna: 'Longitud', etiqueta: 'longitud' },
   { dato: 'descripcion', columna: 'Descripcion', etiqueta: 'descripción' },
   { dato: 'facebook', columna: 'Facebook', etiqueta: 'Facebook' },
   { dato: 'instagram', columna: 'Instagram', etiqueta: 'Instagram' },
@@ -120,6 +131,12 @@ export class PropuestasProductoresService {
         error instanceof Error ? error.message : 'La propuesta no es válida.',
       );
     }
+    try {
+      datos = await this.asegurarCoordenadasPropuesta(datos);
+    } catch (error) {
+      if (error instanceof BadRequestException) throw error;
+      throw errorValidacion(error, 'No se pudo verificar la ubicación.');
+    }
 
     const previa = await this.repo.findOne({
       where: { UsuarioId: usuarioId, ClaveIdempotencia: clave },
@@ -169,6 +186,8 @@ export class PropuestasProductoresService {
             Distrito: datos.distrito,
             Direccion: datos.direccion,
             EnlaceUbicacion: datos.enlaceUbicacion,
+            Latitud: datos.latitud,
+            Longitud: datos.longitud,
             Descripcion: datos.descripcion,
             Facebook: datos.facebook,
             Instagram: datos.instagram,
@@ -242,6 +261,61 @@ export class PropuestasProductoresService {
       order: { PublicadoEn: 'DESC' },
     });
     return filas.map((fila) => this.vistaPublica(fila));
+  }
+
+  /**
+   * Resuelve un enlace de Maps/Waze a coordenadas confiables.
+   * Solo consulta dominios permitidos; no es un proxy abierto.
+   */
+  async resolverUbicacionEnlace(enlaceRaw: unknown) {
+    let enlace: string;
+    try {
+      enlace = validarEnlaceUbicacion(enlaceRaw);
+    } catch (error) {
+      throw errorValidacion(error, 'El enlace de ubicación no es válido.');
+    }
+    const locales = extraerCoordenadasDeEnlace(enlace);
+    if (locales) {
+      try {
+        const enCr = exigirCoordenadasEnCostaRica(locales);
+        return {
+          enlaceFinal: enlace,
+          latitud: enCr!.latitud,
+          longitud: enCr!.longitud,
+          resuelto: true,
+          fuente: 'enlace' as const,
+        };
+      } catch (error) {
+        throw errorValidacion(error, MENSAJE_SOLO_COSTA_RICA);
+      }
+    }
+    try {
+      const remoto = await resolverEnlaceMapas(enlace);
+      if (remoto.coordenadas) {
+        const enCr = exigirCoordenadasEnCostaRica(remoto.coordenadas);
+        return {
+          enlaceFinal: remoto.enlaceFinal,
+          latitud: enCr!.latitud,
+          longitud: enCr!.longitud,
+          resuelto: true,
+          fuente: 'redireccion' as const,
+        };
+      }
+      return {
+        enlaceFinal: remoto.enlaceFinal,
+        latitud: null,
+        longitud: null,
+        resuelto: false,
+        fuente: null,
+        mensaje:
+          'El enlace es válido, pero no trae el pin exacto (a veces pasa con búsquedas solo por ciudad). Tocá el mapa de Costa Rica para marcar el lugar.',
+      };
+    } catch (error) {
+      throw errorValidacion(
+        error,
+        'No se pudo verificar ese enlace. Revisá que sea de Google Maps o Waze, esté en Costa Rica y esté completo.',
+      );
+    }
   }
 
   async listarAdmin(query: {
@@ -376,29 +450,39 @@ export class PropuestasProductoresService {
       this.exigirAbierta(fila);
       let datos: ReturnType<typeof validarPropuestaEntrada>;
       try {
-        datos = validarPropuestaEntrada({
-          nombre: fila.NombreEmprendimiento,
-          provincia: fila.Provincia,
-          canton: fila.Canton,
-          distrito: fila.Distrito,
-          direccion: fila.Direccion,
-          enlaceUbicacion: fila.EnlaceUbicacion,
-          descripcion: fila.Descripcion,
-          facebook: fila.Facebook,
-          instagram: fila.Instagram,
-          whatsapp: fila.Whatsapp,
-          sitioWeb: fila.SitioWeb,
-          correo: fila.CorreoContacto,
-          telefono: fila.TelefonoContacto,
-          ...body,
-          aceptaTerminos: true,
-        });
+        datos = validarPropuestaEntrada(
+          {
+            nombre: fila.NombreEmprendimiento,
+            provincia: fila.Provincia,
+            canton: fila.Canton,
+            distrito: fila.Distrito,
+            direccion: fila.Direccion,
+            enlaceUbicacion: fila.EnlaceUbicacion,
+            latitud: fila.Latitud,
+            longitud: fila.Longitud,
+            descripcion: fila.Descripcion,
+            facebook: fila.Facebook,
+            instagram: fila.Instagram,
+            whatsapp: fila.Whatsapp,
+            sitioWeb: fila.SitioWeb,
+            correo: fila.CorreoContacto,
+            telefono: fila.TelefonoContacto,
+            ...body,
+            aceptaTerminos: true,
+          },
+          {
+            enlaceAnterior: fila.EnlaceUbicacion,
+            latitudAnterior: fila.Latitud,
+            longitudAnterior: fila.Longitud,
+          },
+        );
       } catch (error) {
         throw errorValidacion(error, 'Los datos de la propuesta no son válidos.');
       }
+      datos = await this.asegurarCoordenadasPropuesta(datos);
       const cambiados: string[] = [];
       for (const campo of CAMPOS_EDITABLES) {
-        const nuevo = datos[campo.dato] as string | null;
+        const nuevo = datos[campo.dato] as string | number | null;
         if ((fila[campo.columna] ?? null) !== (nuevo ?? null)) {
           (fila as unknown as Record<string, unknown>)[campo.columna] = nuevo;
           cambiados.push(campo.etiqueta);
@@ -469,10 +553,18 @@ export class PropuestasProductoresService {
     }
     let datos: PropuestaNormalizada;
     try {
-      datos = validarPropuestaEntrada({ ...body, aceptaTerminos: true });
+      datos = validarPropuestaEntrada(
+        { ...body, aceptaTerminos: true },
+        {
+          enlaceAnterior: fila.EnlaceUbicacion,
+          latitudAnterior: fila.Latitud,
+          longitudAnterior: fila.Longitud,
+        },
+      );
     } catch (error) {
       throw errorValidacion(error, 'Los datos no son válidos.');
     }
+    datos = await this.asegurarCoordenadasPropuesta(datos);
 
     let nombreArchivo = fila.ImagenReferencia;
     let imagenAnteriorParaBorrar: string | null = null;
@@ -489,6 +581,8 @@ export class PropuestasProductoresService {
     fila.Distrito = datos.distrito;
     fila.Direccion = datos.direccion;
     fila.EnlaceUbicacion = datos.enlaceUbicacion;
+    fila.Latitud = datos.latitud;
+    fila.Longitud = datos.longitud;
     fila.Descripcion = datos.descripcion;
     fila.Facebook = datos.facebook;
     fila.Instagram = datos.instagram;
@@ -552,10 +646,18 @@ export class PropuestasProductoresService {
     }
     let datos: PropuestaNormalizada;
     try {
-      datos = validarPropuestaEntrada({ ...body, aceptaTerminos: true });
+      datos = validarPropuestaEntrada(
+        { ...body, aceptaTerminos: true },
+        {
+          enlaceAnterior: fila.EnlaceUbicacion,
+          latitudAnterior: fila.Latitud,
+          longitudAnterior: fila.Longitud,
+        },
+      );
     } catch (error) {
       throw errorValidacion(error, 'Los datos solicitados no son válidos.');
     }
+    datos = await this.asegurarCoordenadasPropuesta(datos);
 
     let nombreArchivo: string | null = null;
     if (archivo?.buffer?.length) {
@@ -658,6 +760,18 @@ export class PropuestasProductoresService {
       if (d.distrito !== undefined) fila.Distrito = String(d.distrito || '');
       if (d.direccion) fila.Direccion = String(d.direccion);
       if (d.enlaceUbicacion) fila.EnlaceUbicacion = String(d.enlaceUbicacion);
+      if (d.latitud !== undefined) {
+        fila.Latitud =
+          d.latitud == null || d.latitud === ''
+            ? null
+            : Number(d.latitud);
+      }
+      if (d.longitud !== undefined) {
+        fila.Longitud =
+          d.longitud == null || d.longitud === ''
+            ? null
+            : Number(d.longitud);
+      }
       if (d.descripcion) fila.Descripcion = String(d.descripcion);
       if (d.facebook !== undefined) fila.Facebook = d.facebook ? String(d.facebook) : null;
       if (d.instagram !== undefined) fila.Instagram = d.instagram ? String(d.instagram) : null;
@@ -780,6 +894,57 @@ export class PropuestasProductoresService {
     );
 
     return this.detalleAdmin(fila);
+  }
+
+  /**
+   * Si el formulario no mandó pin, intenta leerlo del enlace.
+   * Sin coordenadas en Costa Rica no se acepta la propuesta.
+   */
+  private async asegurarCoordenadasPropuesta(
+    datos: PropuestaNormalizada,
+  ): Promise<PropuestaNormalizada> {
+    if (
+      datos.latitud != null &&
+      datos.longitud != null &&
+      estaEnCostaRica(datos.latitud, datos.longitud)
+    ) {
+      return datos;
+    }
+
+    const locales = extraerCoordenadasDeEnlace(datos.enlaceUbicacion);
+    if (locales && estaEnCostaRica(locales.latitud, locales.longitud)) {
+      return {
+        ...datos,
+        latitud: locales.latitud,
+        longitud: locales.longitud,
+      };
+    }
+
+    try {
+      const remoto = await resolverEnlaceMapas(datos.enlaceUbicacion);
+      if (
+        remoto.coordenadas &&
+        estaEnCostaRica(
+          remoto.coordenadas.latitud,
+          remoto.coordenadas.longitud,
+        )
+      ) {
+        return {
+          ...datos,
+          latitud: remoto.coordenadas.latitud,
+          longitud: remoto.coordenadas.longitud,
+        };
+      }
+    } catch (error) {
+      throw errorValidacion(
+        error,
+        'No se pudo verificar el enlace de ubicación. Revisá que sea de Google Maps o Waze.',
+      );
+    }
+
+    throw new BadRequestException(
+      'No pudimos leer un punto exacto en Costa Rica. En Google Maps abrí el lugar en CR, tocá Compartir y copiá el enlace del pin, o confirmá el punto en el mapa del formulario.',
+    );
   }
 
   private async registrarHistorialSimple(
@@ -916,6 +1081,8 @@ export class PropuestasProductoresService {
       Distrito: fila.Distrito,
       Direccion: fila.Direccion,
       EnlaceUbicacion: fila.EnlaceUbicacion,
+      Latitud: fila.Latitud,
+      Longitud: fila.Longitud,
       Descripcion: fila.Descripcion,
       Facebook: fila.Facebook,
       Instagram: fila.Instagram,
@@ -995,11 +1162,7 @@ export class PropuestasProductoresService {
   }
 
   private baseFrontend(): string {
-    const base =
-      this.config.get<string>('FRONTEND_URL')?.trim() ||
-      this.config.get<string>('CORS_ORIGINS')?.split(',')[0]?.trim() ||
-      'http://localhost:5173';
-    return base.replace(/\/$/, '');
+    return baseUrlFrontend(this.config);
   }
 
   private async nombreUsuario(id: number | null | undefined): Promise<string | null> {
@@ -1059,6 +1222,8 @@ export class PropuestasProductoresService {
       distrito: fila.Distrito,
       senas: fila.Direccion,
       enlaceUbicacion: fila.EnlaceUbicacion,
+      latitud: fila.Latitud,
+      longitud: fila.Longitud,
       facebook: fila.Facebook,
       instagram: fila.Instagram,
       whatsapp: fila.Whatsapp,
@@ -1097,6 +1262,8 @@ export class PropuestasProductoresService {
       distrito: fila.Distrito,
       senas: fila.Direccion,
       enlaceUbicacion: fila.EnlaceUbicacion,
+      latitud: fila.Latitud,
+      longitud: fila.Longitud,
       descripcion: fila.Descripcion,
       facebook: fila.Facebook,
       instagram: fila.Instagram,
@@ -1132,6 +1299,8 @@ export class PropuestasProductoresService {
       distrito: fila.Distrito,
       senas: fila.Direccion,
       enlaceUbicacion: fila.EnlaceUbicacion,
+      latitud: fila.Latitud,
+      longitud: fila.Longitud,
       descripcion: fila.Descripcion,
       facebook: fila.Facebook,
       instagram: fila.Instagram,

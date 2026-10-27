@@ -10,6 +10,7 @@ import {
 } from '../common/cliente-registro.util';
 import { EmailService } from '../common/email.service';
 import { MENSAJE_CORREO_NO_ENVIADO } from '../common/respuesta-verificacion';
+import { baseUrlFrontend } from '../common/url-frontend.util';
 import {
   codigoVerificacionValido,
   expiraEnUtcDesdeAhora,
@@ -203,11 +204,7 @@ export class AuthService {
       }),
     );
 
-    const frontBase = (
-      this.config.get<string>('FRONTEND_URL') ||
-      this.config.get<string>('CORS_ORIGINS')?.split(',')[0] ||
-      'http://localhost:5173'
-    ).replace(/\/$/, '');
+    const frontBase = baseUrlFrontend(this.config);
     const enlace = esCliente
       ? `${frontBase}/verificar-cuenta?correo=${encodeURIComponent(correo)}&token=${encodeURIComponent(token)}`
       : undefined;

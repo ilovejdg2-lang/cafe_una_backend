@@ -57,8 +57,11 @@ describe('propuesta de productor', () => {
     expect(validarEnlaceUbicacion('https://waze.com/ul/abc')).toContain('waze.com');
     expect(() =>
       validarEnlaceUbicacion('https://maps.google.com.ejemplo.com/maps'),
-    ).toThrow(/Google Maps o Waze/);
+    ).toThrow(/Google Maps ni de Waze|Google Maps o Waze/);
     expect(() => validarEnlaceUbicacion('javascript:alert(1)')).toThrow();
+    expect(
+      validarEnlaceUbicacion('https://www.google.co.cr/maps/place/Cafe'),
+    ).toContain('google.co.cr/maps');
   });
 
   it('no exige redes vacías y rechaza javascript o un sitio sin host', () => {

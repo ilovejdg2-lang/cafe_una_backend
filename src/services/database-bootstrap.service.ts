@@ -2,6 +2,10 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { DataSource } from 'typeorm';
 import { resumenPostgres } from '../config/postgres.config';
+import {
+  extraerCoordenadasDeEnlace,
+  resolverEnlaceMapas,
+} from '../common/ubicacion-maps.util';
 
 @Injectable()
 export class DatabaseBootstrapService implements OnModuleInit {
@@ -1692,7 +1696,9 @@ export class DatabaseBootstrapService implements OnModuleInit {
         ADD COLUMN IF NOT EXISTS "Sugerencias" varchar(1000) NULL,
         ADD COLUMN IF NOT EXISTS "NotaInterna" varchar(2000) NULL,
         ADD COLUMN IF NOT EXISTS "SolicitudEdicion" jsonb NULL,
-        ADD COLUMN IF NOT EXISTS "SolicitudEliminacion" jsonb NULL;
+        ADD COLUMN IF NOT EXISTS "SolicitudEliminacion" jsonb NULL,
+        ADD COLUMN IF NOT EXISTS "Latitud" double precision NULL,
+        ADD COLUMN IF NOT EXISTS "Longitud" double precision NULL;
       ALTER TABLE propuestas_productores
         DROP CONSTRAINT IF EXISTS "CK_propuestas_productores_estado";
       ALTER TABLE propuestas_productores
@@ -1724,6 +1730,9 @@ export class DatabaseBootstrapService implements OnModuleInit {
         CONSTRAINT "FK_productores_activos_propuesta"
           FOREIGN KEY ("PropuestaId") REFERENCES propuestas_productores ("Id") ON DELETE CASCADE
       );
+      ALTER TABLE productores_activos
+        ADD COLUMN IF NOT EXISTS "Latitud" double precision NULL,
+        ADD COLUMN IF NOT EXISTS "Longitud" double precision NULL;
 
       CREATE TABLE IF NOT EXISTS propuestas_productores_historial (
         "Id" serial PRIMARY KEY,
@@ -1758,6 +1767,54 @@ export class DatabaseBootstrapService implements OnModuleInit {
       WHERE "Estado" = 'Aprobada'
       ON CONFLICT ("PropuestaId") DO NOTHING;
     `);
+
+    await this.rellenarCoordenadasProductoresDesdeEnlace();
+  }
+
+  /** Solo completa lat/lng cuando el enlace ya trae un pin confiable; no inventa puntos. */
+  private async rellenarCoordenadasProductoresDesdeEnlace(): Promise<void> {
+    const filas = (await this.dataSource.query(`
+      SELECT "Id", "EnlaceUbicacion"
+      FROM propuestas_productores
+      WHERE "Latitud" IS NULL
+        AND "Longitud" IS NULL
+        AND COALESCE("EnlaceUbicacion", '') <> ''
+      ORDER BY "Id" ASC
+      LIMIT 40
+    `)) as Array<{ Id: string; EnlaceUbicacion: string }>;
+
+    for (const fila of filas) {
+      let coords = extraerCoordenadasDeEnlace(fila.EnlaceUbicacion);
+      if (!coords) {
+        try {
+          const remoto = await resolverEnlaceMapas(fila.EnlaceUbicacion);
+          coords = remoto.coordenadas;
+        } catch (error) {
+          this.logger.warn(
+            `No se resolvió ubicación de propuesta ${fila.Id}: ${
+              error instanceof Error ? error.message : 'error'
+            }`,
+          );
+        }
+      }
+      if (!coords) continue;
+      await this.dataSource.query(
+        `
+        UPDATE propuestas_productores
+        SET "Latitud" = $1, "Longitud" = $2
+        WHERE "Id" = $3 AND "Latitud" IS NULL AND "Longitud" IS NULL
+      `,
+        [coords.latitud, coords.longitud, fila.Id],
+      );
+      await this.dataSource.query(
+        `
+        UPDATE productores_activos
+        SET "Latitud" = $1, "Longitud" = $2
+        WHERE "PropuestaId" = $3 AND "Latitud" IS NULL AND "Longitud" IS NULL
+      `,
+        [coords.latitud, coords.longitud, fila.Id],
+      );
+    }
   }
 
   private async asegurarFaqInicio(): Promise<void> {
