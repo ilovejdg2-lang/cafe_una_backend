@@ -53,15 +53,53 @@ export class PropuestaImagenStorage {
       const buffer = await readFile(absoluto);
       return { buffer, mime: this.mime(nombre) };
     }
-    if (this.supabase.estaHabilitado()) {
-      const nube = await this.supabase.descargarBuffer(this.claveNube(nombre));
-      if (nube) return { buffer: nube, mime: this.mime(nombre) };
+    const desdeNube = await this.leerDesdeNube(nombre);
+    if (desdeNube) {
+      await this.cacheLocal(nombre, desdeNube.buffer);
+      return desdeNube;
     }
     return null;
   }
 
+  /** URL pública (CDN) cuando el archivo está en Supabase Storage. */
+  urlPublica(nombre: string): string | null {
+    if (!this.nombreSeguro(nombre) || !this.supabase.estaHabilitado()) return null;
+    return this.supabase.obtenerUrlPublica(this.claveNube(nombre));
+  }
+
   validar(buffer: Buffer): ImagenDetectada {
     return detectarImagenReal(buffer);
+  }
+
+  private async leerDesdeNube(
+    nombre: string,
+  ): Promise<{ buffer: Buffer; mime: string } | null> {
+    if (!this.supabase.estaHabilitado()) return null;
+    const clave = this.claveNube(nombre);
+    const nube = await this.supabase.descargarBuffer(clave);
+    if (nube?.length) return { buffer: nube, mime: this.mime(nombre) };
+
+    const publica = this.supabase.obtenerUrlPublica(clave);
+    if (!publica) return null;
+    try {
+      const respuesta = await fetch(publica);
+      if (!respuesta.ok) return null;
+      const buffer = Buffer.from(await respuesta.arrayBuffer());
+      if (!buffer.length) return null;
+      return { buffer, mime: this.mime(nombre) };
+    } catch (error) {
+      this.logger.warn(`No se pudo leer la imagen pública ${nombre}: ${error}`);
+      return null;
+    }
+  }
+
+  private async cacheLocal(nombre: string, buffer: Buffer): Promise<void> {
+    try {
+      if (!existsSync(DIRECTORIO)) mkdirSync(DIRECTORIO, { recursive: true });
+      await writeFile(join(DIRECTORIO, nombre), buffer);
+    } catch (error) {
+      this.logger.warn(`No se pudo cachear la imagen local ${nombre}: ${error}`);
+    }
   }
 
   private claveNube(nombre: string): string {
