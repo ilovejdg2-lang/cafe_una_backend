@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, In, Repository } from 'typeorm';
 import { getAuditoriaUserId } from '../common/auditoria-context';
+import { calcularStockDisponible } from '../common/inventario-stock.util';
 import { Auditoria } from '../entities/auditoria.entity';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
@@ -90,6 +91,7 @@ export type InventoryLocationStockResponse = {
   productId: string;
   locationCode: string;
   stock: number;
+  reservedStock: number;
   provisioned: boolean;
 };
 
@@ -216,6 +218,12 @@ export class InventarioService {
         );
       }
 
+      const stockReservado = Number(balance.StockReservado) || 0;
+      if (validatedStock < stockReservado) {
+        throw new BadRequestException(
+          `El stock no puede quedar por debajo de las ${stockReservado} unidades reservadas.`,
+        );
+      }
       balance.Stock = validatedStock;
       product.Stock = validatedStock;
       if (validatedStock === 0) product.EsDestacado = false;
@@ -411,7 +419,11 @@ export class InventarioService {
           lock: { mode: 'pessimistic_write' },
         },
       );
-      const disponible = Number(saldoOrigen?.Stock) || 0;
+      const stockFisico = Number(saldoOrigen?.Stock) || 0;
+      const disponible = calcularStockDisponible(
+        stockFisico,
+        saldoOrigen?.StockReservado,
+      );
       if (!saldoOrigen || disponible < cantidad) {
         throw new BadRequestException(
           `No hay stock suficiente en Bodega Central. Disponible: ${disponible}.`,
@@ -433,7 +445,7 @@ export class InventarioService {
         });
       }
 
-      saldoOrigen.Stock = disponible - cantidad;
+      saldoOrigen.Stock = stockFisico - cantidad;
       saldoDestino.Stock = (Number(saldoDestino.Stock) || 0) + cantidad;
       producto.Stock = saldoOrigen.Stock;
       if (producto.Stock <= 0) producto.EsDestacado = false;
@@ -582,16 +594,22 @@ export class InventarioService {
         },
       );
       if (!balance) {
-        throw new NotFoundException('El balance de Bodega Central no está inicializado.');
+        throw new NotFoundException(
+          'El balance de Bodega Central no está inicializado.',
+        );
       }
-      const disponible = Number(balance.Stock) || 0;
+      const stockFisico = Number(balance.Stock) || 0;
+      const disponible = calcularStockDisponible(
+        stockFisico,
+        balance.StockReservado,
+      );
       if (disponible < cantidad) {
         throw new BadRequestException(
           `No hay stock suficiente en Bodega Central. Disponible: ${disponible}.`,
         );
       }
 
-      balance.Stock = disponible - cantidad;
+      balance.Stock = stockFisico - cantidad;
       producto.Stock = balance.Stock;
       if (producto.Stock <= 0) producto.EsDestacado = false;
       await queryRunner.manager.save(balance);
@@ -992,6 +1010,7 @@ export class InventarioService {
       productId,
       locationCode: code,
       stock: balance?.Stock ?? 0,
+      reservedStock: Math.max(0, Number(balance?.StockReservado) || 0),
       provisioned: Boolean(balance),
     };
   }
@@ -1088,6 +1107,7 @@ export class InventarioService {
         productId: String(product.Id),
         locationCode: code,
         stock: balance?.Stock ?? 0,
+        reservedStock: Math.max(0, Number(balance?.StockReservado) || 0),
         provisioned: Boolean(balance),
       };
     });

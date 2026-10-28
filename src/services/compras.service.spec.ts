@@ -1,4 +1,9 @@
 import { ForbiddenException, NotFoundException } from '@nestjs/common';
+import { Compra } from '../entities/compra.entity';
+import { CompraItem } from '../entities/compra-item.entity';
+import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
+import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
+import { Producto } from '../entities/producto.entity';
 import { ComprasService } from './compras.service';
 
 describe('ComprasService historial', () => {
@@ -10,6 +15,7 @@ describe('ComprasService historial', () => {
   };
   const manager = {
     findOne: jest.fn(),
+    find: jest.fn(),
     create: jest.fn((_entity, row) => row),
     save: jest.fn(),
   };
@@ -38,6 +44,54 @@ describe('ComprasService historial', () => {
       dataSource as never,
       clientesService as never,
     );
+  });
+
+  it('does not let a web purchase consume central stock reserved for pending exits', async () => {
+    const compra = {
+      Id: 21,
+      Numero: 'C-21',
+      Estado: 'Pendiente',
+      UbicacionId: null,
+      ComprobanteArchivo: null,
+      UsuarioId: null,
+    };
+    const item = {
+      CompraId: 21,
+      ProductoId: '101',
+      Cantidad: 5,
+      Nombre: 'Café',
+    };
+    const product = { Id: '101', Nombre: 'Café', Stock: 10 };
+    const balance = {
+      ProductoId: '101',
+      UbicacionId: 1,
+      Stock: 10,
+      StockReservado: 7,
+    };
+    manager.findOne.mockImplementation(async (entity: unknown) => {
+      if (entity === Compra) return compra;
+      if (entity === InventarioUbicacion) {
+        return { Id: 1, Codigo: 'BODEGA_CENTRAL', Nombre: 'Bodega Central' };
+      }
+      if (entity === Producto) return product;
+      if (entity === InventarioStockUbicacion) return balance;
+      return null;
+    });
+    manager.find.mockResolvedValue([item]);
+    comprasRepository.findOne.mockResolvedValue({
+      ...compra,
+      Estado: 'Aceptado',
+      Items: [item],
+    });
+
+    await expect(service.cambiarEstado(21, 'Aceptado')).rejects.toThrow(
+      /stock suficiente/i,
+    );
+
+    expect(balance.Stock).toBe(10);
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
   });
 
   it('registers a completed purchase with items', async () => {
@@ -127,7 +181,9 @@ describe('ComprasService historial', () => {
     };
     comprasRepository.createQueryBuilder.mockReturnValue(qb);
 
-    await expect(service.listarPropias(22, { page: '1', pageSize: '10' })).resolves.toEqual({
+    await expect(
+      service.listarPropias(22, { page: '1', pageSize: '10' }),
+    ).resolves.toEqual({
       data: [],
       page: 1,
       pageSize: 10,
@@ -137,7 +193,9 @@ describe('ComprasService historial', () => {
   });
 
   it('rejects listarPropias without a valid usuarioId', async () => {
-    await expect(service.listarPropias(0, {})).rejects.toBeInstanceOf(ForbiddenException);
+    await expect(service.listarPropias(0, {})).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
     await expect(service.listarPropias(Number.NaN, {})).rejects.toBeInstanceOf(
       ForbiddenException,
     );
@@ -195,10 +253,13 @@ describe('ComprasService historial', () => {
       asignaciones as never,
     );
 
-    await conAsignaciones.listarParaActor({ estado: 'Pendiente' }, {
-      userId: 7,
-      roles: ['Vendedor'],
-    });
+    await conAsignaciones.listarParaActor(
+      { estado: 'Pendiente' },
+      {
+        userId: 7,
+        roles: ['Vendedor'],
+      },
+    );
 
     expect(asignaciones.idsUbicacionesActivas).toHaveBeenCalledWith(7);
     expect(qb.andWhere).toHaveBeenCalledWith(
@@ -250,7 +311,10 @@ describe('ComprasService historial', () => {
     };
     comprasRepository.createQueryBuilder.mockReturnValue(qb);
 
-    const result = await service.listarPropias(22, { page: '2', pageSize: '2' });
+    const result = await service.listarPropias(22, {
+      page: '2',
+      pageSize: '2',
+    });
     expect(result.data).toHaveLength(2);
     expect(result.total).toBe(5);
     expect(result.totalPages).toBe(3);
@@ -282,10 +346,9 @@ describe('ComprasService historial', () => {
       '(compra.Numero ILIKE :q OR compra.ClienteNombre ILIKE :q OR compra.ClienteCorreo ILIKE :q)',
       { q: '%C-100%' },
     );
-    expect(qb.andWhere).toHaveBeenCalledWith(
-      'compra.Estado IN (:...estados)',
-      { estados: ['Entregado', 'Enviado', 'Enviada', 'Recibido', 'Pagado'] },
-    );
+    expect(qb.andWhere).toHaveBeenCalledWith('compra.Estado IN (:...estados)', {
+      estados: ['Entregado', 'Enviado', 'Enviada', 'Recibido', 'Pagado'],
+    });
   });
 
   it('returns purchase detail for the owner', async () => {
