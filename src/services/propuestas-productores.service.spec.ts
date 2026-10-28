@@ -75,7 +75,13 @@ describe('PropuestasProductoresService', () => {
         },
         {
           provide: PropuestaImagenStorage,
-          useValue: { guardar, eliminar, validar: jest.fn().mockReturnValue({ extension: '.jpg', mime: 'image/jpeg' }), leer: jest.fn() },
+          useValue: {
+            guardar,
+            eliminar,
+            validar: jest.fn().mockReturnValue({ extension: '.jpg', mime: 'image/jpeg' }),
+            leer: jest.fn(),
+            urlPublica: jest.fn().mockReturnValue(null),
+          },
         },
         {
           provide: NotificacionesPropuestasService,

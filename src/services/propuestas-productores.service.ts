@@ -1207,7 +1207,13 @@ export class PropuestasProductoresService {
   }
 
   private imagenUrl(nombre: string) {
-    return `/api/productores/imagenes/${nombre}`;
+    const archivo = String(nombre || '').trim();
+    if (!archivo) return '';
+    // Preferir CDN de Supabase para que el front desplegado (Netlify)
+    // no dependa del disco efímero del backend en Render.
+    const cdn = this.imagenes.urlPublica(archivo);
+    if (cdn) return cdn;
+    return `/api/productores/imagenes/${archivo}`;
   }
 
   private vistaPublica(fila: ProductorActivo) {
