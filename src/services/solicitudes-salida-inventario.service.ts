@@ -504,15 +504,15 @@ export class SolicitudesSalidaInventarioService {
     responsable: string;
     items: ItemNormalizado[];
   } {
-    const tipo = String(input?.tipo ?? '')
-      .trim()
-      .toLowerCase();
+    const tipo =
+      typeof input?.tipo === 'string' ? input.tipo.trim().toLowerCase() : '';
     if (tipo !== 'donacion' && tipo !== 'regalia') {
       throw new BadRequestException(
         'El tipo de salida debe ser donacion o regalia.',
       );
     }
-    const fechaSalida = String(input?.fechaSalida ?? '').trim();
+    const fechaSalida =
+      typeof input?.fechaSalida === 'string' ? input.fechaSalida.trim() : '';
     const fechaParseada = new Date(`${fechaSalida}T00:00:00.000Z`);
     if (
       !/^\d{4}-\d{2}-\d{2}$/.test(fechaSalida) ||
@@ -523,8 +523,10 @@ export class SolicitudesSalidaInventarioService {
         'La fecha de salida debe tener formato YYYY-MM-DD.',
       );
     }
-    const destinatario = String(input?.destinatario ?? '').trim();
-    const responsable = String(input?.responsable ?? '').trim();
+    const destinatario =
+      typeof input?.destinatario === 'string' ? input.destinatario.trim() : '';
+    const responsable =
+      typeof input?.responsable === 'string' ? input.responsable.trim() : '';
     if (!destinatario || destinatario.length > 200) {
       throw new BadRequestException(
         'El destinatario es obligatorio y no puede superar 200 caracteres.',
@@ -545,7 +547,12 @@ export class SolicitudesSalidaInventarioService {
     }
 
     const items = (input.items as ItemSolicitudSalidaInput[]).map((item) => {
-      const productoId = String(item?.productoId ?? '').trim();
+      const productoIdInput = item?.productoId;
+      const productoId =
+        typeof productoIdInput === 'string' ||
+        typeof productoIdInput === 'number'
+          ? String(productoIdInput).trim()
+          : '';
       const cantidad = Number(item?.cantidad);
       if (
         !/^\d+$/.test(productoId) ||

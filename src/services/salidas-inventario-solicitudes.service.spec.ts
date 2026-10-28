@@ -164,6 +164,34 @@ describe('SolicitudesSalidaInventarioService', () => {
     expect(dataSource.transaction).not.toHaveBeenCalled();
   });
 
+  it.each([
+    ['type', { tipo: { value: 'donacion' } }],
+    ['date', { fechaSalida: { value: '2026-10-27' } }],
+    ['recipient', { destinatario: { value: 'Library' } }],
+    ['responsible person', { responsable: { value: 'Brayan' } }],
+    [
+      'product identifier',
+      { items: [{ productoId: { value: '10' }, cantidad: 1 }] },
+    ],
+  ])('rejects object-valued %s before opening a stock transaction', async (_field, override) => {
+    const dataSource = { transaction: jest.fn() } as unknown as DataSource;
+    const service = new SolicitudesSalidaInventarioService(
+      dataSource,
+      { verificarTrasMovimiento: jest.fn() } as unknown as StockAlertaService,
+    );
+    const input = {
+      tipo: 'donacion',
+      fechaSalida: '2026-10-27',
+      destinatario: 'Biblioteca comunal',
+      responsable: 'Brayan Pérez',
+      items: [{ productoId: '10', cantidad: 1 }],
+      ...override,
+    } as Parameters<typeof service.crearSolicitud>[0];
+
+    await expect(service.crearSolicitud(input, 7)).rejects.toThrow();
+    expect(dataSource.transaction).not.toHaveBeenCalled();
+  });
+
   it.each(['aprobar', 'rechazar', 'cancelar'])(
     'allows only SuperAdmin to %s a request',
     async (action) => {
