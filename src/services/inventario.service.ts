@@ -579,7 +579,13 @@ export class InventarioService {
       const motivo = await queryRunner.manager.findOne(MotivoSalida, {
         where: { Id: motivoSalidaId },
       });
-      if (!motivo) throw new BadRequestException('El motivo de salida no existe.');
+      if (!motivo)
+        throw new BadRequestException('El motivo de salida no existe.');
+      if (['Donación', 'Regalía'].includes(motivo.Nombre)) {
+        throw new BadRequestException(
+          'Las salidas por Donación o Regalía requieren una solicitud de aprobación.',
+        );
+      }
       if (['Donación', 'Traslado'].includes(motivo.Nombre) && !destinatario) {
         throw new BadRequestException(
           'El destinatario es obligatorio para Donación y Traslado.',

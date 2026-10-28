@@ -38,7 +38,12 @@ export class MovimientoInventario {
   @JoinColumn({ name: 'MotivoSalidaId', referencedColumnName: 'Id' })
   MotivoSalida?: MotivoSalida | null;
 
-  @Column({ name: 'Destinatario', type: 'varchar', length: 200, nullable: true })
+  @Column({
+    name: 'Destinatario',
+    type: 'varchar',
+    length: 200,
+    nullable: true,
+  })
   Destinatario: string | null;
 
   /** Nombre legible (columna legacy NOT NULL en Supabase). */
@@ -62,6 +67,9 @@ export class MovimientoInventario {
   @Column({ name: 'SolicitudId', type: 'bigint', nullable: true })
   SolicitudId: string | null;
 
+  @Column({ name: 'SolicitudSalidaId', type: 'bigint', nullable: true })
+  SolicitudSalidaId: string | null;
+
   @ManyToOne(() => SolicitudCompra, { onDelete: 'SET NULL', nullable: true })
   @JoinColumn({ name: 'SolicitudId', referencedColumnName: 'Id' })
   Solicitud?: SolicitudCompra | null;
@@ -72,14 +80,20 @@ export class MovimientoInventario {
   @Column({ name: 'UbicacionOrigenId', type: 'integer', nullable: true })
   UbicacionOrigenId: number | null;
 
-  @ManyToOne(() => InventarioUbicacion, { onDelete: 'SET NULL', nullable: true })
+  @ManyToOne(() => InventarioUbicacion, {
+    onDelete: 'SET NULL',
+    nullable: true,
+  })
   @JoinColumn({ name: 'UbicacionOrigenId', referencedColumnName: 'Id' })
   Origen?: InventarioUbicacion | null;
 
   @Column({ name: 'UbicacionDestinoId', type: 'integer', nullable: true })
   UbicacionDestinoId: number | null;
 
-  @ManyToOne(() => InventarioUbicacion, { onDelete: 'SET NULL', nullable: true })
+  @ManyToOne(() => InventarioUbicacion, {
+    onDelete: 'SET NULL',
+    nullable: true,
+  })
   @JoinColumn({ name: 'UbicacionDestinoId', referencedColumnName: 'Id' })
   Destino?: InventarioUbicacion | null;
 
