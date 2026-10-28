@@ -16,10 +16,16 @@ describe('InventarioService.registrarSalida', () => {
   const locationsRepository = { find: jest.fn(), findOne: jest.fn() };
   const stockRepository = { find: jest.fn(), findOne: jest.fn() };
   const productsRepository = { find: jest.fn(), findOne: jest.fn() };
-  const balance = { Id: '5', ProductoId: '101', UbicacionId: 1, Stock: 8 };
+  const balance = {
+    Id: '5',
+    ProductoId: '101',
+    UbicacionId: 1,
+    Stock: 8,
+    StockReservado: 0,
+  };
   const product = { Id: '101', Nombre: 'Café de altura', Stock: 8 };
   const central = { Id: 1, Codigo: 'BODEGA_CENTRAL', Nombre: 'Bodega Central' };
-  const reason = { Id: 2, Nombre: 'Donación' };
+  const reason = { Id: 1, Nombre: 'Venta' };
   const manager = {
     findOne: jest.fn(),
     create: jest.fn((_entity: unknown, row: Record<string, unknown>) => row),
@@ -68,16 +74,16 @@ describe('InventarioService.registrarSalida', () => {
         {
           productoId: '101',
           cantidad: 3,
-          motivoSalidaId: 2,
-          destinatario: 'Fundación Café UNA',
+          motivoSalidaId: 1,
+          destinatario: 'Punto de venta',
         },
         44,
       ),
     ).resolves.toMatchObject({
       productoId: '101',
       cantidad: 3,
-      motivoSalidaId: 2,
-      destinatario: 'Fundación Café UNA',
+      motivoSalidaId: 1,
+      destinatario: 'Punto de venta',
       stockRestante: 5,
     });
 
@@ -89,8 +95,8 @@ describe('InventarioService.registrarSalida', () => {
         Tipo: 'salida_bodega',
         ProductoId: '101',
         Cantidad: 3,
-        MotivoSalidaId: 2,
-        Destinatario: 'Fundación Café UNA',
+        MotivoSalidaId: 1,
+        Destinatario: 'Punto de venta',
         ResponsableId: 44,
       }),
     );
@@ -109,16 +115,16 @@ describe('InventarioService.registrarSalida', () => {
         {
           productoId: '101',
           cantidad: 2,
-          motivoSalidaId: 2,
-          destinatario: 'Fundación Café UNA',
+          motivoSalidaId: 1,
+          destinatario: 'Punto de venta',
         },
         44,
       ),
     ).resolves.toMatchObject({
       productoId: '101',
       cantidad: 2,
-      motivoSalidaId: 2,
-      destinatario: 'Fundación Café UNA',
+      motivoSalidaId: 1,
+      destinatario: 'Punto de venta',
       stockRestante: 6,
     });
 
@@ -129,10 +135,33 @@ describe('InventarioService.registrarSalida', () => {
     expect(stockAlerts.verificarTrasMovimiento).toHaveBeenCalledWith('101');
   });
 
+  it.each([['Traslado', 3]])(
+    'requires a recipient for %s',
+    async (name, reasonId) => {
+      manager.findOne.mockImplementation(async (entity: unknown) => {
+        if (entity === InventarioUbicacion) return central;
+        if (entity === Producto) return product;
+        if (entity === InventarioStockUbicacion) return balance;
+        if (entity === Usuario) return null;
+        return { Id: reasonId, Nombre: name };
+      });
+
+      await expect(
+        service.registrarSalida(
+          { productoId: '101', cantidad: 1, motivoSalidaId: reasonId },
+          44,
+        ),
+      ).rejects.toThrow(/destinatario/i);
+
+      expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+      expect(manager.save).not.toHaveBeenCalled();
+    },
+  );
+
   it.each([
     ['Donación', 2],
-    ['Traslado', 3],
-  ])('requires a recipient for %s', async (name, reasonId) => {
+    ['Regalía', 5],
+  ])('requires the approval workflow for %s exits', async (name, reasonId) => {
     manager.findOne.mockImplementation(async (entity: unknown) => {
       if (entity === InventarioUbicacion) return central;
       if (entity === Producto) return product;
@@ -143,13 +172,18 @@ describe('InventarioService.registrarSalida', () => {
 
     await expect(
       service.registrarSalida(
-        { productoId: '101', cantidad: 1, motivoSalidaId: reasonId },
+        {
+          productoId: '101',
+          cantidad: 1,
+          motivoSalidaId: reasonId,
+          destinatario: 'Fundación Café UNA',
+        },
         44,
       ),
-    ).rejects.toThrow(/destinatario/i);
+    ).rejects.toThrow(/solicitud de aprobación/i);
 
-    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
     expect(manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
   });
 
   it('rejects an unknown reason without changing stock', async () => {
@@ -270,9 +304,7 @@ describe('InventarioService.registrarSalida', () => {
       { createQueryBuilder: jest.fn() } as never,
       { getRepository } as unknown as DataSource,
       stockAlerts as never,
-    ) as unknown as SalidaInventarioApi & {
-      listarMotivosSalida(): Promise<Array<{ id: number; nombre: string }>>;
-    };
+    );
 
     await expect(service.listarMotivosSalida()).resolves.toEqual([
       { id: 1, nombre: 'Venta' },

@@ -5,6 +5,7 @@ import { UbicacionImagenesController } from '../controllers/ubicacion-imagenes.c
 import { MovimientosController } from '../controllers/movimientos.controller';
 import { TransferenciasController } from '../controllers/transferencias.controller';
 import { VentasPresencialesController } from '../controllers/ventas-presenciales.controller';
+import { SolicitudesSalidaInventarioController } from '../controllers/solicitudes-salida-inventario.controller';
 import {
   Compra,
   CompraItem,
@@ -15,11 +16,15 @@ import {
   Producto,
   Transferencia,
   Usuario,
+  SolicitudSalidaInventario,
+  SolicitudSalidaInventarioItem,
+  AuditoriaSolicitudSalidaInventario,
 } from '../entities';
 import { InventarioService } from '../services/inventario.service';
 import { MovimientosService } from '../services/movimientos.service';
 import { StockAlertaService } from '../services/stock-alerta.service';
 import { VentasPresencialesService } from '../services/ventas-presenciales.service';
+import { SolicitudesSalidaInventarioService } from '../services/solicitudes-salida-inventario.service';
 import { AuthModule } from './auth.module';
 import { AsignacionesPuntoVentaModule } from './asignaciones-punto-venta.module';
 
@@ -35,6 +40,9 @@ import { AsignacionesPuntoVentaModule } from './asignaciones-punto-venta.module'
       MotivoSalida,
       Compra,
       CompraItem,
+      SolicitudSalidaInventario,
+      SolicitudSalidaInventarioItem,
+      AuditoriaSolicitudSalidaInventario,
     ]),
     AuthModule,
     AsignacionesPuntoVentaModule,
@@ -45,12 +53,14 @@ import { AsignacionesPuntoVentaModule } from './asignaciones-punto-venta.module'
     MovimientosController,
     TransferenciasController,
     VentasPresencialesController,
+    SolicitudesSalidaInventarioController,
   ],
   providers: [
     InventarioService,
     MovimientosService,
     StockAlertaService,
     VentasPresencialesService,
+    SolicitudesSalidaInventarioService,
   ],
   exports: [
     InventarioService,
