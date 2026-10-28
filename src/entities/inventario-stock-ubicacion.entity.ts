@@ -11,11 +11,12 @@ import { Producto } from './producto.entity';
 import { InventarioUbicacion } from './inventario-ubicacion.entity';
 
 @Entity('inventario_stock_ubicaciones')
-@Unique('UQ_inventario_stock_producto_ubicacion', [
-  'ProductoId',
-  'UbicacionId',
-])
+@Unique('UQ_inventario_stock_producto_ubicacion', ['ProductoId', 'UbicacionId'])
 @Check('CK_inventario_stock_no_negativo', '"Stock" >= 0')
+@Check(
+  'CK_inventario_stock_reservado_valido',
+  '"StockReservado" >= 0 AND "StockReservado" <= "Stock"',
+)
 export class InventarioStockUbicacion {
   @PrimaryGeneratedColumn({ name: 'Id', type: 'bigint' })
   Id: string;
@@ -28,6 +29,9 @@ export class InventarioStockUbicacion {
 
   @Column({ name: 'Stock', type: 'integer' })
   Stock: number;
+
+  @Column({ name: 'StockReservado', type: 'integer', default: 0 })
+  StockReservado: number;
 
   @ManyToOne(() => Producto, { onDelete: 'CASCADE' })
   @JoinColumn({ name: 'ProductoId', referencedColumnName: 'Id' })
