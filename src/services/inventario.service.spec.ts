@@ -117,6 +117,28 @@ describe('InventarioService central stock compatibility', () => {
     expect(queryRunner.rollbackTransaction).not.toHaveBeenCalled();
   });
 
+  it('rejects a central stock overwrite below pending reservations', async () => {
+    const product = { Id: '1', Stock: 10, EsDestacado: true };
+    const balance = {
+      ProductoId: '1',
+      UbicacionId: 1,
+      Stock: 10,
+      StockReservado: 4,
+    };
+    queryRunner.manager.findOne
+      .mockResolvedValueOnce({ Id: 1, Codigo: 'BODEGA_CENTRAL' })
+      .mockResolvedValueOnce(product)
+      .mockResolvedValueOnce(balance);
+
+    await expect(service.actualizarStockCentral('1', 3)).rejects.toThrow(
+      /unidades reservadas/i,
+    );
+
+    expect(balance.Stock).toBe(10);
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+  });
+
   it('rolls back when the second representation cannot be saved', async () => {
     const product = { Id: '1', Stock: 10, EsDestacado: true };
     const balance = { ProductoId: '1', UbicacionId: 1, Stock: 10 };
@@ -147,7 +169,7 @@ describe('InventarioService central stock compatibility', () => {
       { Id: '2', Nombre: 'Café 2' },
     ]);
     stockRepository.find.mockResolvedValue([
-      { ProductoId: '1', UbicacionId: 3, Stock: 0 },
+      { ProductoId: '1', UbicacionId: 3, Stock: 8, StockReservado: 5 },
     ]);
 
     await expect(
@@ -156,13 +178,15 @@ describe('InventarioService central stock compatibility', () => {
       {
         productId: '1',
         locationCode: 'POS_EDITORIAL',
-        stock: 0,
+        stock: 8,
+        reservedStock: 5,
         provisioned: true,
       },
       {
         productId: '2',
         locationCode: 'POS_EDITORIAL',
         stock: 0,
+        reservedStock: 0,
         provisioned: false,
       },
     ]);
@@ -175,6 +199,30 @@ describe('InventarioService central stock compatibility', () => {
     });
     expect(productsRepository.findOne).not.toHaveBeenCalled();
     expect(stockRepository.findOne).not.toHaveBeenCalled();
+  });
+
+  it('returns reserved stock in the product-location balance without changing existing fields', async () => {
+    locationsRepository.findOne.mockResolvedValue({
+      Id: 3,
+      Codigo: 'POS_EDITORIAL',
+    });
+    productsRepository.findOne.mockResolvedValue({ Id: '1', Nombre: 'Café' });
+    stockRepository.findOne.mockResolvedValue({
+      ProductoId: '1',
+      UbicacionId: 3,
+      Stock: 8,
+      StockReservado: 5,
+    });
+
+    await expect(
+      service.obtenerStockProducto('1', 'POS_EDITORIAL'),
+    ).resolves.toEqual({
+      productId: '1',
+      locationCode: 'POS_EDITORIAL',
+      stock: 8,
+      reservedStock: 5,
+      provisioned: true,
+    });
   });
 
   it('lista las ubicaciones que ya existen, sin insertar las que faltan', async () => {
@@ -407,9 +455,46 @@ describe('InventarioService transferencias', () => {
         { productoId: '1', ubicacionDestinoId: 3, cantidad: 5 },
         9,
       ),
-    ).rejects.toThrow('No hay stock suficiente en Bodega Central. Disponible: 4.');
+    ).rejects.toThrow(
+      'No hay stock suficiente en Bodega Central. Disponible: 4.',
+    );
 
     expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not transfer stock reserved for pending donation or gift exits', async () => {
+    queryRunner.manager.findOne
+      .mockResolvedValueOnce({
+        Id: 1,
+        Codigo: 'BODEGA_CENTRAL',
+        Nombre: 'Bodega Central',
+      })
+      .mockResolvedValueOnce({
+        Id: 3,
+        Codigo: 'POS_EDITORIAL',
+        Nombre: 'Editorial',
+        Activo: true,
+      })
+      .mockResolvedValueOnce({ Id: '1', Stock: 10, EsDestacado: true })
+      .mockResolvedValueOnce({
+        ProductoId: '1',
+        UbicacionId: 1,
+        Stock: 10,
+        StockReservado: 7,
+      });
+
+    await expect(
+      service.transferir(
+        { productoId: '1', ubicacionDestinoId: 3, cantidad: 4 },
+        9,
+      ),
+    ).rejects.toThrow(
+      'No hay stock suficiente en Bodega Central. Disponible: 3.',
+    );
+
+    expect(queryRunner.manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
     expect(queryRunner.rollbackTransaction).toHaveBeenCalledTimes(1);
   });
 

@@ -8,6 +8,7 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, EntityManager, Repository } from 'typeorm';
+import { calcularStockDisponible } from '../common/inventario-stock.util';
 import {
   insertarMovimientoInventario,
   TIPO_MOVIMIENTO,
@@ -101,7 +102,9 @@ function transicionPermitida(actual: string, nuevo: string): boolean {
     return nuevo === 'Aceptado' || nuevo === 'Rechazado';
   }
   if (actual === 'Aceptado') {
-    return nuevo === 'Entregado' || nuevo === 'Enviado' || nuevo === 'Pendiente';
+    return (
+      nuevo === 'Entregado' || nuevo === 'Enviado' || nuevo === 'Pendiente'
+    );
   }
   if (actual === 'Entregado') {
     return nuevo === 'Devolucion';
@@ -198,10 +201,15 @@ export class ComprasService {
     return { punto: ubicacion?.Nombre || '', dias };
   }
 
-  async registrar(body: CompraBody, usuarioId: number | null): Promise<CompraDetalle> {
+  async registrar(
+    body: CompraBody,
+    usuarioId: number | null,
+  ): Promise<CompraDetalle> {
     const itemsRaw = this.extraerItemsRaw(body);
     if (itemsRaw.length === 0) {
-      throw new BadRequestException('La compra debe incluir al menos un producto.');
+      throw new BadRequestException(
+        'La compra debe incluir al menos un producto.',
+      );
     }
 
     const itemsSolicitados = itemsRaw.map((item) =>
@@ -225,7 +233,7 @@ export class ComprasService {
     ).trim();
     const metodoPago =
       String(
-          body?.metodoPago ??
+        body?.metodoPago ??
           body?.MetodoPago ??
           body?.metodo ??
           body?.Metodo ??
@@ -372,7 +380,12 @@ export class ComprasService {
         });
       }
 
-      return this.obtenerDetalleAutorizado(compra.Id, usuarioId, ['Cliente'], true);
+      return this.obtenerDetalleAutorizado(
+        compra.Id,
+        usuarioId,
+        ['Cliente'],
+        true,
+      );
     } catch (error) {
       await queryRunner.rollbackTransaction();
       throw error;
@@ -447,7 +460,11 @@ export class ComprasService {
 
       if (nuevoEstado === actual) {
         await queryRunner.commitTransaction();
-        return this.mapearDetalleCompleto({ ...compra, Items: items, Estado: actual });
+        return this.mapearDetalleCompleto({
+          ...compra,
+          Items: items,
+          Estado: actual,
+        });
       }
 
       const teniaStock = stockYaDescontado(actual);
@@ -467,7 +484,11 @@ export class ComprasService {
         setImmediate(async () => {
           try {
             let adjuntosPdf:
-              | Array<{ filename: string; content: Buffer; contentType: string }>
+              | Array<{
+                  filename: string;
+                  content: Buffer;
+                  contentType: string;
+                }>
               | undefined;
 
             // Requerimiento: Si la orden es Aceptada, generar y enviar factura en PDF al cliente
@@ -504,8 +525,7 @@ export class ComprasService {
 
             if (this.notificacionesService) {
               let horarioRetiro:
-                | { punto: string; dias: DiaDisponibilidad[] }
-                | undefined;
+                { punto: string; dias: DiaDisponibilidad[] } | undefined;
               if (nuevoEstado === 'Aceptado') {
                 horarioRetiro = await this.horarioRetiroDeCompra(compra).catch(
                   () => undefined,
@@ -721,9 +741,10 @@ export class ComprasService {
       const esAdmin = omiteAsignacionDePunto(rolesNorm);
       const esPropia =
         usuarioId != null && Number(compra.UsuarioId) === Number(usuarioId);
-      const puntos = !esAdmin && this.asignacionesPunto
-        ? await this.asignacionesPunto.idsUbicacionesActivas(usuarioId)
-        : [];
+      const puntos =
+        !esAdmin && this.asignacionesPunto
+          ? await this.asignacionesPunto.idsUbicacionesActivas(usuarioId)
+          : [];
       const enPuntoAsignado = puntos.includes(Number(compra.UbicacionId));
       if (!esAdmin && !esPropia && !enPuntoAsignado) {
         throw new ForbiddenException(
@@ -745,7 +766,9 @@ export class ComprasService {
     const compra = await this.comprasRepository.findOne({
       where: { Id: compraId },
     });
-    const seguro = nombreArchivoSeguro(String(compra?.ComprobanteArchivo || ''));
+    const seguro = nombreArchivoSeguro(
+      String(compra?.ComprobanteArchivo || ''),
+    );
     if (!seguro) {
       throw new NotFoundException('Esta compra no tiene comprobante adjunto.');
     }
@@ -789,10 +812,14 @@ export class ComprasService {
         },
         lock: { mode: 'pessimistic_write' },
       });
-      const stockUbicacion = Number(balance?.Stock) || 0;
-      if (stockUbicacion < cantidad) {
+      const stockFisico = Number(balance?.Stock) || 0;
+      const stockDisponible = calcularStockDisponible(
+        stockFisico,
+        ubicacion.Codigo === BODEGA_CENTRAL ? balance?.StockReservado : 0,
+      );
+      if (stockDisponible < cantidad) {
         throw new BadRequestException(
-          `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}.`,
+          `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}. Disponible: ${stockDisponible}.`,
         );
       }
 
@@ -800,12 +827,17 @@ export class ComprasService {
         balance = manager.create(InventarioStockUbicacion, {
           ProductoId: String(producto.Id),
           UbicacionId: ubicacion.Id,
-          Stock: stockUbicacion,
+          Stock: stockFisico,
         });
       }
-      balance.Stock = stockUbicacion - cantidad;
+      balance.Stock = stockFisico - cantidad;
       await manager.save(balance);
-      await this.sincronizarProductoSiCentral(manager, producto, ubicacion, balance.Stock);
+      await this.sincronizarProductoSiCentral(
+        manager,
+        producto,
+        ubicacion,
+        balance.Stock,
+      );
 
       await insertarMovimientoInventario(manager, {
         tipo: TIPO_MOVIMIENTO.VENTA_WEB,
@@ -867,9 +899,15 @@ export class ComprasService {
       }
       balance.Stock = stockUbicacion + cantidad;
       await manager.save(balance);
-      await this.sincronizarProductoSiCentral(manager, producto, ubicacion, balance.Stock, {
-        restaurar: true,
-      });
+      await this.sincronizarProductoSiCentral(
+        manager,
+        producto,
+        ubicacion,
+        balance.Stock,
+        {
+          restaurar: true,
+        },
+      );
 
       await insertarMovimientoInventario(manager, {
         tipo: TIPO_MOVIMIENTO.ENTRADA,
@@ -949,11 +987,7 @@ export class ComprasService {
     manager: EntityManager,
     body: CompraBody,
   ): Promise<InventarioUbicacion> {
-    const idRaw = this.tomarCampoBody(
-      body,
-      'ubicacionId',
-      'UbicacionId',
-    );
+    const idRaw = this.tomarCampoBody(body, 'ubicacionId', 'UbicacionId');
     const codigoRaw = String(
       this.tomarCampoBody(
         body,
@@ -968,7 +1002,9 @@ export class ComprasService {
     let ubicacion: InventarioUbicacion | null = null;
     const id = Number(idRaw);
     if (Number.isFinite(id) && id > 0) {
-      ubicacion = await manager.findOne(InventarioUbicacion, { where: { Id: id } });
+      ubicacion = await manager.findOne(InventarioUbicacion, {
+        where: { Id: id },
+      });
     }
     if (!ubicacion && codigoRaw) {
       ubicacion = await manager.findOne(InventarioUbicacion, {
@@ -992,7 +1028,9 @@ export class ComprasService {
       try {
         raw = JSON.parse(raw);
       } catch {
-        throw new BadRequestException('Los productos de la compra no son válidos.');
+        throw new BadRequestException(
+          'Los productos de la compra no son válidos.',
+        );
       }
     }
     return Array.isArray(raw) ? raw : [];
@@ -1006,11 +1044,15 @@ export class ComprasService {
     if (responsableId == null) {
       return { responsableId: null, responsableNombre: '' };
     }
-    const usuario = await manager.findOne(Usuario, { where: { Id: responsableId } });
+    const usuario = await manager.findOne(Usuario, {
+      where: { Id: responsableId },
+    });
     return {
       responsableId,
       responsableNombre: usuario
-        ? String(usuario.Nombre || usuario.Correo || `usuario:${responsableId}`).slice(0, 200)
+        ? String(
+            usuario.Nombre || usuario.Correo || `usuario:${responsableId}`,
+          ).slice(0, 200)
         : `usuario:${responsableId}`,
     };
   }
@@ -1042,7 +1084,9 @@ export class ComprasService {
     const esGanada = estado === 'Entregado';
     const total = Number(compra.Total) || 0;
     const usuario = compra.Usuario;
-    const vendedorNombre = String(usuario?.Nombre || usuario?.Correo || '').trim();
+    const vendedorNombre = String(
+      usuario?.Nombre || usuario?.Correo || '',
+    ).trim();
     const vendedorCorreo = String(usuario?.Correo || '').trim();
     return {
       id: Number(compra.Id),
@@ -1053,14 +1097,20 @@ export class ComprasService {
       vendedorCorreo,
       clienteNombre: compra.ClienteNombre,
       clienteCorreo: compra.ClienteCorreo,
-      cantidadProductos: items.reduce((acc, item) => acc + (Number(item.Cantidad) || 0), 0),
+      cantidadProductos: items.reduce(
+        (acc, item) => acc + (Number(item.Cantidad) || 0),
+        0,
+      ),
       subtotal: Number(compra.Subtotal) || 0,
       impuestos: Number(compra.Impuestos) || 0,
       total,
       metodoPago: compra.MetodoPago,
       estado,
       facturaId: compra.FacturaId,
-      editable: estado === 'Pendiente' || estado === 'Aceptado' || estado === 'Rechazado',
+      editable:
+        estado === 'Pendiente' ||
+        estado === 'Aceptado' ||
+        estado === 'Rechazado',
       ganado: esGanada ? total : null,
       ubicacionId: compra.UbicacionId ? Number(compra.UbicacionId) : null,
       ubicacionCodigo: compra.Ubicacion?.Codigo || null,
@@ -1089,7 +1139,8 @@ export class ComprasService {
     const detalle = this.mapearDetalle(compra);
     const usuarioId = compra.UsuarioId ? Number(compra.UsuarioId) : null;
     if (!usuarioId) return detalle;
-    const ficha = await this.clientesService.obtenerFichaPorUsuarioId(usuarioId);
+    const ficha =
+      await this.clientesService.obtenerFichaPorUsuarioId(usuarioId);
     if (!ficha) return detalle;
     return {
       ...detalle,

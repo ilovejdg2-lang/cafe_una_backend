@@ -193,6 +193,27 @@ describe('InventarioService.registrarSalida', () => {
     expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
   });
 
+  it('does not consume stock reserved for pending donation or gift exits', async () => {
+    balance.StockReservado = 4;
+
+    await expect(
+      service.registrarSalida(
+        {
+          productoId: '101',
+          cantidad: 5,
+          motivoSalidaId: 1,
+          destinatario: 'Fundación Café UNA',
+        },
+        44,
+      ),
+    ).rejects.toThrow(/stock suficiente/i);
+
+    expect(balance.Stock).toBe(8);
+    expect(product.Stock).toBe(8);
+    expect(manager.save).not.toHaveBeenCalled();
+    expect(queryRunner.commitTransaction).not.toHaveBeenCalled();
+  });
+
   it('rolls back both stock representations if ledger persistence fails', async () => {
     manager.save.mockImplementation(async (row: Record<string, unknown>) => {
       if (row.Tipo === 'salida_bodega') {

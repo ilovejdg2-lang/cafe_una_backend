@@ -44,7 +44,10 @@ export class StockAlertaService {
     private readonly emailService: EmailService,
   ) {}
 
-  async obtenerStockTotal(productId: string, fallbackStock = 0): Promise<number> {
+  async obtenerStockTotal(
+    productId: string,
+    fallbackStock = 0,
+  ): Promise<number> {
     const row = await this.stockRepo
       .createQueryBuilder('stock')
       .select('COALESCE(SUM(stock.Stock), 0)', 'total')
@@ -90,14 +93,19 @@ export class StockAlertaService {
       return stockProducto;
     }
 
-    if (Number(balance.Stock) !== stockProducto) {
+    const stockFisicoSeguro = Math.max(
+      stockProducto,
+      Number(balance.StockReservado) || 0,
+    );
+    if (Number(balance.Stock) !== stockFisicoSeguro) {
       this.logger.warn(
-        `Reconciliando Bodega Central del producto ${producto.Id}: ubicación=${balance.Stock} → productos.Stock=${stockProducto}`,
+        `Reconciliando Bodega Central del producto ${producto.Id}: ubicación=${balance.Stock} → productos.Stock=${stockFisicoSeguro}`,
       );
-      balance.Stock = stockProducto;
+      balance.Stock = stockFisicoSeguro;
       await this.stockRepo.save(balance);
     }
-    return stockProducto;
+    producto.Stock = stockFisicoSeguro;
+    return stockFisicoSeguro;
   }
 
   /**
@@ -252,9 +260,7 @@ export class StockAlertaService {
     const destinos = usuarios.filter((u) => {
       if (String(u.Estado || '').toLowerCase() !== 'activo') return false;
       const roles = Array.isArray(u.Roles) ? u.Roles : [];
-      return roles.some(
-        (rol) => String(rol).toLowerCase() === 'superadmin',
-      );
+      return roles.some((rol) => String(rol).toLowerCase() === 'superadmin');
     });
 
     if (destinos.length === 0) {
