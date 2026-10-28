@@ -143,12 +143,14 @@ describe('InventarioController location reads', () => {
           productId: '1',
           locationCode: 'POS_EDITORIAL',
           stock: 12,
+          reservedStock: 0,
           provisioned: true,
         },
         {
           productId: '2',
           locationCode: 'POS_EDITORIAL',
           stock: 0,
+          reservedStock: 0,
           provisioned: false,
         },
       ]);
@@ -203,6 +205,7 @@ describe('InventarioController location reads', () => {
         productId: '1',
         locationCode: 'POS_FUNA_UNA',
         stock: 0,
+        reservedStock: 0,
         provisioned: false,
       });
 
@@ -229,6 +232,7 @@ describe('InventarioController location reads', () => {
         productId: '1',
         locationCode: 'POS_FUNA_UNA',
         stock: 0,
+        reservedStock: 0,
         provisioned: true,
       });
 
@@ -255,6 +259,7 @@ describe('InventarioController location reads', () => {
         productId: '1',
         locationCode: 'POS_EDITORIAL',
         stock: 12,
+        reservedStock: 0,
         provisioned: true,
       });
 

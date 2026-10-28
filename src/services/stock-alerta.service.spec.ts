@@ -19,7 +19,9 @@ describe('StockAlertaService', () => {
     find: jest.fn(),
   };
   const usuariosRepo = { find: jest.fn() };
-  const emailService = { enviarAlertaStockBajo: jest.fn().mockResolvedValue(true) };
+  const emailService = {
+    enviarAlertaStockBajo: jest.fn().mockResolvedValue(true),
+  };
 
   let service: StockAlertaService;
 
@@ -39,7 +41,10 @@ describe('StockAlertaService', () => {
       usuariosRepo as never,
       emailService as never,
     );
-    ubicacionesRepo.findOne.mockResolvedValue({ Id: 1, Codigo: 'BODEGA_CENTRAL' });
+    ubicacionesRepo.findOne.mockResolvedValue({
+      Id: 1,
+      Codigo: 'BODEGA_CENTRAL',
+    });
     ubicacionesRepo.find.mockResolvedValue(ubicacionesActivas);
     stockRepo.findOne.mockResolvedValue({
       Id: '10',
@@ -233,6 +238,41 @@ describe('StockAlertaService', () => {
     );
   });
 
+  it('preserves central physical stock when legacy reconciliation would undercut reservations', async () => {
+    const product = {
+      Id: '9',
+      Nombre: 'Café',
+      Stock: 4,
+      StockMinimo: 1,
+      AlertaStock: false,
+      Disponible: true,
+      EsDestacado: true,
+    };
+    productosRepo.findOne.mockResolvedValue(product);
+    stockRepo.findOne.mockResolvedValue({
+      Id: '10',
+      ProductoId: '9',
+      UbicacionId: 1,
+      Stock: 8,
+      StockReservado: 6,
+    });
+    stockRepo.createQueryBuilder.mockReturnValue({
+      select: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      getRawOne: jest.fn().mockResolvedValue({ total: '6' }),
+    });
+    stockRepo.count.mockResolvedValue(1);
+    usuariosRepo.find.mockResolvedValue([]);
+
+    await service.verificarTrasMovimiento('9');
+
+    expect(stockRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ Stock: 6, StockReservado: 6 }),
+    );
+    expect(productosRepo.save).toHaveBeenCalledWith(
+      expect.objectContaining({ Stock: 6 }),
+    );
+  });
   it('marks unavailable and clears featured when stock is 0', async () => {
     productosRepo.findOne.mockResolvedValue({
       Id: '9',

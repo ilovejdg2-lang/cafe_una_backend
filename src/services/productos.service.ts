@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
+import { calcularStockDisponible } from '../common/inventario-stock.util';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
@@ -35,7 +36,8 @@ export class ProductosService {
     Array<Producto & { stockTotal: number; stock_total: number }>
   > {
     const productos = await this.obtenerTodos();
-    const totales = await this.inventarioService.obtenerTotalesStockPorProducto();
+    const totales =
+      await this.inventarioService.obtenerTotalesStockPorProducto();
     return productos.map((producto) => {
       const stockTotal =
         totales.get(String(producto.Id)) ?? (Number(producto.Stock) || 0);
@@ -273,7 +275,11 @@ export class ProductosService {
             lock: { mode: 'pessimistic_write' },
           },
         );
-        const disponible = Number(balance?.Stock ?? producto.Stock) || 0;
+        const stockFisico = Number(balance?.Stock ?? producto.Stock) || 0;
+        const disponible = calcularStockDisponible(
+          stockFisico,
+          balance?.StockReservado,
+        );
         if (disponible < solicitud.Units) {
           throw new Error(`No hay stock suficiente para ${producto.Nombre}.`);
         }
@@ -284,7 +290,7 @@ export class ProductosService {
             Stock: disponible,
           });
         }
-        balance.Stock = disponible - solicitud.Units;
+        balance.Stock = stockFisico - solicitud.Units;
         producto.Stock = balance.Stock;
         if (producto.Stock <= 0) producto.EsDestacado = false;
         await queryRunner.manager.save(balance);
@@ -293,7 +299,9 @@ export class ProductosService {
 
       await queryRunner.commitTransaction();
       for (const producto of actualizados) {
-        await this.stockAlertaService.verificarTrasMovimiento(String(producto.Id));
+        await this.stockAlertaService.verificarTrasMovimiento(
+          String(producto.Id),
+        );
       }
       return actualizados;
     } catch (error) {

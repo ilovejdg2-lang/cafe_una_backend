@@ -50,6 +50,7 @@ describe('InventarioService bulk location stock reads', () => {
         productId: '1',
         locationCode,
         stock: 0,
+        reservedStock: 0,
         provisioned: false,
       },
     ]);
@@ -93,18 +94,21 @@ describe('InventarioService bulk location stock reads', () => {
         productId: '1',
         locationCode: 'POS_FUNA_UNA',
         stock: 0,
+        reservedStock: 0,
         provisioned: false,
       },
       {
         productId: '2',
         locationCode: 'POS_FUNA_UNA',
         stock: 0,
+        reservedStock: 0,
         provisioned: true,
       },
       {
         productId: '3',
         locationCode: 'POS_FUNA_UNA',
         stock: 12,
+        reservedStock: 0,
         provisioned: true,
       },
     ]);
