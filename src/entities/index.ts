@@ -56,6 +56,9 @@ import { Notificacion } from './notificacion.entity';
 import { CorreoSalida } from './correo-salida.entity';
 import { ProductorActivo } from './productor-activo.entity';
 import { PropuestaHistorial } from './propuesta-historial.entity';
+import { SolicitudSalidaInventario } from './solicitud-salida-inventario.entity';
+import { SolicitudSalidaInventarioItem } from './solicitud-salida-inventario-item.entity';
+import { AuditoriaSolicitudSalidaInventario } from './auditoria-solicitud-salida-inventario.entity';
 
 export const entities = [
   Usuario,
@@ -116,7 +119,14 @@ export const entities = [
   CorreoSalida,
   ProductorActivo,
   PropuestaHistorial,
+  SolicitudSalidaInventario,
+  SolicitudSalidaInventarioItem,
+  AuditoriaSolicitudSalidaInventario,
 ];
+
+export * from './solicitud-salida-inventario.entity';
+export * from './solicitud-salida-inventario-item.entity';
+export * from './auditoria-solicitud-salida-inventario.entity';
 
 export * from './usuario.entity';
 export * from './cliente.entity';
