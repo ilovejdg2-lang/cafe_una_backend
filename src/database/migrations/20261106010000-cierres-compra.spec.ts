@@ -14,7 +14,9 @@ describe('CierresCompra20261106010000', () => {
     const upSql = sqlOf(query);
     expect(upSql).toMatch(/CREATE TABLE IF NOT EXISTS cierres_compra/);
     expect(upSql).toMatch(/"Fecha" date NOT NULL/);
-    expect(upSql).toMatch(/"UbicacionId" integer NULL\s+REFERENCES inventario_ubicaciones\("Id"\)/);
+    expect(upSql).toMatch(
+      /"UbicacionId" integer NULL\s+REFERENCES inventario_ubicaciones\("Id"\)/,
+    );
     expect(upSql).toMatch(
       /CREATE UNIQUE INDEX IF NOT EXISTS "UQ_cierres_compra_fecha_ubicacion"\s+ON cierres_compra \("Fecha", COALESCE\("UbicacionId", 0\)\)/,
     );

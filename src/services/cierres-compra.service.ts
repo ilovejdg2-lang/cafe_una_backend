@@ -114,7 +114,11 @@ export class CierresCompraService {
 
     try {
       const guardado = await this.repo.save(
-        this.repo.create({ Fecha: fecha, Nota: nota, UbicacionId: ubicacionId }),
+        this.repo.create({
+          Fecha: fecha,
+          Nota: nota,
+          UbicacionId: ubicacionId,
+        }),
       );
       return this.aDto(guardado);
     } catch (error) {

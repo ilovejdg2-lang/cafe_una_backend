@@ -253,13 +253,14 @@ describe('AjustesController cierres-compra HTTP contract', () => {
         .put('/api/ajustes/disponibilidad/9')
         .send({ nota: 'x' })
         .expect(200);
-      await request(server)
-        .delete('/api/ajustes/disponibilidad/9')
-        .expect(200);
+      await request(server).delete('/api/ajustes/disponibilidad/9').expect(200);
 
       expect(disponibilidad.listarExcepciones).toHaveBeenCalled();
       expect(disponibilidad.upsertExcepcion).toHaveBeenCalled();
-      expect(disponibilidad.actualizar).toHaveBeenCalledWith(9, expect.anything());
+      expect(disponibilidad.actualizar).toHaveBeenCalledWith(
+        9,
+        expect.anything(),
+      );
       expect(disponibilidad.eliminar).toHaveBeenCalledWith(9);
       expect(cierres.crear).not.toHaveBeenCalled();
       expect(cierres.eliminar).not.toHaveBeenCalled();

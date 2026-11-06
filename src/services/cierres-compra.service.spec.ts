@@ -31,6 +31,7 @@ describe('CierresCompraService', () => {
 
   const dbError = (code: string) =>
     new QueryFailedError('SQL', [], Object.assign(new Error('db'), { code }));
+  const primerArg = (mock: jest.Mock) => (mock.mock.calls as unknown[][])[0][0];
   const fila = (
     Id: number,
     Fecha: string,
@@ -75,7 +76,11 @@ describe('CierresCompraService', () => {
       // 03:00Z on the 7th is still the 6th in Costa Rica (UTC-6).
       jest.setSystemTime(new Date('2026-11-07T03:00:00Z'));
       await expect(
-        service.crear({ Fecha: '2026-11-06', Nota: '', UbicacionId: undefined }),
+        service.crear({
+          Fecha: '2026-11-06',
+          Nota: '',
+          UbicacionId: undefined,
+        }),
       ).resolves.toMatchObject({ Fecha: '2026-11-06', UbicacionId: null });
     });
 
@@ -142,7 +147,7 @@ describe('CierresCompraService', () => {
         service.crear({ fecha: '2026-12-25', ubicacionId: null }),
       ).rejects.toBeInstanceOf(ConflictException);
       expect(repo.save).not.toHaveBeenCalled();
-      const { where } = repo.findOne.mock.calls[0][0] as { where: Where };
+      const { where } = primerArg(repo.findOne) as { where: Where };
       expect(where.Fecha).toBe('2026-12-25');
       expect(where.UbicacionId).toBeInstanceOf(FindOperator);
     });
@@ -162,7 +167,7 @@ describe('CierresCompraService', () => {
 
     it('scopes the duplicate lookup to the same point so global and point closures coexist', async () => {
       await service.crear({ fecha: '2026-12-25', ubicacionId: 4 });
-      const { where } = repo.findOne.mock.calls[0][0] as { where: Where };
+      const { where } = primerArg(repo.findOne) as { where: Where };
       expect(where.UbicacionId).toBe(4);
       expect(repo.save).toHaveBeenCalled();
     });
@@ -187,7 +192,7 @@ describe('CierresCompraService', () => {
   describe('listarPublicos', () => {
     it('only asks for today or later, global rows only without ubicacionId', async () => {
       await service.listarPublicos(null);
-      const { where, order } = repo.find.mock.calls[0][0] as {
+      const { where, order } = primerArg(repo.find) as {
         where: Where[];
         order: Record<string, string>;
       };
@@ -201,7 +206,7 @@ describe('CierresCompraService', () => {
 
     it('asks for global plus the requested point of sale', async () => {
       await service.listarPublicos(4);
-      const { where } = repo.find.mock.calls[0][0] as { where: Where[] };
+      const { where } = primerArg(repo.find) as { where: Where[] };
       expect(where).toHaveLength(2);
       expect(where[1].UbicacionId).toBe(4);
       expect((where[1].Fecha as FindOperator<string>).value).toBe('2026-11-06');
