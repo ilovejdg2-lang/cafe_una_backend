@@ -33,6 +33,7 @@ import { Permiso } from './permiso.entity';
 import { RolPermiso } from './rol-permiso.entity';
 import { AjusteSistema } from './ajuste-sistema.entity';
 import { DisponibilidadGrupo } from './disponibilidad-grupo.entity';
+import { CierreCompra } from './cierre-compra.entity';
 import { DisponibilidadVisita } from './disponibilidad-visita.entity';
 import { DonacionNecesidad } from './donacion-necesidad.entity';
 import { DonacionMaterialAceptado } from './donacion-material-aceptado.entity';
@@ -99,6 +100,7 @@ export const entities = [
   Permiso,
   RolPermiso,
   DisponibilidadGrupo,
+  CierreCompra,
   DisponibilidadVisita,
   AjusteSistema,
   DonacionNecesidad,
@@ -166,6 +168,7 @@ export * from './rol.entity';
 export * from './permiso.entity';
 export * from './rol-permiso.entity';
 export * from './disponibilidad-grupo.entity';
+export * from './cierre-compra.entity';
 export * from './disponibilidad-visita.entity';
 export * from './ajuste-sistema.entity';
 export * from './donacion-necesidad.entity';
