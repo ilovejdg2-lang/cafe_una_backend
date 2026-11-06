@@ -15,6 +15,7 @@ import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { AjustesSistemaService } from '../services/ajustes-sistema.service';
 import { CatalogoSistemaService } from '../services/catalogo-sistema.service';
+import { CierresCompraService } from '../services/cierres-compra.service';
 import {
   DisponibilidadGruposService,
   parseUbicacionId,
@@ -28,6 +29,7 @@ export class AjustesController {
     private readonly permisosCatalogo: PermisosCatalogoService,
     private readonly sistema: AjustesSistemaService,
     private readonly catalogos: CatalogoSistemaService,
+    private readonly cierresCompra: CierresCompraService,
   ) {}
 
   @Get('idioma')
@@ -66,6 +68,41 @@ export class AjustesController {
       hasta,
       parseUbicacionId(ubicacionId),
     );
+  }
+
+  /**
+   * Fechas sin retiro de pedidos de hoy en adelante (público, lo usa el checkout).
+   * Declaradas antes de las rutas `disponibilidad/:id` para que nunca las capturen.
+   */
+  @Get('disponibilidad/cierres-compra')
+  listarCierresCompra(@Query('ubicacionId') ubicacionId?: string) {
+    return this.cierresCompra.listarPublicos(parseUbicacionId(ubicacionId));
+  }
+
+  @Get('disponibilidad/cierres-compra/admin')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso(
+    'ver_inventario',
+    'actualizar_inventario',
+    'administrar_roles_permisos',
+  )
+  listarCierresCompraAdmin() {
+    return this.cierresCompra.listarAdmin();
+  }
+
+  @Post('disponibilidad/cierres-compra')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('actualizar_inventario', 'administrar_roles_permisos')
+  crearCierreCompra(@Body() body: Record<string, unknown>) {
+    return this.cierresCompra.crear(body);
+  }
+
+  @Delete('disponibilidad/cierres-compra/:id')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('actualizar_inventario', 'administrar_roles_permisos')
+  async eliminarCierreCompra(@Param('id', ParseIntPipe) id: number) {
+    await this.cierresCompra.eliminar(id);
+    return { ok: true };
   }
 
   @Get('disponibilidad')
