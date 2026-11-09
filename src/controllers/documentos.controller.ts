@@ -24,6 +24,7 @@ import { JwtService } from '@nestjs/jwt';
 import type { Request, Response } from 'express';
 import { diskStorage } from 'multer';
 import { extname } from 'path';
+import { permitirMarcoDelSitio } from '../common/marco-visor';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
@@ -197,6 +198,9 @@ export class DocumentosController {
     const ip = req.ip || (req.headers['x-forwarded-for'] as string) || '';
     const { stream, nombreOriginal, mimeType } =
       await this.documentosService.descargar(id, usuario, ip, false);
+
+    // El visor del repositorio muestra el archivo en un iframe desde otro origen.
+    permitirMarcoDelSitio(res);
 
     const safeFilename = encodeURIComponent(nombreOriginal);
     res.set({
