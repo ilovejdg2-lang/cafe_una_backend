@@ -591,6 +591,18 @@ export class EmailService {
     const user = this.config.get<string>('SMTP_USER')?.trim();
     const fromEmail =
       this.config.get<string>('SMTP_FROM')?.trim() || user;
+
+    // Render bloquea SMTP saliente en el plan gratuito: con clave de Brevo se envía por HTTPS.
+    const brevoKey = this.config.get<string>('BREVO_API_KEY')?.trim();
+    if (brevoKey) {
+      if (!fromEmail) {
+        this.logger.warn(`Remitente no configurado. No se envió correo a ${destinatario}.`);
+        return false;
+      }
+      const fromName = this.config.get<string>('SMTP_FROM_NAME')?.trim() || 'Café UNA';
+      return this.enviarPorBrevo(brevoKey, { fromEmail, fromName }, destinatario, subject, htmlBody, textBody, attachments);
+    }
+
     if (!host || !fromEmail) {
       this.logger.warn(`SMTP no configurado. No se envió correo a ${destinatario}.`);
       return false;
@@ -631,6 +643,70 @@ export class EmailService {
       return true;
     } catch (error) {
       const detalle = error instanceof Error ? error.message : String(error);
+      this.logger.error(`No se pudo enviar correo a ${destinatario}: ${detalle}`);
+      return false;
+    }
+  }
+
+  /** Brevo no documenta imágenes cid: el logo viaja por su URL pública, sin adjunto. */
+  private async aplicarLogoUrl(html: string): Promise<string> {
+    if (!html.includes(LOGO_PLACEHOLDER)) return html;
+    const url = await this.logoCorreoUrl();
+    if (url) return html.replaceAll(LOGO_PLACEHOLDER, url);
+    return html.replace(
+      /<img[^>]*\{\{logoUrl\}\}[^>]*>/g,
+      '<p style="margin:0;font-size:22px;font-weight:700;color:#C41E3A;">Café UNA</p>',
+    );
+  }
+
+  private async enviarPorBrevo(
+    apiKey: string,
+    remitente: { fromEmail: string; fromName: string },
+    destinatario: string,
+    subject: string,
+    htmlBody: string,
+    textBody?: string,
+    attachments?: Array<{
+      filename: string;
+      content?: Buffer | string;
+      path?: string;
+      contentType?: string;
+    }>,
+  ): Promise<boolean> {
+    try {
+      const attachment = await Promise.all(
+        (attachments ?? []).map(async (a) => {
+          const data = a.content ?? (a.path ? await fs.readFile(a.path) : Buffer.alloc(0));
+          return { name: a.filename, content: Buffer.from(data).toString('base64') };
+        }),
+      );
+      const respuesta = await fetch('https://api.brevo.com/v3/smtp/email', {
+        method: 'POST',
+        headers: { 'api-key': apiKey, 'content-type': 'application/json' },
+        body: JSON.stringify({
+          sender: { name: remitente.fromName, email: remitente.fromEmail },
+          to: [{ email: destinatario.trim() }],
+          subject,
+          htmlContent: await this.aplicarLogoUrl(htmlBody),
+          textContent: textBody || undefined,
+          attachment: attachment.length > 0 ? attachment : undefined,
+        }),
+        signal: AbortSignal.timeout(20_000),
+      });
+      if (!respuesta.ok) {
+        const cuerpo = await respuesta.text().catch(() => '');
+        let mensaje = cuerpo.slice(0, 300);
+        try {
+          mensaje = (JSON.parse(cuerpo) as { message?: string }).message ?? mensaje;
+        } catch {
+          // Respuesta sin JSON: se conserva el texto recortado.
+        }
+        throw new Error(`Brevo respondió ${respuesta.status}: ${mensaje}`);
+      }
+      this.logger.log(`Correo enviado correctamente a ${destinatario}.`);
+      return true;
+    } catch (error) {
+      const detalle = (error instanceof Error ? error.message : String(error)).replaceAll(apiKey, '***');
       this.logger.error(`No se pudo enviar correo a ${destinatario}: ${detalle}`);
       return false;
     }
