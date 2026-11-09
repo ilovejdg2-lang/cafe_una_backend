@@ -6,11 +6,13 @@ import {
   Param,
   Query,
   Req,
+  Res,
   StreamableFile,
   UseGuards,
 } from '@nestjs/common';
-import type { Request } from 'express';
+import type { Request, Response } from 'express';
 import { createReadStream } from 'fs';
+import { permitirMarcoDelSitio } from '../common/marco-visor';
 import { JwtUsuario } from '../common/permisos';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
@@ -81,6 +83,7 @@ export class FacturasController {
   async descargarPdf(
     @Param('id') id: string,
     @Req() req: Request & { user: JwtUsuario },
+    @Res({ passthrough: true }) res: Response,
   ): Promise<StreamableFile> {
     const factura = await this.facturasService.obtenerPorId(id);
     this.validarAccesoFactura(factura, req.user);
@@ -88,6 +91,7 @@ export class FacturasController {
     const { filePath, filename } =
       await this.facturasService.obtenerRutaArchivoPdf(id);
 
+    permitirMarcoDelSitio(res);
     return new StreamableFile(createReadStream(filePath), {
       type: 'application/pdf',
       disposition: `inline; filename="${filename}"`,
