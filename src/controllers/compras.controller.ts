@@ -3,6 +3,8 @@ import {
   Body,
   Controller,
   Get,
+  InternalServerErrorException,
+  Logger,
   NotFoundException,
   Param,
   Patch,
@@ -16,20 +18,25 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import type { Request } from 'express';
-import { createReadStream } from 'fs';
-import { diskStorage } from 'multer';
-import { extname } from 'path';
+import { createReadStream, writeFileSync } from 'fs';
+import { memoryStorage } from 'multer';
+import { extname, join } from 'path';
 import { JwtUsuario } from '../common/permisos';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import {
   asegurarDirectorioUpload,
+  nombreArchivoSeguro,
   resolverArchivoUpload,
 } from '../common/upload-paths';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
 import { PermisosGuard } from '../guards/permisos.guard';
 import { ComprasService } from '../services/compras.service';
+import { SupabaseStorageService } from '../services/supabase-storage.service';
 
 const COMPROBANTES_SUBDIR = 'compras';
+/** Bucket privado: los comprobantes contienen datos de pago y nunca son públicos. */
+const COMPROBANTES_BUCKET =
+  process.env.SUPABASE_COMPROBANTES_BUCKET || 'comprobantes';
 const MAX_COMPROBANTE_BYTES = 10 * 1024 * 1024;
 const TIPOS_IMAGEN = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const EXTS_IMAGEN = new Set(['.jpg', '.jpeg', '.png', '.webp']);
@@ -50,27 +57,28 @@ function mimePorNombre(filename: string): string {
   return 'image/jpeg';
 }
 
+function nombreComprobante(originalname: string): string {
+  const ext = extname(originalname ?? '').toLowerCase();
+  const extFinal = EXTS_IMAGEN.has(ext) ? ext : '.jpg';
+  const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
+  return `comprobante-${unique}${extFinal}`;
+}
+
 @Controller('compras')
 @UseGuards(JwtAuthGuard, PermisosGuard)
 export class ComprasController {
-  constructor(private readonly comprasService: ComprasService) {}
+  private readonly logger = new Logger(ComprasController.name);
+
+  constructor(
+    private readonly comprasService: ComprasService,
+    private readonly storage: SupabaseStorageService,
+  ) {}
 
   @Post()
   @RequierePermiso('comprar_productos', 'registrar_ventas')
   @UseInterceptors(
     FileInterceptor('comprobante', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          cb(null, asegurarDirectorioUpload(COMPROBANTES_SUBDIR));
-        },
-        filename: (_req, file, cb) => {
-          const ext = EXTS_IMAGEN.has(extname(file.originalname).toLowerCase())
-            ? extname(file.originalname).toLowerCase()
-            : '.jpg';
-          const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          cb(null, `comprobante-${unique}${ext}`);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: MAX_COMPROBANTE_BYTES },
       fileFilter: (_req, file, cb) => {
         if (!esImagenComprobante(file)) {
@@ -86,24 +94,71 @@ export class ComprasController {
       },
     }),
   )
-  registrar(
+  async registrar(
     @Body() body: Record<string, unknown>,
     @UploadedFile()
     file:
       | {
-          filename: string;
+          originalname: string;
+          mimetype?: string;
+          buffer: Buffer;
         }
       | undefined,
     @Req() req: Request & { user: JwtUsuario },
   ) {
-    return this.comprasService.registrar(
-      {
-        ...((req.body as Record<string, unknown>) ?? {}),
-        ...(body ?? {}),
-        comprobanteArchivo: file?.filename,
-      },
-      req.user.userId ?? null,
-    );
+    const datos = {
+      ...((req.body as Record<string, unknown>) ?? {}),
+      ...(body ?? {}),
+    };
+    const userId = req.user.userId ?? null;
+
+    if (!file) {
+      return this.comprasService.registrar(
+        { ...datos, comprobanteArchivo: undefined },
+        userId,
+      );
+    }
+
+    const nombre = nombreComprobante(file.originalname);
+    const enBucket = this.storage.estaHabilitado();
+
+    if (enBucket) {
+      // El comprobante debe quedar persistido antes de crear la compra.
+      const subido = await this.storage.subirArchivo(
+        nombre,
+        file.buffer,
+        file.mimetype || mimePorNombre(nombre),
+        COMPROBANTES_BUCKET,
+      );
+      if (!subido) {
+        throw new InternalServerErrorException(
+          'No se pudo guardar el comprobante. Intenta nuevamente.',
+        );
+      }
+    } else {
+      writeFileSync(
+        join(asegurarDirectorioUpload(COMPROBANTES_SUBDIR), nombre),
+        file.buffer,
+      );
+    }
+
+    try {
+      return await this.comprasService.registrar(
+        { ...datos, comprobanteArchivo: nombre },
+        userId,
+      );
+    } catch (err) {
+      if (enBucket) {
+        try {
+          await this.storage.eliminarArchivo(nombre, COMPROBANTES_BUCKET);
+        } catch (cleanupErr) {
+          this.logger.error(
+            `No se pudo eliminar el comprobante huérfano "${nombre}": ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        }
+      }
+      throw err;
+    }
   }
 
   /** CLI-P03: historial propio — Pendiente | Aceptado | Entregado | Rechazado. */
@@ -154,14 +209,25 @@ export class ComprasController {
       req.user.userId ?? null,
       req.user.roles ?? [],
     );
-    const absolute = resolverArchivoUpload(COMPROBANTES_SUBDIR, filename);
-    if (!absolute) {
+    const safe = nombreArchivoSeguro(filename);
+    const type = mimePorNombre(safe);
+    const disposition = `inline; filename="${safe}"`;
+    const absolute = safe
+      ? resolverArchivoUpload(COMPROBANTES_SUBDIR, safe)
+      : null;
+    if (absolute) {
+      return new StreamableFile(createReadStream(absolute), {
+        type,
+        disposition,
+      });
+    }
+    const remoto = safe
+      ? await this.storage.descargarBuffer(safe, COMPROBANTES_BUCKET)
+      : null;
+    if (!remoto) {
       throw new NotFoundException('No se encontró el archivo del comprobante.');
     }
-    return new StreamableFile(createReadStream(absolute), {
-      type: mimePorNombre(filename),
-      disposition: `inline; filename="${filename}"`,
-    });
+    return new StreamableFile(remoto, { type, disposition });
   }
 
   @Get(':id')

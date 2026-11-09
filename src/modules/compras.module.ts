@@ -5,6 +5,7 @@ import { CompraItem } from '../entities/compra-item.entity';
 import { Compra } from '../entities/compra.entity';
 import { Producto } from '../entities/producto.entity';
 import { ComprasService } from '../services/compras.service';
+import { SupabaseStorageService } from '../services/supabase-storage.service';
 import { AuthModule } from './auth.module';
 import { FacturasModule } from './facturas.module';
 import { AsignacionesPuntoVentaModule } from './asignaciones-punto-venta.module';
@@ -21,7 +22,7 @@ import { UsuariosModule } from './usuarios.module';
     AjustesModule,
   ],
   controllers: [ComprasController],
-  providers: [ComprasService],
+  providers: [ComprasService, SupabaseStorageService],
   exports: [ComprasService],
 })
 export class ComprasModule {}
