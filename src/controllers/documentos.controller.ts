@@ -34,6 +34,8 @@ import {
 } from '../services/documentos.service';
 
 const MAX_DOCUMENTO_BYTES = 30 * 1024 * 1024; // 30 MB
+const ORIGENES_VISOR_DOCUMENTOS =
+  "'self' https://cafeunaing.netlify.app http://localhost:5173 http://127.0.0.1:5173";
 
 const EXTENSIONES_PERMITIDAS = new Set([
   '.pdf',
@@ -197,6 +199,12 @@ export class DocumentosController {
     const ip = req.ip || (req.headers['x-forwarded-for'] as string) || '';
     const { stream, nombreOriginal, mimeType } =
       await this.documentosService.descargar(id, usuario, ip, false);
+
+    // El visor del repositorio muestra el archivo en un iframe desde otro origen.
+    res.removeHeader('X-Frame-Options');
+    res.set({
+      'Content-Security-Policy': `frame-ancestors ${ORIGENES_VISOR_DOCUMENTOS}`,
+    });
 
     const safeFilename = encodeURIComponent(nombreOriginal);
     res.set({
