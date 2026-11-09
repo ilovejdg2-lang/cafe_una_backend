@@ -127,6 +127,19 @@ describe('EmailService.enviar', () => {
     expect(body.attachment).toBeUndefined();
   });
 
+  it('con logo WebP usa el texto de respaldo', async () => {
+    const svc = crearServicio(
+      { ...envBase, BREVO_API_KEY: API_KEY },
+      'https://cdn.test/logo.webp',
+    );
+    await svc.enviar('a@b.com', 's', `<img src="${LOGO_PLACEHOLDER}" />`);
+    const body = JSON.parse(
+      (fetchMock.mock.calls[0] as Llamada)[1].body,
+    ) as Cuerpo;
+    expect(body.htmlContent).toContain('Café UNA');
+    expect(body.htmlContent).not.toContain('logo.webp');
+  });
+
   it('sin logo configurado usa el texto de respaldo', async () => {
     const svc = crearServicio({ ...envBase, BREVO_API_KEY: API_KEY });
     await svc.enviar('a@b.com', 's', `<img src="${LOGO_PLACEHOLDER}" />`);

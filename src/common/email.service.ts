@@ -652,7 +652,8 @@ export class EmailService {
   private async aplicarLogoUrl(html: string): Promise<string> {
     if (!html.includes(LOGO_PLACEHOLDER)) return html;
     const url = await this.logoCorreoUrl();
-    if (url) return html.replaceAll(LOGO_PLACEHOLDER, url);
+    // ponytail: un logo WebP usa texto porque los clientes de correo no lo muestran bien; publicar un PNG recupera la imagen.
+    if (url && !/\.webp(\?|$)/i.test(url)) return html.replaceAll(LOGO_PLACEHOLDER, url);
     return html.replace(
       /<img[^>]*\{\{logoUrl\}\}[^>]*>/g,
       '<p style="margin:0;font-size:22px;font-weight:700;color:#C41E3A;">Café UNA</p>',
