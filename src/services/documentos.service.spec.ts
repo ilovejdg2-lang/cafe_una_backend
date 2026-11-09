@@ -41,6 +41,23 @@ describe('DocumentosService.atenderSolicitud', () => {
     );
   });
 
+  it('mantiene privado el adjunto de una solicitud de acceso', async () => {
+    const { servicio, docRepo } = crearServicio({
+      Id: '16',
+      DocumentoId: '7',
+      NombreArchivo: 'adjunto.pdf',
+      NombreSolicitante: 'Persona',
+      CorreoSolicitante: 'a@b.com',
+      PublicadoDocumentoId: null,
+    });
+
+    await servicio.atenderSolicitud('16', { estado: 'Aprobada' });
+
+    expect(docRepo.create).toHaveBeenCalledWith(
+      expect.objectContaining({ EsPrivado: true }),
+    );
+  });
+
   it('no publica nada al rechazar', async () => {
     const { servicio, docRepo } = crearServicio({
       Id: '15',

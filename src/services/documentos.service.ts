@@ -793,7 +793,7 @@ export class DocumentosService {
           NombreOriginal: sol.NombreOriginal || sol.NombreArchivo,
           MimeType: sol.MimeType || 'application/octet-stream',
           TamanoBytes: Number(sol.TamanoBytes) || 0,
-          EsPrivado: false, // Los aportes aprobados se publican; los administrativos se cargan desde el panel
+          EsPrivado: Boolean(sol.DocumentoId), // Los aportes aprobados se publican; un adjunto de solicitud de acceso no
           Autor: autorFinal,
           Version: sol.Version || '1.0',
           PalabrasClave: sol.PalabrasClave || '',
