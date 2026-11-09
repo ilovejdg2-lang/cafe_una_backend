@@ -49,12 +49,13 @@ export class SupabaseStorageService {
     nombreArchivo: string,
     contenido: Buffer,
     mimeType = 'application/octet-stream',
+    bucket: string = this.bucket,
   ): Promise<boolean> {
     if (!this.supabase) return false;
 
     try {
       const { error } = await this.supabase.storage
-        .from(this.bucket)
+        .from(bucket)
         .upload(nombreArchivo, contenido, {
           contentType: mimeType,
           upsert: true,
@@ -80,12 +81,15 @@ export class SupabaseStorageService {
   /**
    * Descarga un archivo desde Supabase Storage como Buffer
    */
-  async descargarBuffer(nombreArchivo: string): Promise<Buffer | null> {
+  async descargarBuffer(
+    nombreArchivo: string,
+    bucket: string = this.bucket,
+  ): Promise<Buffer | null> {
     if (!this.supabase) return null;
 
     try {
       const { data, error } = await this.supabase.storage
-        .from(this.bucket)
+        .from(bucket)
         .download(nombreArchivo);
 
       if (error || !data) {
@@ -138,12 +142,15 @@ export class SupabaseStorageService {
   /**
    * Elimina un archivo de Supabase Storage
    */
-  async eliminarArchivo(nombreArchivo: string): Promise<boolean> {
+  async eliminarArchivo(
+    nombreArchivo: string,
+    bucket: string = this.bucket,
+  ): Promise<boolean> {
     if (!this.supabase) return false;
 
     try {
       const { error } = await this.supabase.storage
-        .from(this.bucket)
+        .from(bucket)
         .remove([nombreArchivo]);
 
       if (error) {
