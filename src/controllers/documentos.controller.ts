@@ -277,6 +277,17 @@ export class DocumentosController {
   }
 
   /**
+   * Categorías de documentos de ambas audiencias (pública y administrativa),
+   * cada una con `audiencia`, para agrupar en el panel administrativo.
+   */
+  @Get('admin/categorias')
+  @UseGuards(JwtAuthGuard, PermisosGuard)
+  @RequierePermiso('ver_documentacion_privada', 'crear_documentacion')
+  listarCategoriasAdmin() {
+    return this.documentosService.listarCategoriasAdmin();
+  }
+
+  /**
    * Métricas y registro de descargas (REP-P02-T3)
    */
   @Get('admin/estadisticas')
