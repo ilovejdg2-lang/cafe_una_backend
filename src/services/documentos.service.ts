@@ -23,7 +23,11 @@ import { randomUUID } from 'crypto';
 import { Documento } from '../entities/documento.entity';
 import { DescargaDocumento } from '../entities/descarga-documento.entity';
 import { SolicitudDocumento } from '../entities/solicitud-documento.entity';
-import { CategoriasService, TIPO_CATEGORIA_DOCUMENTO } from './categorias.service';
+import {
+  CategoriasService,
+  TIPO_CATEGORIA_DOCUMENTO,
+  TIPO_CATEGORIA_DOCUMENTO_ADMIN,
+} from './categorias.service';
 import { EmailService } from '../common/email.service';
 import { tienePermiso } from '../common/permisos';
 import { SupabaseStorageService } from './supabase-storage.service';
@@ -137,6 +141,20 @@ export class DocumentosService {
     qb.where('doc.Activo = :activo', { activo: true });
     // Por seguridad y control, los documentos privados NO aparecen en la página principal ni en el catálogo público general
     qb.andWhere('doc.EsPrivado = :esPrivado', { esPrivado: false });
+    // Los documentos de categorías administrativas nunca se listan públicamente,
+    // aunque su bandera EsPrivado estuviera desactualizada.
+    qb.andWhere(
+      `NOT EXISTS (
+        SELECT 1 FROM categorias cadm
+        WHERE cadm."Tipo" = :tipoAdmin
+          AND (
+            (LOWER(cadm."Nombre") = LOWER(doc.Categoria) AND COALESCE(cadm."Padre", '') = '')
+            OR (LOWER(cadm."Nombre") = LOWER(doc.Subcategoria) AND COALESCE(cadm."Padre", '') = '')
+            OR (LOWER(cadm."Nombre") = LOWER(doc.Subcategoria) AND LOWER(cadm."Padre") = LOWER(doc.Categoria))
+          )
+      )`,
+      { tipoAdmin: TIPO_CATEGORIA_DOCUMENTO_ADMIN },
+    );
 
     if (filtros.categoria && filtros.categoria.trim()) {
       qb.andWhere(
@@ -198,17 +216,13 @@ export class DocumentosService {
   }
 
   /**
-   * Obtiene categorías de tipo 'documento' con conteo de documentos activos
+   * Obtiene las categorías públicas ('documento') con conteo de documentos activos.
+   * Las categorías administrativas nunca se incluyen aquí.
    */
   async listarCategorias() {
     let categorias = await this.categoriasService.listar(TIPO_CATEGORIA_DOCUMENTO);
     if (!categorias || categorias.length === 0) {
-      const base = [
-        'Investigaciones',
-        'Manuales y Guías',
-        'Informes Institucionales',
-        'Normativa y Reglamentos',
-      ];
+      const base = ['Investigaciones', 'Manuales y Guías'];
       for (const nombre of base) {
         await this.categoriasService.asegurar(nombre, TIPO_CATEGORIA_DOCUMENTO, '');
       }
@@ -241,6 +255,24 @@ export class DocumentosService {
     } catch {
       return categorias;
     }
+  }
+
+  /**
+   * Categorías de ambas audiencias (pública y administrativa) para el panel
+   * administrativo; cada una incluye `audiencia`.
+   */
+  async listarCategoriasAdmin() {
+    const publicas = await this.categoriasService.listar(
+      TIPO_CATEGORIA_DOCUMENTO,
+      undefined,
+      true,
+    );
+    const administrativas = await this.categoriasService.listar(
+      TIPO_CATEGORIA_DOCUMENTO_ADMIN,
+      undefined,
+      true,
+    );
+    return [...publicas, ...administrativas];
   }
 
   /**
@@ -283,12 +315,17 @@ export class DocumentosService {
     qb.orderBy('doc.CreatedAt', 'DESC');
 
     const rows = await qb.getMany();
+    const esAdministrativa =
+      await this.categoriasService.crearDetectorAdministrativo();
     return rows.map((d) => ({
       id: d.Id,
       titulo: d.Titulo,
       descripcion: d.Descripcion,
       categoria: d.Categoria,
       subcategoria: d.Subcategoria,
+      audiencia: esAdministrativa(d.Categoria, d.Subcategoria)
+        ? ('administrativa' as const)
+        : ('publica' as const),
       nombreArchivo: d.NombreArchivo,
       nombreOriginal: d.NombreOriginal,
       mimeType: d.MimeType,
@@ -337,12 +374,18 @@ export class DocumentosService {
     }
 
     const subcategoria = String(data.subcategoria || '').trim();
+    const esAdministrativa = await this.categoriasService.esAdministrativa(
+      categoria,
+      subcategoria,
+    );
+    // Los documentos de categorías administrativas son siempre privados.
     const esPrivado =
-      data.esPrivado === undefined
+      esAdministrativa ||
+      (data.esPrivado === undefined
         ? true
         : data.esPrivado === true ||
           data.esPrivado === 'true' ||
-          data.esPrivado === '1';
+          data.esPrivado === '1');
     const activo =
       data.activo === undefined
         ? true
@@ -351,17 +394,10 @@ export class DocumentosService {
           data.activo === '1';
 
     // Asegurar que la categoría existe en el catálogo
-    await this.categoriasService.asegurar(
-      categoria,
-      TIPO_CATEGORIA_DOCUMENTO,
-      '',
-    );
+    const tipoCategoria = await this.tipoCategoriaDocumento(categoria);
+    await this.categoriasService.asegurar(categoria, tipoCategoria, '');
     if (subcategoria) {
-      await this.categoriasService.asegurar(
-        subcategoria,
-        TIPO_CATEGORIA_DOCUMENTO,
-        categoria,
-      );
+      await this.categoriasService.asegurar(subcategoria, tipoCategoria, categoria);
     }
 
     const doc = this.docRepo.create({
@@ -430,7 +466,7 @@ export class DocumentosService {
       doc.Categoria = categoria;
       await this.categoriasService.asegurar(
         categoria,
-        TIPO_CATEGORIA_DOCUMENTO,
+        await this.tipoCategoriaDocumento(categoria),
         '',
       );
     }
@@ -441,7 +477,7 @@ export class DocumentosService {
       if (subcategoria) {
         await this.categoriasService.asegurar(
           subcategoria,
-          TIPO_CATEGORIA_DOCUMENTO,
+          await this.tipoCategoriaDocumento(doc.Categoria),
           doc.Categoria,
         );
       }
@@ -452,6 +488,17 @@ export class DocumentosService {
         data.esPrivado === true ||
         data.esPrivado === 'true' ||
         data.esPrivado === '1';
+    }
+
+    // Un documento en categoría administrativa nunca puede quedar público.
+    if (
+      !doc.EsPrivado &&
+      (await this.categoriasService.esAdministrativa(
+        doc.Categoria,
+        doc.Subcategoria,
+      ))
+    ) {
+      doc.EsPrivado = true;
     }
 
     if (data.autor !== undefined) {
@@ -538,8 +585,15 @@ export class DocumentosService {
       throw new NotFoundException('El documento no se encuentra disponible.');
     }
 
-    // Control de acceso a documentos privados
-    if (doc.EsPrivado && !puedeVerDocumentoPrivado(usuario)) {
+    // Control de acceso a documentos privados. Los de categorías administrativas
+    // se tratan como privados aunque su bandera estuviera desactualizada.
+    const esPrivado =
+      doc.EsPrivado ||
+      (await this.categoriasService.esAdministrativa(
+        doc.Categoria,
+        doc.Subcategoria,
+      ));
+    if (esPrivado && !puedeVerDocumentoPrivado(usuario)) {
       throw new ForbiddenException(
         'Este documento es privado. Para acceder a él, envíe una solicitud de archivo.',
       );
@@ -661,6 +715,15 @@ export class DocumentosService {
 
     const categoria = String(data.categoria || '').trim() || (doc ? doc.Categoria : 'Investigaciones');
     const subcategoria = String(data.subcategoria || '').trim() || (doc ? doc.Subcategoria : '');
+    // Los aportes públicos solo pueden usar categorías públicas.
+    if (
+      !doc &&
+      (await this.categoriasService.esAdministrativa(categoria, subcategoria))
+    ) {
+      throw new BadRequestException(
+        'La categoría seleccionada no está disponible para aportes públicos. Elija una categoría del repositorio.',
+      );
+    }
     const autor = String(data.autor || '').trim() || (doc ? doc.Autor : nombre);
     const version = String(data.version || '1.0').trim();
     const palabrasClave = String(data.palabrasClave || '').trim();
@@ -775,10 +838,15 @@ export class DocumentosService {
       // Si el usuario envió un archivo y no ha sido publicado aún, registrarlo en el catálogo
       if (sol.NombreArchivo && !sol.PublicadoDocumentoId) {
         const cat = sol.Categoria || 'Investigaciones';
-        await this.categoriasService.asegurar(cat, TIPO_CATEGORIA_DOCUMENTO, '');
+        const tipoCat = await this.tipoCategoriaDocumento(cat);
+        await this.categoriasService.asegurar(cat, tipoCat, '');
         if (sol.Subcategoria) {
-          await this.categoriasService.asegurar(sol.Subcategoria, TIPO_CATEGORIA_DOCUMENTO, cat);
+          await this.categoriasService.asegurar(sol.Subcategoria, tipoCat, cat);
         }
+        const esAdministrativa = await this.categoriasService.esAdministrativa(
+          cat,
+          sol.Subcategoria,
+        );
 
         const autorFinal =
           sol.Autor ||
@@ -793,7 +861,7 @@ export class DocumentosService {
           NombreOriginal: sol.NombreOriginal || sol.NombreArchivo,
           MimeType: sol.MimeType || 'application/octet-stream',
           TamanoBytes: Number(sol.TamanoBytes) || 0,
-          EsPrivado: Boolean(sol.DocumentoId), // Los aportes aprobados se publican; un adjunto de solicitud de acceso no
+          EsPrivado: Boolean(sol.DocumentoId) || esAdministrativa, // Los aportes aprobados se publican, salvo adjuntos de solicitudes de acceso o categorías administrativas
           Autor: autorFinal,
           Version: sol.Version || '1.0',
           PalabrasClave: sol.PalabrasClave || '',
@@ -891,11 +959,14 @@ export class DocumentosService {
       order: { Categoria: 'ASC', Titulo: 'ASC' },
     });
 
+    const esAdministrativa =
+      await this.categoriasService.crearDetectorAdministrativo();
     const encabezados = [
       'ID',
       'Título',
       'Categoría',
       'Subcategoría',
+      'Audiencia',
       'Autor',
       'Versión',
       'Visibilidad',
@@ -916,6 +987,7 @@ export class DocumentosService {
       escapeCsv(d.Titulo),
       escapeCsv(d.Categoria),
       escapeCsv(d.Subcategoria),
+      esAdministrativa(d.Categoria, d.Subcategoria) ? 'Administrativa' : 'Pública',
       escapeCsv(d.Autor),
       escapeCsv(d.Version),
       d.EsPrivado ? 'Privado' : 'Público',
@@ -936,6 +1008,13 @@ export class DocumentosService {
   }
 
   // --- MÉTODOS AUXILIARES ---
+
+  /** Catálogo donde debe vivir la categoría: administrativo si ya existe como tal; público en otro caso. */
+  private async tipoCategoriaDocumento(categoria: string): Promise<string> {
+    return (await this.categoriasService.esAdministrativa(categoria))
+      ? TIPO_CATEGORIA_DOCUMENTO_ADMIN
+      : TIPO_CATEGORIA_DOCUMENTO;
+  }
 
   private async registrarDescarga(
     documentoId: string,

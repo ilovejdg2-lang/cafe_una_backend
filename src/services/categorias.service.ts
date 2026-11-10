@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   ConflictException,
+  ForbiddenException,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
@@ -13,13 +14,32 @@ import { Producto } from '../entities/producto.entity';
 
 export const TIPO_CATEGORIA_PRODUCTO = 'producto';
 export const TIPO_CATEGORIA_GALERIA = 'galeria';
+/** Categorías del repositorio documental visibles para el público. */
 export const TIPO_CATEGORIA_DOCUMENTO = 'documento';
+/** Categorías administrativas: sus documentos son siempre privados y no se listan públicamente. */
+export const TIPO_CATEGORIA_DOCUMENTO_ADMIN = 'documento_admin';
+
+export type AudienciaCategoria = 'publica' | 'administrativa';
 
 const TIPOS = new Set([
   TIPO_CATEGORIA_PRODUCTO,
   TIPO_CATEGORIA_GALERIA,
   TIPO_CATEGORIA_DOCUMENTO,
+  TIPO_CATEGORIA_DOCUMENTO_ADMIN,
 ]);
+
+function esTipoDocumento(tipo: string): boolean {
+  return (
+    tipo === TIPO_CATEGORIA_DOCUMENTO || tipo === TIPO_CATEGORIA_DOCUMENTO_ADMIN
+  );
+}
+
+/** Solo las categorías de documentos tienen audiencia; el resto devuelve undefined. */
+export function audienciaDeTipo(tipo: string): AudienciaCategoria | undefined {
+  if (tipo === TIPO_CATEGORIA_DOCUMENTO_ADMIN) return 'administrativa';
+  if (tipo === TIPO_CATEGORIA_DOCUMENTO) return 'publica';
+  return undefined;
+}
 
 type CategoriaConUsos = {
   Id: string;
@@ -28,6 +48,7 @@ type CategoriaConUsos = {
   Padre: string;
   Icono: string;
   Usos: number;
+  audiencia?: AudienciaCategoria;
 };
 
 const ICONO_VALIDO = /^[a-z0-9-]{0,60}$/;
@@ -49,7 +70,7 @@ export class CategoriasService {
     const valor = String(tipo || '').trim().toLowerCase();
     if (!TIPOS.has(valor)) {
       throw new BadRequestException(
-        'El tipo de categoría debe ser producto, galería o documento.',
+        'El tipo de categoría debe ser producto, galería, documento o documento_admin.',
       );
     }
     return valor;
@@ -63,10 +84,28 @@ export class CategoriasService {
     return String(padre || '').trim();
   }
 
-  async listar(tipo?: string, padre?: string): Promise<CategoriaConUsos[]> {
+  /**
+   * Lista categorías. Por defecto (consulta pública) nunca incluye las
+   * administrativas; solo los endpoints con permisos pasan `incluirAdministrativas`.
+   */
+  async listar(
+    tipo?: string,
+    padre?: string,
+    incluirAdministrativas = false,
+  ): Promise<CategoriaConUsos[]> {
     const qb = this.repo.createQueryBuilder('c');
-    if (tipo) {
-      qb.andWhere('c.Tipo = :tipo', { tipo: this.normalizarTipo(tipo) });
+    const tipoNormalizado = tipo ? this.normalizarTipo(tipo) : undefined;
+    if (tipoNormalizado === TIPO_CATEGORIA_DOCUMENTO_ADMIN && !incluirAdministrativas) {
+      throw new ForbiddenException(
+        'No tiene acceso a las categorías administrativas.',
+      );
+    }
+    if (tipoNormalizado) {
+      qb.andWhere('c.Tipo = :tipo', { tipo: tipoNormalizado });
+    } else if (!incluirAdministrativas) {
+      qb.andWhere('c.Tipo <> :tipoAdmin', {
+        tipoAdmin: TIPO_CATEGORIA_DOCUMENTO_ADMIN,
+      });
     }
     if (padre !== undefined) {
       const p = this.normalizarPadre(padre);
@@ -88,8 +127,46 @@ export class CategoriasService {
         Padre: item.Padre || '',
         Icono: item.Icono || '',
         Usos: await this.contarUsos(item.Nombre, item.Tipo, item.Padre || ''),
+        ...(audienciaDeTipo(item.Tipo)
+          ? { audiencia: audienciaDeTipo(item.Tipo) }
+          : {}),
       })),
     );
+  }
+
+  /**
+   * Devuelve un detector (síncrono) de categorías administrativas, con una sola
+   * consulta. Coincide por categoría raíz, por subcategoría bajo un padre
+   * administrativo, o por una subcategoría que lleve el nombre de una raíz administrativa.
+   */
+  async crearDetectorAdministrativo(): Promise<
+    (categoria?: string, subcategoria?: string) => boolean
+  > {
+    const filas = await this.repo.find({
+      where: { Tipo: TIPO_CATEGORIA_DOCUMENTO_ADMIN },
+    });
+    const norm = (v?: string) => String(v || '').trim().toLowerCase();
+    const raices = new Set<string>();
+    const hijas = new Set<string>();
+    for (const f of filas) {
+      if (norm(f.Padre)) hijas.add(`${norm(f.Padre)}|${norm(f.Nombre)}`);
+      else raices.add(norm(f.Nombre));
+    }
+    return (categoria, subcategoria) => {
+      const cat = norm(categoria);
+      const sub = norm(subcategoria);
+      if (cat && raices.has(cat)) return true;
+      if (sub && raices.has(sub)) return true;
+      return Boolean(cat && sub && hijas.has(`${cat}|${sub}`));
+    };
+  }
+
+  async esAdministrativa(
+    categoria?: string,
+    subcategoria?: string,
+  ): Promise<boolean> {
+    const detectar = await this.crearDetectorAdministrativo();
+    return detectar(categoria, subcategoria);
   }
 
   async asegurar(nombre: string, tipo: string, padre = ''): Promise<string> {
@@ -126,12 +203,27 @@ export class CategoriasService {
     return guardado.Nombre;
   }
 
-  async crear(nombre: string, tipo: string, padre = ''): Promise<Categoria> {
+  async crear(
+    nombre: string,
+    tipo: string,
+    padre = '',
+    audiencia?: string,
+  ): Promise<Categoria> {
     const limpio = this.normalizarNombre(nombre);
     if (!limpio) {
       throw new BadRequestException('Ingrese el nombre de la categoría.');
     }
-    const tipoNormalizado = this.normalizarTipo(tipo);
+    let tipoNormalizado = this.normalizarTipo(tipo);
+    const aud = String(audiencia || '').trim().toLowerCase();
+    if (tipoNormalizado === TIPO_CATEGORIA_DOCUMENTO && aud) {
+      if (aud === 'administrativa') {
+        tipoNormalizado = TIPO_CATEGORIA_DOCUMENTO_ADMIN;
+      } else if (aud !== 'publica') {
+        throw new BadRequestException(
+          'La audiencia debe ser publica o administrativa.',
+        );
+      }
+    }
     const padreLimpio = this.normalizarPadre(padre);
 
     if (padreLimpio) {
@@ -222,6 +314,7 @@ export class CategoriasService {
       const tablaPorTipo: Record<string, string> = {
         [TIPO_CATEGORIA_PRODUCTO]: 'productos',
         [TIPO_CATEGORIA_DOCUMENTO]: 'documentos',
+        [TIPO_CATEGORIA_DOCUMENTO_ADMIN]: 'documentos',
         [TIPO_CATEGORIA_GALERIA]: 'galeria_institucional',
       };
       const tabla = tablaPorTipo[item.Tipo];
@@ -271,7 +364,7 @@ export class CategoriasService {
           'No se puede borrar: hay fotos de la galería con esta categoría.',
         );
       }
-      if (item.Tipo === TIPO_CATEGORIA_DOCUMENTO) {
+      if (esTipoDocumento(item.Tipo)) {
         throw new ConflictException(
           padre
             ? 'No se puede borrar: hay documentos con esta subcategoría.'
@@ -301,7 +394,7 @@ export class CategoriasService {
         .getCount();
     }
 
-    if (tipo === TIPO_CATEGORIA_DOCUMENTO) {
+    if (esTipoDocumento(tipo)) {
       if (padre) {
         return this.documentosRepo
           .createQueryBuilder('doc')

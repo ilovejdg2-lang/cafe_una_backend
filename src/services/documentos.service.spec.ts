@@ -11,7 +11,10 @@ function crearServicio(solicitud: Record<string, unknown>) {
     findOne: jest.fn().mockResolvedValue(solicitud),
     save: jest.fn((sol: Record<string, unknown>) => Promise.resolve(sol)),
   };
-  const categorias = { asegurar: jest.fn().mockResolvedValue(undefined) };
+  const categorias = {
+    asegurar: jest.fn().mockResolvedValue(undefined),
+    esAdministrativa: jest.fn().mockResolvedValue(false),
+  };
   const email = new Proxy(
     {},
     { get: () => jest.fn().mockResolvedValue(true) },
