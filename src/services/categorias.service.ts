@@ -145,7 +145,12 @@ export class CategoriasService {
     const filas = await this.repo.find({
       where: { Tipo: TIPO_CATEGORIA_DOCUMENTO_ADMIN },
     });
-    const norm = (v?: string) => String(v || '').trim().toLowerCase();
+    const norm = (v?: string) =>
+      String(v || '')
+        .trim()
+        .toLowerCase()
+        .normalize('NFD')
+        .replace(/[̀-ͯ]/g, '');
     const raices = new Set<string>();
     const hijas = new Set<string>();
     for (const f of filas) {
@@ -227,18 +232,31 @@ export class CategoriasService {
     const padreLimpio = this.normalizarPadre(padre);
 
     if (padreLimpio) {
-      const padreExiste = await this.repo
-        .createQueryBuilder('c')
-        .where('LOWER(c.Nombre) = LOWER(:padre)', { padre: padreLimpio })
-        .andWhere('c.Tipo = :tipo', { tipo: tipoNormalizado })
-        .andWhere("(c.Padre = '' OR c.Padre IS NULL)")
-        .getOne();
+      // Una subcategoría documental hereda la audiencia de su padre.
+      const candidatos =
+        tipoNormalizado === TIPO_CATEGORIA_DOCUMENTO
+          ? [TIPO_CATEGORIA_DOCUMENTO, TIPO_CATEGORIA_DOCUMENTO_ADMIN]
+          : [tipoNormalizado];
+      let tipoPadre: string | null = null;
+      for (const candidato of candidatos) {
+        const padreExiste = await this.repo
+          .createQueryBuilder('c')
+          .where('LOWER(c.Nombre) = LOWER(:padre)', { padre: padreLimpio })
+          .andWhere('c.Tipo = :tipo', { tipo: candidato })
+          .andWhere("(c.Padre = '' OR c.Padre IS NULL)")
+          .getOne();
+        if (padreExiste) {
+          tipoPadre = candidato;
+          break;
+        }
+      }
 
-      if (!padreExiste) {
+      if (!tipoPadre) {
         throw new BadRequestException(
           'La categoría padre no existe. Créela primero.',
         );
       }
+      tipoNormalizado = tipoPadre;
     }
 
     const qb = this.repo

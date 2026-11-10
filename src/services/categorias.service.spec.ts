@@ -110,4 +110,26 @@ describe('CategoriasService (audiencia de documentos)', () => {
       expect.objectContaining({ Tipo: 'documento_admin' }),
     );
   });
+
+  it('crea la subcategoría como administrativa si el padre solo existe como administrativo', async () => {
+    const { servicio, repo, qb } = crearServicio();
+    qb.getOne
+      .mockResolvedValueOnce(null) // padre en 'documento'
+      .mockResolvedValueOnce({ Nombre: 'MINUTAS' }); // padre en 'documento_admin'
+    await servicio.crear('PRUEBA', 'documento', 'MINUTAS');
+    expect(repo.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        Nombre: 'PRUEBA',
+        Tipo: 'documento_admin',
+        Padre: 'MINUTAS',
+      }),
+    );
+  });
+
+  it('esAdministrativa ignora tildes y espacios al comparar', async () => {
+    const { servicio } = crearServicio({
+      admin: [{ Nombre: 'Documento Vision', Padre: '' }],
+    });
+    expect(await servicio.esAdministrativa('  Documento Visión ')).toBe(true);
+  });
 });

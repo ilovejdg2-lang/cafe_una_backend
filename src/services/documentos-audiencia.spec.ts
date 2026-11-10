@@ -147,6 +147,8 @@ describe('DocumentosService audiencia de categorías', () => {
       expect.stringContaining('NOT EXISTS'),
       { tipoAdmin: 'documento_admin' },
     );
+    const sql = String(qb.andWhere.mock.calls.map(([q]) => q).find((q) => String(q).includes('NOT EXISTS')));
+    expect(sql).toContain('LOWER(TRIM(cadm."Nombre")) = LOWER(TRIM(doc.Categoria))');
   });
 
   it('listarCategorias solo consulta las categorías públicas', async () => {

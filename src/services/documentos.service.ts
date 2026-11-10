@@ -148,9 +148,9 @@ export class DocumentosService {
         SELECT 1 FROM categorias cadm
         WHERE cadm."Tipo" = :tipoAdmin
           AND (
-            (LOWER(cadm."Nombre") = LOWER(doc.Categoria) AND COALESCE(cadm."Padre", '') = '')
-            OR (LOWER(cadm."Nombre") = LOWER(doc.Subcategoria) AND COALESCE(cadm."Padre", '') = '')
-            OR (LOWER(cadm."Nombre") = LOWER(doc.Subcategoria) AND LOWER(cadm."Padre") = LOWER(doc.Categoria))
+            (LOWER(TRIM(cadm."Nombre")) = LOWER(TRIM(doc.Categoria)) AND TRIM(COALESCE(cadm."Padre", '')) = '')
+            OR (LOWER(TRIM(cadm."Nombre")) = LOWER(TRIM(doc.Subcategoria)) AND TRIM(COALESCE(cadm."Padre", '')) = '')
+            OR (LOWER(TRIM(cadm."Nombre")) = LOWER(TRIM(doc.Subcategoria)) AND LOWER(TRIM(cadm."Padre")) = LOWER(TRIM(doc.Categoria)))
           )
       )`,
       { tipoAdmin: TIPO_CATEGORIA_DOCUMENTO_ADMIN },

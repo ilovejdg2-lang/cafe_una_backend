@@ -40,8 +40,8 @@ export const SQL_UP_AUDIENCIA_CATEGORIAS: string[] = [
       SET "Tipo" = 'documento_admin'
     WHERE c."Tipo" = 'documento'
       AND (
-        (COALESCE(c."Padre", '') = '' AND LOWER(c."Nombre") IN (${LISTA_ADMIN}))
-        OR LOWER(c."Padre") IN (${LISTA_ADMIN})
+        (TRIM(COALESCE(c."Padre", '')) = '' AND LOWER(TRIM(c."Nombre")) IN (${LISTA_ADMIN}))
+        OR LOWER(TRIM(c."Padre")) IN (${LISTA_ADMIN})
       )
       AND NOT EXISTS (
         SELECT 1 FROM categorias x
@@ -59,8 +59,8 @@ export const SQL_UP_AUDIENCIA_CATEGORIAS: string[] = [
        WHERE NOT EXISTS (
          SELECT 1 FROM categorias c
           WHERE c."Tipo" = 'documento'
-            AND LOWER(c."Nombre") = LOWER(v.nombre)
-            AND COALESCE(c."Padre", '') = ''
+            AND LOWER(TRIM(c."Nombre")) = LOWER(TRIM(v.nombre))
+            AND TRIM(COALESCE(c."Padre", '')) = ''
        )
       ON CONFLICT DO NOTHING`,
 
@@ -72,9 +72,9 @@ export const SQL_UP_AUDIENCIA_CATEGORIAS: string[] = [
         SELECT 1 FROM categorias c
          WHERE c."Tipo" = 'documento_admin'
            AND (
-             (LOWER(c."Nombre") = LOWER(d."Categoria") AND COALESCE(c."Padre", '') = '')
-             OR (LOWER(c."Nombre") = LOWER(d."Subcategoria") AND COALESCE(c."Padre", '') = '')
-             OR (LOWER(c."Nombre") = LOWER(d."Subcategoria") AND LOWER(c."Padre") = LOWER(d."Categoria"))
+             (LOWER(TRIM(c."Nombre")) = LOWER(TRIM(d."Categoria")) AND TRIM(COALESCE(c."Padre", '')) = '')
+             OR (LOWER(TRIM(c."Nombre")) = LOWER(TRIM(d."Subcategoria")) AND TRIM(COALESCE(c."Padre", '')) = '')
+             OR (LOWER(TRIM(c."Nombre")) = LOWER(TRIM(d."Subcategoria")) AND LOWER(TRIM(c."Padre")) = LOWER(TRIM(d."Categoria")))
            )
       )`,
 ];
@@ -85,9 +85,30 @@ export class DocumentosAudienciaCategorias20261109010000
   name = 'DocumentosAudienciaCategorias20261109010000';
 
   public async up(queryRunner: QueryRunner): Promise<void> {
-    for (const sql of SQL_UP_AUDIENCIA_CATEGORIAS) {
-      await queryRunner.query(sql);
+    // Una BD nueva que nunca arrancó la app puede no tener aún estas tablas.
+    if (!(await this.categoriasListas(queryRunner))) return;
+    const [reclasificar, insertar, privatizar] = SQL_UP_AUDIENCIA_CATEGORIAS;
+    await queryRunner.query(reclasificar);
+    await queryRunner.query(insertar);
+    if (await this.documentosListos(queryRunner)) {
+      await queryRunner.query(privatizar);
     }
+  }
+
+  private async categoriasListas(queryRunner: QueryRunner): Promise<boolean> {
+    if (!(await queryRunner.hasTable('categorias'))) return false;
+    for (const columna of ['Nombre', 'Tipo', 'Padre', 'Descripcion']) {
+      if (!(await queryRunner.hasColumn('categorias', columna))) return false;
+    }
+    return true;
+  }
+
+  private async documentosListos(queryRunner: QueryRunner): Promise<boolean> {
+    if (!(await queryRunner.hasTable('documentos'))) return false;
+    for (const columna of ['Categoria', 'Subcategoria', 'EsPrivado']) {
+      if (!(await queryRunner.hasColumn('documentos', columna))) return false;
+    }
+    return true;
   }
 
   /**
@@ -97,6 +118,7 @@ export class DocumentosAudienciaCategorias20261109010000
    * privatizaron en `up` permanecen privados.
    */
   public async down(queryRunner: QueryRunner): Promise<void> {
+    if (!(await this.categoriasListas(queryRunner))) return;
     await queryRunner.query(`
       UPDATE categorias c
          SET "Tipo" = 'documento'
@@ -108,6 +130,7 @@ export class DocumentosAudienciaCategorias20261109010000
               AND COALESCE(x."Padre", '') = COALESCE(c."Padre", '')
          )
     `);
+    if (!(await this.documentosListos(queryRunner))) return;
     await queryRunner.query(`
       DELETE FROM categorias c
        WHERE c."Tipo" = 'documento'
