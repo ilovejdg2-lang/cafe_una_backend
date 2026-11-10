@@ -47,15 +47,18 @@ export class CategoriasController {
       nombre?: string;
       tipo?: string;
       padre?: string;
+      audiencia?: string;
       Nombre?: string;
       Tipo?: string;
       Padre?: string;
+      Audiencia?: string;
     },
   ) {
     return this.categoriasService.crear(
       pickString(request, 'nombre', 'Nombre'),
       pickString(request, 'tipo', 'Tipo'),
       pickString(request, 'padre', 'Padre'),
+      pickString(request, 'audiencia', 'Audiencia'),
     );
   }
 
