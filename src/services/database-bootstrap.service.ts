@@ -219,12 +219,12 @@ export class DatabaseBootstrapService implements OnModuleInit {
         WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE "Tipo" = 'documento' AND "Nombre" = 'Manuales y Guías');
 
         INSERT INTO categorias ("Nombre", "Descripcion", "Tipo", "Padre")
-        SELECT 'Informes Institucionales', 'Reportes de gestión y rendición de cuentas', 'documento', ''
-        WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE "Tipo" = 'documento' AND "Nombre" = 'Informes Institucionales');
+        SELECT 'Informes Institucionales', 'Reportes de gestión y rendición de cuentas', 'documento_admin', ''
+        WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE "Tipo" IN ('documento', 'documento_admin') AND "Nombre" = 'Informes Institucionales');
 
         INSERT INTO categorias ("Nombre", "Descripcion", "Tipo", "Padre")
-        SELECT 'Normativa y Reglamentos', 'Reglamentos y directrices del proyecto Café-UNA', 'documento', ''
-        WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE "Tipo" = 'documento' AND "Nombre" = 'Normativa y Reglamentos');
+        SELECT 'Normativa y Reglamentos', 'Reglamentos y directrices del proyecto Café-UNA', 'documento_admin', ''
+        WHERE NOT EXISTS (SELECT 1 FROM categorias WHERE "Tipo" IN ('documento', 'documento_admin') AND "Nombre" = 'Normativa y Reglamentos');
       `);
       await this.dataSource.query(`
         ALTER TABLE productos
