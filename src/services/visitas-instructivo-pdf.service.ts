@@ -1,18 +1,29 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, InternalServerErrorException } from '@nestjs/common';
+import { existsSync } from 'fs';
+import { join } from 'path';
 import PDFDocument from 'pdfkit';
+
+const NOMBRE_IMAGEN = 'kit-basico-agronomo.jpg';
 
 @Injectable()
 export class VisitasInstructivoPdfService {
   async generarPdfInstructivo(): Promise<Buffer> {
+    const rutaImagen = this.resolverRutaImagen();
+    if (!rutaImagen) {
+      throw new InternalServerErrorException(
+        'No se encontró la imagen del instructivo de visitas.',
+      );
+    }
+
     return new Promise<Buffer>((resolve, reject) => {
       try {
         const doc = new PDFDocument({
           size: 'LETTER',
           margin: 48,
           info: {
-            Title: 'Instructivo de Recomendaciones para Visitas Grupales',
+            Title: 'Instructivo y Recomendaciones Generales de Visita',
             Author: 'Café UNA - Universidad Nacional de Costa Rica',
-            Subject: 'Recomendaciones y normas de seguridad para visitas a finca',
+            Subject: 'Kit básico de agrónomo y recomendaciones para visitas a finca',
           },
         });
 
@@ -21,6 +32,8 @@ export class VisitasInstructivoPdfService {
         doc.on('end', () => resolve(Buffer.concat(buffers)));
         doc.on('error', (err: Error) => reject(err));
 
+        this.dibujarImagen(doc, rutaImagen);
+        doc.addPage();
         this.construirContenido(doc);
         doc.end();
       } catch (error) {
@@ -29,14 +42,25 @@ export class VisitasInstructivoPdfService {
     });
   }
 
-  private construirContenido(doc: PDFKit.PDFDocument): void {
-    const primaryColor = '#0F172A'; // Slate 900
-    const accentColor = '#047857'; // Emerald 700
-    const textColor = '#334155'; // Slate 700
-    const mutedColor = '#64748B'; // Slate 500
-    const borderColor = '#E2E8F0'; // Slate 200
+  private dibujarImagen(doc: PDFKit.PDFDocument, rutaImagen: string): void {
+    const margen = 24;
+    const anchoUtil = doc.page.width - margen * 2;
+    const altoUtil = doc.page.height - margen * 2;
 
-    // Encabezado
+    doc.image(rutaImagen, margen, margen, {
+      fit: [anchoUtil, altoUtil],
+      align: 'center',
+      valign: 'center',
+    });
+  }
+
+  private construirContenido(doc: PDFKit.PDFDocument): void {
+    const primaryColor = '#0F172A';
+    const accentColor = '#047857';
+    const textColor = '#334155';
+    const mutedColor = '#64748B';
+    const borderColor = '#E2E8F0';
+
     doc
       .rect(48, 48, 516, 75)
       .fillAndStroke('#F8FAFC', borderColor);
@@ -88,31 +112,26 @@ export class VisitasInstructivoPdfService {
     const recomendaciones = [
       {
         titulo: '1. Calzado Cerrado Obligatorio',
-        icono: '[1]',
         descripcion:
           'Es indispensable el uso de calzado cerrado con suela antideslizante (tenis deportivas, botas de senderismo o botas de hule). Está estrictamente prohibido el ingreso con sandalias, tacones o calzado descubierto por razones de seguridad en terrenos agrícolas irregulares y húmedos.',
       },
       {
         titulo: '2. Hidratación y Vestimenta Cómoda',
-        icono: '[2]',
         descripcion:
           'El recorrido se realiza en senderos al aire libre y parcelas de cultivo. Se aconseja vestir ropa cómoda y fresca (pantalón largo ligero preferible). Se recomienda llevar botella o termo reutilizable con agua; la finca cuenta con puntos para recarga de agua potable.',
       },
       {
         titulo: '3. Protección Solar y Repelente de Insectos',
-        icono: '[3]',
         descripcion:
           'Aplicar protector solar y repelente contra insectos antes de iniciar el trayecto. Es altamente recomendable el uso de sombrero, gorra o pañuelo para protegerse de la radiación solar durante la caminata.',
       },
       {
         titulo: '4. Zonas de Parqueo y Logística de Acceso',
-        icono: '[4]',
         descripcion:
           'La finca cuenta con área de estacionamiento debidamente señalizada para vehículos livianos y espacio reservado para maniobras y desembarque de buses o microbuses. Por favor seguir las instrucciones del personal de seguridad y parqueo al ingresar.',
       },
       {
         titulo: '5. Cuidado del Entorno y Normas de Seguridad',
-        icono: '[5]',
         descripcion:
           'Permanecer siempre junto al grupo y con el personal facilitador. No cortar hojas ni frutos de café sin autorización. Depositar cualquier residuo en las estaciones de reciclaje y respetar la flora y fauna local.',
       },
@@ -138,7 +157,6 @@ export class VisitasInstructivoPdfService {
       y += 66;
     }
 
-    // Pie de página con contacto y notas
     y += 10;
     doc
       .rect(48, y, 516, 44)
@@ -159,5 +177,14 @@ export class VisitasInstructivoPdfService {
         64,
         y + 24,
       );
+  }
+
+  private resolverRutaImagen(): string | null {
+    const candidatas = [
+      join(process.cwd(), 'assets', 'visitas', NOMBRE_IMAGEN),
+      join(__dirname, '..', '..', 'assets', 'visitas', NOMBRE_IMAGEN),
+      join(__dirname, '..', 'assets', 'visitas', NOMBRE_IMAGEN),
+    ];
+    return candidatas.find((ruta) => existsSync(ruta)) || null;
   }
 }

@@ -1285,13 +1285,49 @@ export class DatabaseBootstrapService implements OnModuleInit {
     `);
     await this.dataSource.query(`
       UPDATE tarjetas_inicio
-      SET "Ruta" = '/donaciones/solicitar'
+      SET "Ruta" = '/donaciones'
       WHERE LOWER(TRIM("Clave")) = 'donaciones'
         AND (
           "Ruta" IS NULL
           OR TRIM("Ruta") = ''
+          OR "Ruta" = '/donaciones/solicitar'
           OR "Ruta" LIKE '/donaciones/necesidades%'
         );
+    `);
+    await this.dataSource.query(`
+      UPDATE tarjetas_inicio
+      SET "Ruta" = '/voluntariado'
+      WHERE LOWER(TRIM("Clave")) = 'voluntariado'
+        AND (
+          "Ruta" IS NULL
+          OR TRIM("Ruta") = ''
+          OR "Ruta" = '/voluntariado/solicitar'
+        );
+    `);
+    await this.dataSource.query(`
+      UPDATE tarjetas_inicio
+      SET "Ruta" = '/visitas'
+      WHERE LOWER(TRIM("Clave")) = 'visitas'
+        AND (
+          "Ruta" IS NULL
+          OR TRIM("Ruta") = ''
+          OR "Ruta" = '/visitas/solicitar'
+        );
+    `);
+    await this.dataSource.query(`
+      UPDATE enlaces_sitio
+      SET "Ruta" = '/voluntariado'
+      WHERE "Ruta" = '/voluntariado/solicitar';
+    `);
+    await this.dataSource.query(`
+      UPDATE enlaces_sitio
+      SET "Ruta" = '/visitas'
+      WHERE "Ruta" = '/visitas/solicitar';
+    `);
+    await this.dataSource.query(`
+      UPDATE enlaces_sitio
+      SET "Ruta" = '/donaciones'
+      WHERE "Ruta" = '/donaciones/solicitar';
     `);
     await this.dataSource.query(`
       UPDATE enlaces_sitio
