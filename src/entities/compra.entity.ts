@@ -71,6 +71,16 @@ export class Compra {
   @Column({ name: 'ComprobanteArchivo', type: 'varchar', length: 200, nullable: true })
   ComprobanteArchivo: string | null;
 
+  /** Quien aceptó o rechazó el pedido en línea (no el cliente comprador). */
+  @Column({ name: 'RevisadoPorId', type: 'int', nullable: true })
+  RevisadoPorId: number | null;
+
+  @Column({ name: 'RevisadoPorNombre', type: 'varchar', length: 150, default: '' })
+  RevisadoPorNombre: string;
+
+  @Column({ name: 'RevisadoPorCorreo', type: 'varchar', length: 150, default: '' })
+  RevisadoPorCorreo: string;
+
   @OneToMany(() => CompraItem, (item) => item.Compra, { cascade: true })
   Items?: CompraItem[];
 

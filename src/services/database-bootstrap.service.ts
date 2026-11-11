@@ -180,6 +180,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
         CREATE TABLE IF NOT EXISTS solicitudes_documentos (
           "Id" bigserial PRIMARY KEY,
           "DocumentoId" bigint NULL,
+          "UsuarioId" integer NULL,
           "DocumentoTitulo" varchar(200) NOT NULL DEFAULT '',
           "NombreSolicitante" varchar(150) NOT NULL,
           "CorreoSolicitante" varchar(150) NOT NULL,
@@ -198,6 +199,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
           ALTER COLUMN "DocumentoId" DROP NOT NULL;
 
         ALTER TABLE solicitudes_documentos
+          ADD COLUMN IF NOT EXISTS "UsuarioId" integer NULL,
           ADD COLUMN IF NOT EXISTS "NombreArchivo" varchar(255) NULL,
           ADD COLUMN IF NOT EXISTS "NombreOriginal" varchar(255) NULL,
           ADD COLUMN IF NOT EXISTS "MimeType" varchar(100) NULL,
@@ -209,6 +211,9 @@ export class DatabaseBootstrapService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "PalabrasClave" varchar(255) NOT NULL DEFAULT '',
           ADD COLUMN IF NOT EXISTS "EsPrivado" boolean NOT NULL DEFAULT true,
           ADD COLUMN IF NOT EXISTS "PublicadoDocumentoId" bigint NULL;
+
+        CREATE INDEX IF NOT EXISTS "IX_solicitudes_documentos_usuario"
+          ON solicitudes_documentos ("UsuarioId");
 
         INSERT INTO categorias ("Nombre", "Descripcion", "Tipo", "Padre")
         SELECT 'Investigaciones', 'Publicaciones científicas y estudios del café', 'documento', ''
@@ -397,7 +402,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
           "Subtotal" numeric(14,2) NOT NULL DEFAULT 0,
           "Impuestos" numeric(14,2) NOT NULL DEFAULT 0,
           "Total" numeric(14,2) NOT NULL DEFAULT 0,
-          "MetodoPago" varchar(50) NOT NULL DEFAULT 'Tarjeta',
+          "MetodoPago" varchar(50) NOT NULL DEFAULT 'Comprobante',
           "Estado" varchar(40) NOT NULL DEFAULT 'Pendiente',
           "FacturaId" varchar(80) NULL
         );
@@ -420,6 +425,18 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.dataSource.query(`
         ALTER TABLE compras
         ADD COLUMN IF NOT EXISTS "ComprobanteArchivo" varchar(200) NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE compras
+        ADD COLUMN IF NOT EXISTS "RevisadoPorId" integer NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE compras
+        ADD COLUMN IF NOT EXISTS "RevisadoPorNombre" varchar(150) NOT NULL DEFAULT '';
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE compras
+        ADD COLUMN IF NOT EXISTS "RevisadoPorCorreo" varchar(150) NOT NULL DEFAULT '';
       `);
       await this.dataSource.query(`
         CREATE INDEX IF NOT EXISTS "IDX_compras_UbicacionId"
@@ -1694,7 +1711,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
         'Usado con desgaste',
         'Para reparar',
       ],
-      metodo_pago: ['Efectivo', 'Tarjeta', 'SINPE Móvil', 'Transferencia'],
+      metodo_pago: ['Efectivo', 'SINPE Móvil', 'Transferencia'],
       unidad_presentacion: ['g', 'kg', 'ml', 'L'],
     };
     const pesos = (await this.dataSource.query(`
@@ -1719,6 +1736,13 @@ export class DatabaseBootstrapService implements OnModuleInit {
         );
       }
     }
+
+    // Métodos viejos que no se usan en el flujo real (web = comprobante/SINPE).
+    await this.dataSource.query(`
+      DELETE FROM catalogo_sistema
+      WHERE "Tipo" = 'metodo_pago'
+        AND LOWER(TRIM("Nombre")) IN ('tarjeta', 'tarjeta de débito / crédito', 'tarjeta de debito / credito');
+    `);
   }
 
   private async asegurarRevisionPropuestasProductores(): Promise<void> {

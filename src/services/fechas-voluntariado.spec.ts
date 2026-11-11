@@ -401,7 +401,7 @@ describe('Voluntariado Fechas y Cancelación (Unit & Acceptance Tests)', () => {
         'Apoyo General',
         fechaFutura,
         'deshabilitar',
-        'Aviso de prueba',
+        'Aviso de cupo',
       );
 
       expect(res.notificacionesFallidas).toBe(1);

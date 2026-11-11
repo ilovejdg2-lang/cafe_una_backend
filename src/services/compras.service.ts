@@ -13,6 +13,7 @@ import {
   insertarMovimientoInventario,
   TIPO_MOVIMIENTO,
 } from '../common/movimiento-inventario.util';
+import { usuarioEsStaffVenta } from '../common/roles.util';
 import { nombreArchivoSeguro } from '../common/upload-paths';
 import { CompraItem } from '../entities/compra-item.entity';
 import { Compra } from '../entities/compra.entity';
@@ -290,7 +291,7 @@ export class ComprasService {
           );
         }
 
-        const balance = await queryRunner.manager.findOne(
+        let balance = await queryRunner.manager.findOne(
           InventarioStockUbicacion,
           {
             where: {
@@ -301,11 +302,24 @@ export class ComprasService {
           },
         );
         const stockUbicacion = Number(balance?.Stock) || 0;
-        if (stockUbicacion < solicitado.cantidad) {
+        const reservado = Math.max(0, Number(balance?.StockReservado) || 0);
+        const disponible = calcularStockDisponible(stockUbicacion, reservado);
+        if (disponible < solicitado.cantidad) {
           throw new BadRequestException(
-            `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}. Disponible: ${stockUbicacion}.`,
+            `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}. Disponible: ${disponible}.`,
           );
         }
+
+        if (!balance) {
+          balance = queryRunner.manager.create(InventarioStockUbicacion, {
+            ProductoId: String(producto.Id),
+            UbicacionId: ubicacion.Id,
+            Stock: stockUbicacion,
+            StockReservado: 0,
+          });
+        }
+        balance.StockReservado = reservado + solicitado.cantidad;
+        await queryRunner.manager.save(balance);
 
         const precioNormal = this.numero(producto.PrecioNormal, 0);
         const precioConIva = this.numero(producto.PrecioConIVA, precioNormal);
@@ -344,6 +358,9 @@ export class ComprasService {
           FacturaId: null,
           UbicacionId: Number(ubicacion.Id),
           ComprobanteArchivo: comprobanteArchivo.slice(0, 200),
+          RevisadoPorId: null,
+          RevisadoPorNombre: '',
+          RevisadoPorCorreo: '',
         }),
       );
 
@@ -473,7 +490,29 @@ export class ComprasService {
       if (necesitaStock && !teniaStock) {
         await this.descontarStockDeItems(queryRunner.manager, items, compra);
       } else if (!necesitaStock && teniaStock) {
-        await this.restaurarStockDeItems(queryRunner.manager, items, compra);
+        await this.restaurarStockDeItems(queryRunner.manager, items, compra, {
+          reservar: nuevoEstado === 'Pendiente',
+        });
+      }
+
+      if (actual === 'Pendiente' && nuevoEstado === 'Rechazado') {
+        await this.liberarReservaDeItems(queryRunner.manager, items, compra);
+      } else if (actual === 'Rechazado' && nuevoEstado === 'Pendiente') {
+        await this.reservarStockDeItems(queryRunner.manager, items, compra);
+      }
+
+      if (nuevoEstado === 'Aceptado' || nuevoEstado === 'Rechazado') {
+        const revision = await this.resolverActorRevision(
+          queryRunner.manager,
+          actor,
+        );
+        compra.RevisadoPorId = revision.id;
+        compra.RevisadoPorNombre = revision.nombre;
+        compra.RevisadoPorCorreo = revision.correo;
+      } else if (nuevoEstado === 'Pendiente') {
+        compra.RevisadoPorId = null;
+        compra.RevisadoPorNombre = '';
+        compra.RevisadoPorCorreo = '';
       }
 
       compra.Estado = nuevoEstado;
@@ -813,13 +852,20 @@ export class ComprasService {
         lock: { mode: 'pessimistic_write' },
       });
       const stockFisico = Number(balance?.Stock) || 0;
-      const stockDisponible = calcularStockDisponible(
-        stockFisico,
-        ubicacion.Codigo === BODEGA_CENTRAL ? balance?.StockReservado : 0,
-      );
-      if (stockDisponible < cantidad) {
+      const reservado = Math.max(0, Number(balance?.StockReservado) || 0);
+      const libre = calcularStockDisponible(stockFisico, reservado);
+      const tieneReserva = reservado >= cantidad;
+
+      // Compra nueva: consume su propia reserva. Legado sin reserva: solo usa stock libre.
+      if (tieneReserva) {
+        if (stockFisico < cantidad) {
+          throw new BadRequestException(
+            `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}. Disponible: ${libre}.`,
+          );
+        }
+      } else if (libre < cantidad) {
         throw new BadRequestException(
-          `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}. Disponible: ${stockDisponible}.`,
+          `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}. Disponible: ${libre}.`,
         );
       }
 
@@ -828,9 +874,13 @@ export class ComprasService {
           ProductoId: String(producto.Id),
           UbicacionId: ubicacion.Id,
           Stock: stockFisico,
+          StockReservado: 0,
         });
       }
       balance.Stock = stockFisico - cantidad;
+      if (tieneReserva) {
+        balance.StockReservado = reservado - cantidad;
+      }
       await manager.save(balance);
       await this.sincronizarProductoSiCentral(
         manager,
@@ -856,6 +906,7 @@ export class ComprasService {
     manager: EntityManager,
     items: CompraItem[],
     compra: Compra,
+    opciones: { reservar?: boolean } = {},
   ): Promise<void> {
     const ubicacion = await this.resolverUbicacionStock(manager, compra);
     const { responsableId, responsableNombre } =
@@ -890,14 +941,19 @@ export class ComprasService {
         lock: { mode: 'pessimistic_write' },
       });
       const stockUbicacion = Number(balance?.Stock) || 0;
+      const reservado = Math.max(0, Number(balance?.StockReservado) || 0);
       if (!balance) {
         balance = manager.create(InventarioStockUbicacion, {
           ProductoId: String(producto.Id),
           UbicacionId: ubicacion.Id,
           Stock: stockUbicacion,
+          StockReservado: 0,
         });
       }
       balance.Stock = stockUbicacion + cantidad;
+      if (opciones.reservar) {
+        balance.StockReservado = reservado + cantidad;
+      }
       await manager.save(balance);
       await this.sincronizarProductoSiCentral(
         manager,
@@ -919,6 +975,91 @@ export class ComprasService {
         ubicacionId: ubicacion.Id,
         ubicacionDestinoId: ubicacion.Id,
       });
+    }
+  }
+
+  private async reservarStockDeItems(
+    manager: EntityManager,
+    items: CompraItem[],
+    compra: Compra,
+  ): Promise<void> {
+    const ubicacion = await this.resolverUbicacionStock(manager, compra);
+
+    for (const item of items) {
+      const cantidad = Number(item.Cantidad) || 0;
+      if (cantidad <= 0) continue;
+
+      const productoId = item.ProductoId;
+      if (!productoId) {
+        throw new BadRequestException(
+          `No se encontró el producto ${item.Nombre || '(sin referencia)'}.`,
+        );
+      }
+
+      const producto = await manager.findOne(Producto, {
+        where: { Id: productoId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!producto) {
+        throw new BadRequestException(
+          `No se encontró el producto ${item.Nombre || item.ProductoId}.`,
+        );
+      }
+
+      let balance = await manager.findOne(InventarioStockUbicacion, {
+        where: {
+          ProductoId: String(producto.Id),
+          UbicacionId: ubicacion.Id,
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
+      const stockFisico = Number(balance?.Stock) || 0;
+      const reservado = Math.max(0, Number(balance?.StockReservado) || 0);
+      const disponible = calcularStockDisponible(stockFisico, reservado);
+      if (disponible < cantidad) {
+        throw new BadRequestException(
+          `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}. Disponible: ${disponible}.`,
+        );
+      }
+      if (!balance) {
+        balance = manager.create(InventarioStockUbicacion, {
+          ProductoId: String(producto.Id),
+          UbicacionId: ubicacion.Id,
+          Stock: stockFisico,
+          StockReservado: 0,
+        });
+      }
+      balance.StockReservado = reservado + cantidad;
+      await manager.save(balance);
+    }
+  }
+
+  private async liberarReservaDeItems(
+    manager: EntityManager,
+    items: CompraItem[],
+    compra: Compra,
+  ): Promise<void> {
+    const ubicacion = await this.resolverUbicacionStock(manager, compra);
+
+    for (const item of items) {
+      const cantidad = Number(item.Cantidad) || 0;
+      if (cantidad <= 0) continue;
+
+      const productoId = item.ProductoId;
+      if (!productoId) continue;
+
+      const balance = await manager.findOne(InventarioStockUbicacion, {
+        where: {
+          ProductoId: String(productoId),
+          UbicacionId: ubicacion.Id,
+        },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!balance) continue;
+
+      const reservado = Math.max(0, Number(balance.StockReservado) || 0);
+      balance.StockReservado = Math.max(0, reservado - cantidad);
+      await manager.save(balance);
     }
   }
 
@@ -1078,16 +1219,73 @@ export class ComprasService {
     return Number.isFinite(n) && n >= 0 ? n : fallback;
   }
 
+  private async resolverActorRevision(
+    manager: EntityManager,
+    actor?: { userId?: number | null; roles?: string[] },
+  ): Promise<{ id: number | null; nombre: string; correo: string }> {
+    const actorId = Number(actor?.userId);
+    if (!Number.isFinite(actorId) || actorId <= 0) {
+      return { id: null, nombre: '', correo: '' };
+    }
+    const usuario = await manager.findOne(Usuario, { where: { Id: actorId } });
+    if (!usuario) {
+      return { id: actorId, nombre: `usuario:${actorId}`, correo: '' };
+    }
+    return {
+      id: actorId,
+      nombre: String(usuario.Nombre || usuario.Correo || `usuario:${actorId}`)
+        .trim()
+        .slice(0, 150),
+      correo: String(usuario.Correo || '')
+        .trim()
+        .slice(0, 150),
+    };
+  }
+
+  private resolverDatosVendedor(compra: Compra): {
+    vendedorNombre: string;
+    vendedorCorreo: string;
+  } {
+    const usuario = compra.Usuario;
+    if (usuario && usuarioEsStaffVenta(usuario.Roles)) {
+      const correoUsuario = String(usuario.Correo || '')
+        .trim()
+        .toLowerCase();
+      const correoCliente = String(compra.ClienteCorreo || '')
+        .trim()
+        .toLowerCase();
+      const mismoCorreo =
+        Boolean(correoUsuario) &&
+        Boolean(correoCliente) &&
+        correoUsuario === correoCliente;
+      // Venta presencial: el UsuarioId es el cajero, no el cliente.
+      if (!mismoCorreo) {
+        return {
+          vendedorNombre: String(usuario.Nombre || usuario.Correo || '').trim(),
+          vendedorCorreo: String(usuario.Correo || '').trim(),
+        };
+      }
+    }
+
+    // Compra en línea: el vendedor es quien aceptó o rechazó el pedido.
+    const revisadoNombre = String(compra.RevisadoPorNombre || '').trim();
+    const revisadoCorreo = String(compra.RevisadoPorCorreo || '').trim();
+    if (revisadoNombre || revisadoCorreo) {
+      return {
+        vendedorNombre: revisadoNombre || revisadoCorreo,
+        vendedorCorreo: revisadoCorreo,
+      };
+    }
+
+    return { vendedorNombre: '', vendedorCorreo: '' };
+  }
+
   private mapearResumen(compra: Compra): CompraResumen {
     const items = compra.Items || [];
     const estado = normalizarEstadoCompra(compra.Estado || '');
     const esGanada = estado === 'Entregado';
     const total = Number(compra.Total) || 0;
-    const usuario = compra.Usuario;
-    const vendedorNombre = String(
-      usuario?.Nombre || usuario?.Correo || '',
-    ).trim();
-    const vendedorCorreo = String(usuario?.Correo || '').trim();
+    const { vendedorNombre, vendedorCorreo } = this.resolverDatosVendedor(compra);
     return {
       id: Number(compra.Id),
       numero: compra.Numero,
