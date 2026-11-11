@@ -132,7 +132,13 @@ describe('ComprasService historial', () => {
       Estado: 'Pendiente',
       FacturaId: null,
       UbicacionId: 2,
-      Ubicacion: { Id: 2, Codigo: 'POS_FUNA_UNA', Nombre: 'FUNA-UNA' },
+      Ubicacion: {
+        Id: 2,
+        Codigo: 'POS_FUNA_UNA',
+        Nombre: 'FUNA-UNA',
+        Direccion: 'Campus Omar Dengo',
+        Horario: 'Lunes a viernes de 8:00 a. m. a 5:00 p. m.',
+      },
       ComprobanteArchivo: 'comprobante-test.jpg',
       Items: [
         {
@@ -173,6 +179,10 @@ describe('ComprasService historial', () => {
     expect(detalle.clienteNombre).toBe('Ana Cliente');
     expect(detalle.total).toBe(6000);
     expect(detalle.ubicacionCodigo).toBe('POS_FUNA_UNA');
+    expect(detalle.ubicacionDireccion).toBe('Campus Omar Dengo');
+    expect(detalle.ubicacionHorario).toBe(
+      'Lunes a viernes de 8:00 a. m. a 5:00 p. m.',
+    );
     expect(detalle.items).toHaveLength(1);
   });
 
@@ -417,6 +427,10 @@ describe('ComprasService historial', () => {
       '(compra.UsuarioId = :alcanceVendedorId OR compra.UbicacionId IN (:...puntosAsignados))',
       { alcanceVendedorId: 7, puntosAsignados: [2, 3] },
     );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      `(COALESCE(TRIM(compra.ComprobanteArchivo), '') <> '' OR compra.Estado NOT IN (:...estadosSinComprobanteOcultos))`,
+      { estadosSinComprobanteOcultos: ['Pendiente', 'Borrador'] },
+    );
   });
 
   it('lists multiple purchases with pagination', async () => {
@@ -530,6 +544,38 @@ describe('ComprasService historial', () => {
     const detalle = await service.obtenerDetalleAutorizado(9, 4, ['Cliente']);
     expect(detalle.numero).toBe('C-9');
     expect(detalle.items[0].nombre).toBe('Café');
+    expect(detalle.items[0].precioUnitario).toBe(113);
+  });
+
+  it('keeps the historical item name when the live product name differs', async () => {
+    comprasRepository.findOne.mockResolvedValue({
+      Id: 9,
+      Numero: 'C-9',
+      UsuarioId: 4,
+      Fecha: new Date('2026-02-01T00:00:00Z'),
+      ClienteNombre: 'Dueño',
+      ClienteCorreo: 'dueno@una.cr',
+      Subtotal: '100',
+      Impuestos: '13',
+      Total: '113',
+      MetodoPago: 'Tarjeta',
+      Estado: 'Pagado',
+      FacturaId: null,
+      Items: [
+        {
+          ProductoId: '1',
+          Nombre: 'Café histórico',
+          Cantidad: 1,
+          PrecioUnitario: '113',
+          Subtotal: '113',
+          Producto: { Id: '1', Nombre: 'Café renombrado', PrecioConIVA: '9999' },
+        },
+      ],
+    });
+
+    const detalle = await service.obtenerDetalleAutorizado(9, 4, ['Cliente']);
+    expect(detalle.items[0].nombre).toBe('Café histórico');
+    expect(detalle.items[0].precioUnitario).toBe(113);
   });
 
   it('blocks IDOR when a client requests another user purchase', async () => {
@@ -631,6 +677,50 @@ describe('ComprasService historial', () => {
     const detalle = await service.obtenerDetalleAutorizado(12, 1, ['Admin']);
     expect(detalle.vendedorNombre).toBe('Ana Vendedora');
     expect(detalle.vendedorCorreo).toBe('ana.vendedor@una.cr');
+  });
+
+  it('does not attach the cashier client file to an in-person sale', async () => {
+    clientesService.obtenerFichaPorUsuarioId.mockResolvedValue({
+      TipoCliente: 'Fisico',
+      NombreLegal: 'Ana',
+      Apellidos: 'Vendedora',
+      Telefono: '8888-0000',
+      TipoDocumento: 'Cédula',
+      Identificacion: '1-1111-1111',
+      Nacionalidad: 'Costarricense',
+      RazonSocial: '',
+      NombreComercial: '',
+      RepresentanteLegal: '',
+      CedulaJuridica: '',
+      DireccionFiscal: 'Heredia',
+      TelefonoOficina: '',
+    });
+    comprasRepository.findOne.mockResolvedValue({
+      Id: 12,
+      Numero: 'VP-12',
+      UsuarioId: 8,
+      Fecha: new Date('2026-11-10T00:00:00Z'),
+      ClienteNombre: 'María Pérez',
+      ClienteCorreo: 'maria@una.cr',
+      Subtotal: '2000',
+      Impuestos: '0',
+      Total: '2000',
+      MetodoPago: 'Efectivo',
+      Estado: 'Enviado',
+      FacturaId: null,
+      Usuario: {
+        Id: 8,
+        Nombre: 'Ana Vendedora',
+        Correo: 'ana.vendedor@una.cr',
+        Roles: ['Vendedor'],
+      },
+      Items: [],
+    });
+
+    const detalle = await service.obtenerDetalleAutorizado(12, 1, ['Admin']);
+    expect(detalle.cliente).toBeNull();
+    expect(detalle.clienteNombre).toBe('María Pérez');
+    expect(clientesService.obtenerFichaPorUsuarioId).not.toHaveBeenCalled();
   });
 
   it('shows the reviewer as vendedor on accepted online purchases', async () => {

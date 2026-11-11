@@ -74,6 +74,94 @@ export class ComprasController {
     private readonly storage: SupabaseStorageService,
   ) {}
 
+  /** Crea o actualiza el borrador del carrito; el Id (caféUNA{id}) se mantiene hasta completar. */
+  @Post('iniciar')
+  @RequierePermiso('comprar_productos', 'registrar_ventas')
+  async iniciar(
+    @Body() body: Record<string, unknown>,
+    @Req() req: Request & { user: JwtUsuario },
+  ) {
+    return this.comprasService.iniciar(body ?? {}, req.user.userId ?? null);
+  }
+
+  @Post(':id/comprobante')
+  @RequierePermiso('comprar_productos', 'registrar_ventas')
+  @UseInterceptors(
+    FileInterceptor('comprobante', {
+      storage: memoryStorage(),
+      limits: { fileSize: MAX_COMPROBANTE_BYTES },
+      fileFilter: (_req, file, cb) => {
+        if (!esImagenComprobante(file)) {
+          cb(
+            new BadRequestException(
+              'El comprobante debe ser una imagen JPG, PNG o WEBP.',
+            ) as unknown as Error,
+            false,
+          );
+          return;
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async adjuntarComprobante(
+    @Param('id') id: string,
+    @UploadedFile()
+    file:
+      | {
+          originalname: string;
+          mimetype?: string;
+          buffer: Buffer;
+        }
+      | undefined,
+    @Req() req: Request & { user: JwtUsuario },
+  ) {
+    if (!file) {
+      throw new BadRequestException(
+        'Debés adjuntar el comprobante de pago para completar la compra.',
+      );
+    }
+    const nombre = nombreComprobante(file.originalname);
+    const enBucket = this.storage.estaHabilitado();
+    if (enBucket) {
+      const subido = await this.storage.subirArchivo(
+        nombre,
+        file.buffer,
+        file.mimetype || mimePorNombre(nombre),
+        COMPROBANTES_BUCKET,
+      );
+      if (!subido) {
+        throw new InternalServerErrorException(
+          'No se pudo guardar el comprobante. Intenta nuevamente.',
+        );
+      }
+    } else {
+      writeFileSync(
+        join(asegurarDirectorioUpload(COMPROBANTES_SUBDIR), nombre),
+        file.buffer,
+      );
+    }
+    try {
+      return await this.comprasService.adjuntarComprobante(
+        id,
+        nombre,
+        req.user.userId ?? null,
+        req.user.roles ?? [],
+      );
+    } catch (err) {
+      if (enBucket) {
+        try {
+          await this.storage.eliminarArchivo(nombre, COMPROBANTES_BUCKET);
+        } catch (cleanupErr) {
+          this.logger.error(
+            `No se pudo eliminar el comprobante huérfano "${nombre}": ${cleanupErr instanceof Error ? cleanupErr.message : String(cleanupErr)}`,
+          );
+        }
+      }
+      throw err;
+    }
+  }
+
   @Post()
   @RequierePermiso('comprar_productos', 'registrar_ventas')
   @UseInterceptors(

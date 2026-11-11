@@ -897,7 +897,7 @@ export class EmailService {
   }
 
   private escapeHtml(value: string): string {
-    return value
+    return String(value ?? '')
       .replaceAll('&', '&amp;')
       .replaceAll('<', '&lt;')
       .replaceAll('>', '&gt;')

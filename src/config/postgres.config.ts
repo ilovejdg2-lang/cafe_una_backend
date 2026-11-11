@@ -16,6 +16,12 @@ export function construirConfigPostgres(
     );
   }
 
+  const hostNormalizado = host.toLowerCase();
+  const esLocal =
+    hostNormalizado === 'localhost' ||
+    hostNormalizado === '127.0.0.1' ||
+    hostNormalizado === '::1';
+
   return {
     type: 'postgres',
     host,
@@ -26,7 +32,7 @@ export function construirConfigPostgres(
     entities,
     subscribers: [AuditoriaSubscriber],
     synchronize: false,
-    ssl: { rejectUnauthorized: false },
+    ssl: esLocal ? false : { rejectUnauthorized: false },
     extra: {
       max: 10,
       connectionTimeoutMillis: 15_000,

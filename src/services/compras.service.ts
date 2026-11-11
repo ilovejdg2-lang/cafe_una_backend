@@ -137,6 +137,8 @@ export type CompraResumen = {
   ubicacionId: number | null;
   ubicacionCodigo: string | null;
   ubicacionNombre: string | null;
+  ubicacionDireccion: string | null;
+  ubicacionHorario: string | null;
   tieneComprobante: boolean;
 };
 
@@ -202,10 +204,135 @@ export class ComprasService {
     return { punto: ubicacion?.Nombre || '', dias };
   }
 
-  async registrar(
+  /**
+   * Reserva/actualiza el borrador del carrito sin comprobante.
+   * Reutiliza el mismo Id (caféUNA{id}) hasta que se complete la compra.
+   */
+  async iniciar(
     body: CompraBody,
     usuarioId: number | null,
   ): Promise<CompraDetalle> {
+    const pedidoId = Number(
+      body?.compraId ?? body?.CompraId ?? body?.id ?? body?.Id ?? 0,
+    );
+
+    if (usuarioId != null) {
+      const borradores = await this.listarBorradoresUsuario(usuarioId);
+      let destino: Compra | null = null;
+
+      if (Number.isFinite(pedidoId) && pedidoId > 0) {
+        destino =
+          borradores.find((b) => Number(b.Id) === pedidoId) ||
+          (await this.comprasRepository.findOne({
+            where: { Id: pedidoId },
+            relations: ['Items'],
+          }));
+        if (
+          destino &&
+          (Number(destino.UsuarioId) !== Number(usuarioId) ||
+            normalizarEstadoCompra(destino.Estado || '') !== 'Pendiente' ||
+            String(destino.ComprobanteArchivo || '').trim())
+        ) {
+          destino = null;
+        }
+      }
+
+      if (!destino && borradores.length > 0) {
+        destino = borradores[0];
+      }
+
+      for (const extra of borradores) {
+        if (destino && Number(extra.Id) === Number(destino.Id)) continue;
+        await this.eliminarBorrador(extra);
+      }
+
+      if (destino) {
+        return this.actualizarBorrador(destino.Id, body, usuarioId);
+      }
+    }
+
+    return this.registrar(body, usuarioId, {
+      exigirComprobante: false,
+      notificar: false,
+    });
+  }
+
+  async adjuntarComprobante(
+    id: number | string,
+    comprobanteArchivo: string,
+    usuarioId: number | null,
+    roles: string[] = [],
+  ): Promise<CompraDetalle> {
+    const nombre = String(comprobanteArchivo || '').trim();
+    if (!nombre) {
+      throw new BadRequestException(
+        'Debés adjuntar el comprobante de pago para completar la compra.',
+      );
+    }
+    const compraId = Number(id);
+    if (!Number.isFinite(compraId) || compraId <= 0) {
+      throw new BadRequestException('El identificador de compra no es válido.');
+    }
+
+    const compra = await this.comprasRepository.findOne({
+      where: { Id: compraId },
+      relations: ['Items', 'Usuario', 'Ubicacion'],
+    });
+    if (!compra) {
+      throw new NotFoundException('La compra no existe.');
+    }
+
+    const esPropia =
+      usuarioId != null && Number(compra.UsuarioId) === Number(usuarioId);
+    const esAdmin = omiteAsignacionDePunto(roles);
+    if (!esPropia && !esAdmin) {
+      throw new ForbiddenException(
+        'Solo podés adjuntar el comprobante de tu propia compra.',
+      );
+    }
+
+    const estado = normalizarEstadoCompra(compra.Estado || '');
+    if (estado !== 'Pendiente') {
+      throw new BadRequestException(
+        'Solo se puede adjuntar comprobante a una compra pendiente.',
+      );
+    }
+    if (String(compra.ComprobanteArchivo || '').trim()) {
+      throw new BadRequestException(
+        'Esta compra ya tiene un comprobante adjunto.',
+      );
+    }
+
+    compra.ComprobanteArchivo = nombre.slice(0, 200);
+    await this.comprasRepository.save(compra);
+
+    if (this.notificacionesService && compra.ClienteCorreo) {
+      setImmediate(async () => {
+        try {
+          await this.notificacionesService?.enviarActualizacionEstadoCompra(
+            compra,
+            'Pendiente',
+          );
+        } catch (err) {
+          this.logger.error(
+            `Error enviando notificación de orden pendiente #${compra.Id}: ${
+              err instanceof Error ? err.message : String(err)
+            }`,
+          );
+        }
+      });
+    }
+
+    return this.mapearDetalleCompleto(compra);
+  }
+
+  async registrar(
+    body: CompraBody,
+    usuarioId: number | null,
+    opciones: { exigirComprobante?: boolean; notificar?: boolean } = {},
+  ): Promise<CompraDetalle> {
+    const exigirComprobante = opciones.exigirComprobante !== false;
+    const notificar = opciones.notificar !== false;
     const itemsRaw = this.extraerItemsRaw(body);
     if (itemsRaw.length === 0) {
       throw new BadRequestException(
@@ -244,7 +371,7 @@ export class ComprasService {
       String(
         body?.comprobanteArchivo ?? body?.ComprobanteArchivo ?? '',
       ).trim() || '';
-    if (!comprobanteArchivo) {
+    if (exigirComprobante && !comprobanteArchivo) {
       throw new BadRequestException(
         'Debés adjuntar el comprobante de pago para completar la compra.',
       );
@@ -357,7 +484,9 @@ export class ComprasService {
           Estado: estado,
           FacturaId: null,
           UbicacionId: Number(ubicacion.Id),
-          ComprobanteArchivo: comprobanteArchivo.slice(0, 200),
+          ComprobanteArchivo: comprobanteArchivo
+            ? comprobanteArchivo.slice(0, 200)
+            : null,
           RevisadoPorId: null,
           RevisadoPorNombre: '',
           RevisadoPorCorreo: '',
@@ -380,7 +509,7 @@ export class ComprasService {
       await queryRunner.commitTransaction();
 
       // Notificación al cliente: Orden recibida en revisión (la factura se generará y enviará cuando sea Aceptada por el admin)
-      if (this.notificacionesService && compra.ClienteCorreo) {
+      if (notificar && this.notificacionesService && compra.ClienteCorreo) {
         setImmediate(async () => {
           try {
             await this.notificacionesService?.enviarActualizacionEstadoCompra(
@@ -396,6 +525,248 @@ export class ComprasService {
           }
         });
       }
+
+      return this.obtenerDetalleAutorizado(
+        compra.Id,
+        usuarioId,
+        ['Cliente'],
+        true,
+      );
+    } catch (error) {
+      await queryRunner.rollbackTransaction();
+      throw error;
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  private async listarBorradoresUsuario(usuarioId: number): Promise<Compra[]> {
+    const pendientes = await this.comprasRepository.find({
+      where: { UsuarioId: usuarioId, Estado: 'Pendiente' },
+      relations: ['Items'],
+      order: { Fecha: 'ASC', Id: 'ASC' },
+    });
+    return pendientes.filter(
+      (compra) => !String(compra.ComprobanteArchivo || '').trim(),
+    );
+  }
+
+  private async eliminarBorrador(borrador: Compra): Promise<void> {
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+    try {
+      const items =
+        borrador.Items ||
+        (await queryRunner.manager.find(CompraItem, {
+          where: { CompraId: borrador.Id },
+        }));
+      await this.liberarReservaDeItems(queryRunner.manager, items, borrador);
+      if (items.length > 0) {
+        await queryRunner.manager.remove(items);
+      }
+      await queryRunner.manager.remove(borrador);
+      await queryRunner.commitTransaction();
+    } catch (err) {
+      await queryRunner.rollbackTransaction();
+      this.logger.error(
+        `No se pudo cancelar borrador #${borrador.Id}: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    } finally {
+      await queryRunner.release();
+    }
+  }
+
+  /** Actualiza ítems/punto del borrador manteniendo el mismo Id. */
+  private async actualizarBorrador(
+    compraId: number,
+    body: CompraBody,
+    usuarioId: number | null,
+  ): Promise<CompraDetalle> {
+    const itemsRaw = this.extraerItemsRaw(body);
+    if (itemsRaw.length === 0) {
+      throw new BadRequestException(
+        'La compra debe incluir al menos un producto.',
+      );
+    }
+    const itemsSolicitados = itemsRaw.map((item) =>
+      this.validarItemSolicitud(item as Record<string, unknown>),
+    );
+
+    const clienteNombre =
+      String(
+        body?.clienteNombre ??
+          body?.ClienteNombre ??
+          body?.cliente ??
+          body?.Cliente ??
+          'Cliente',
+      ).trim() || 'Cliente';
+    const clienteCorreo = String(
+      body?.clienteCorreo ??
+        body?.ClienteCorreo ??
+        body?.correo ??
+        body?.Correo ??
+        '',
+    ).trim();
+    const metodoPago =
+      String(
+        body?.metodoPago ??
+          body?.MetodoPago ??
+          body?.metodo ??
+          body?.Metodo ??
+          'Comprobante',
+      ).trim() || 'Comprobante';
+
+    const queryRunner = this.dataSource.createQueryRunner();
+    await queryRunner.connect();
+    await queryRunner.startTransaction();
+
+    try {
+      const compra = await queryRunner.manager.findOne(Compra, {
+        where: { Id: compraId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!compra) {
+        throw new NotFoundException('La compra no existe.');
+      }
+      if (
+        usuarioId != null &&
+        Number(compra.UsuarioId) !== Number(usuarioId)
+      ) {
+        throw new ForbiddenException(
+          'Solo podés actualizar tu propio borrador de compra.',
+        );
+      }
+      if (normalizarEstadoCompra(compra.Estado || '') !== 'Pendiente') {
+        throw new BadRequestException(
+          'Solo se puede actualizar una compra pendiente.',
+        );
+      }
+      if (String(compra.ComprobanteArchivo || '').trim()) {
+        throw new BadRequestException(
+          'Esta compra ya tiene comprobante y no se puede modificar como borrador.',
+        );
+      }
+
+      const itemsPrevios = await queryRunner.manager.find(CompraItem, {
+        where: { CompraId: compraId },
+      });
+      await this.liberarReservaDeItems(
+        queryRunner.manager,
+        itemsPrevios,
+        compra,
+      );
+      if (itemsPrevios.length > 0) {
+        await queryRunner.manager.remove(itemsPrevios);
+      }
+
+      const ubicacion = await this.resolverUbicacionCliente(
+        queryRunner.manager,
+        body,
+      );
+
+      const itemsCalculados: Array<{
+        productoId: string;
+        nombre: string;
+        cantidad: number;
+        precioUnitario: number;
+        subtotal: number;
+      }> = [];
+      let subtotal = 0;
+      let total = 0;
+
+      for (const solicitado of itemsSolicitados) {
+        const producto = await queryRunner.manager.findOne(Producto, {
+          where: { Id: solicitado.productoId },
+          lock: { mode: 'pessimistic_write' },
+        });
+        if (!producto) {
+          throw new BadRequestException(
+            `No se encontró el producto con id ${solicitado.productoId}.`,
+          );
+        }
+        if ((producto.Estado || '').toLowerCase() === 'deshabilitado') {
+          throw new BadRequestException(
+            `El producto ${producto.Nombre} está deshabilitado.`,
+          );
+        }
+
+        let balance = await queryRunner.manager.findOne(
+          InventarioStockUbicacion,
+          {
+            where: {
+              ProductoId: String(producto.Id),
+              UbicacionId: ubicacion.Id,
+            },
+            lock: { mode: 'pessimistic_write' },
+          },
+        );
+        const stockUbicacion = Number(balance?.Stock) || 0;
+        const reservado = Math.max(0, Number(balance?.StockReservado) || 0);
+        const disponible = calcularStockDisponible(stockUbicacion, reservado);
+        if (disponible < solicitado.cantidad) {
+          throw new BadRequestException(
+            `No hay stock suficiente de ${producto.Nombre} en ${ubicacion.Nombre}. Disponible: ${disponible}.`,
+          );
+        }
+
+        if (!balance) {
+          balance = queryRunner.manager.create(InventarioStockUbicacion, {
+            ProductoId: String(producto.Id),
+            UbicacionId: ubicacion.Id,
+            Stock: stockUbicacion,
+            StockReservado: 0,
+          });
+        }
+        balance.StockReservado = reservado + solicitado.cantidad;
+        await queryRunner.manager.save(balance);
+
+        const precioNormal = this.numero(producto.PrecioNormal, 0);
+        const precioConIva = this.numero(producto.PrecioConIVA, precioNormal);
+        const precioUnitario = precioConIva > 0 ? precioConIva : precioNormal;
+        const itemSubtotal = precioUnitario * solicitado.cantidad;
+        const baseSinIva =
+          (precioNormal > 0 ? precioNormal : precioUnitario) *
+          solicitado.cantidad;
+
+        subtotal += baseSinIva;
+        total += itemSubtotal;
+
+        itemsCalculados.push({
+          productoId: String(producto.Id),
+          nombre: producto.Nombre.slice(0, 200),
+          cantidad: solicitado.cantidad,
+          precioUnitario,
+          subtotal: itemSubtotal,
+        });
+      }
+
+      const impuestos = Math.max(0, total - subtotal);
+      compra.ClienteNombre = clienteNombre.slice(0, 150);
+      compra.ClienteCorreo = clienteCorreo.slice(0, 150);
+      compra.MetodoPago = metodoPago.slice(0, 50);
+      compra.Subtotal = subtotal.toFixed(2);
+      compra.Impuestos = impuestos.toFixed(2);
+      compra.Total = total.toFixed(2);
+      compra.UbicacionId = Number(ubicacion.Id);
+      await queryRunner.manager.save(compra);
+
+      await queryRunner.manager.save(
+        itemsCalculados.map((item) =>
+          queryRunner.manager.create(CompraItem, {
+            CompraId: compra.Id,
+            ProductoId: item.productoId,
+            Nombre: item.nombre,
+            Cantidad: item.cantidad,
+            PrecioUnitario: item.precioUnitario.toFixed(2),
+            Subtotal: item.subtotal.toFixed(2),
+          }),
+        ),
+      );
+
+      await queryRunner.commitTransaction();
 
       return this.obtenerDetalleAutorizado(
         compra.Id,
@@ -472,6 +843,15 @@ export class ComprasService {
       if (!transicionPermitida(actual, nuevoEstado)) {
         throw new BadRequestException(
           `No se puede pasar de ${actual} a ${nuevoEstado}.`,
+        );
+      }
+
+      if (
+        nuevoEstado === 'Aceptado' &&
+        !String(compra.ComprobanteArchivo || '').trim()
+      ) {
+        throw new BadRequestException(
+          'No se puede aceptar una compra sin comprobante de pago.',
         );
       }
 
@@ -646,6 +1026,13 @@ export class ComprasService {
       .leftJoinAndSelect('compra.Usuario', 'usuario')
       .leftJoinAndSelect('compra.Ubicacion', 'ubicacion')
       .orderBy('compra.Fecha', 'DESC');
+
+    // Borradores SINPE sin comprobante no aparecen. La venta presencial queda
+    // en Enviado y no adjunta archivo; igual debe verse en el historial.
+    qb.andWhere(
+      `(COALESCE(TRIM(compra.ComprobanteArchivo), '') <> '' OR compra.Estado NOT IN (:...estadosSinComprobanteOcultos))`,
+      { estadosSinComprobanteOcultos: ['Pendiente', 'Borrador'] },
+    );
 
     if (query.alcanceVendedorId) {
       const puntos = String(query.puntosAsignados || '')
@@ -1313,6 +1700,8 @@ export class ComprasService {
       ubicacionId: compra.UbicacionId ? Number(compra.UbicacionId) : null,
       ubicacionCodigo: compra.Ubicacion?.Codigo || null,
       ubicacionNombre: compra.Ubicacion?.Nombre || null,
+      ubicacionDireccion: compra.Ubicacion?.Direccion?.trim() || null,
+      ubicacionHorario: compra.Ubicacion?.Horario?.trim() || null,
       tieneComprobante: Boolean(String(compra.ComprobanteArchivo || '').trim()),
     };
   }
@@ -1337,6 +1726,19 @@ export class ComprasService {
     const detalle = this.mapearDetalle(compra);
     const usuarioId = compra.UsuarioId ? Number(compra.UsuarioId) : null;
     if (!usuarioId) return detalle;
+    // En venta presencial el UsuarioId es el cajero. No adjuntar su ficha de cliente.
+    const usuario = compra.Usuario;
+    if (usuario && usuarioEsStaffVenta(usuario.Roles)) {
+      const correoUsuario = String(usuario.Correo || '')
+        .trim()
+        .toLowerCase();
+      const correoCliente = String(compra.ClienteCorreo || '')
+        .trim()
+        .toLowerCase();
+      const esElComprador =
+        Boolean(correoUsuario) && correoUsuario === correoCliente;
+      if (!esElComprador) return detalle;
+    }
     const ficha =
       await this.clientesService.obtenerFichaPorUsuarioId(usuarioId);
     if (!ficha) return detalle;

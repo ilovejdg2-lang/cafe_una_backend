@@ -103,6 +103,7 @@ export class AuditoriaService {
     const qb = this.repo
       .createQueryBuilder('auditoria')
       .leftJoinAndSelect('auditoria.Usuario', 'usuario')
+      .where('auditoria."IdUsuario" IS NOT NULL')
       .orderBy('auditoria.Id', 'DESC');
 
     if (query.usuario?.trim()) {

@@ -1,0 +1,19 @@
+{
+  "run": "QA_CAFEUNA_1794418501371",
+  "superId": 3,
+  "adminId": 4,
+  "vendedorId": 5,
+  "clienteId": 6,
+  "puntoId": 3,
+  "puntoCodigo": "POS_QA_CAFEUNA_1794418501371",
+  "productoIds": [
+    "4",
+    "5"
+  ],
+  "correos": {
+    "super": "QA_CAFEUNA_1794418501371_super@qa.local",
+    "admin": "QA_CAFEUNA_1794418501371_admin@qa.local",
+    "vendedor": "QA_CAFEUNA_1794418501371_vendedor@qa.local",
+    "cliente": "QA_CAFEUNA_1794418501371_cliente@qa.local"
+  }
+}
