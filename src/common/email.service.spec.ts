@@ -127,17 +127,69 @@ describe('EmailService.enviar', () => {
     expect(body.attachment).toBeUndefined();
   });
 
-  it('con logo WebP usa el texto de respaldo', async () => {
+  it('con logo WebP convierte a PNG inline (cid + contentId)', async () => {
+    const png1x1 = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==',
+      'base64',
+    );
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('logo.webp')) {
+        return {
+          ok: true,
+          arrayBuffer: async () =>
+            png1x1.buffer.slice(png1x1.byteOffset, png1x1.byteOffset + png1x1.byteLength),
+        };
+      }
+      return {
+        ok: true,
+        status: 201,
+        text: () => Promise.resolve('{"messageId":"<1@x>"}'),
+      };
+    });
     const svc = crearServicio(
       { ...envBase, BREVO_API_KEY: API_KEY },
       'https://cdn.test/logo.webp',
     );
     await svc.enviar('a@b.com', 's', `<img src="${LOGO_PLACEHOLDER}" />`);
-    const body = JSON.parse(
-      (fetchMock.mock.calls[0] as Llamada)[1].body,
-    ) as Cuerpo;
+    const brevoCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]).includes('api.brevo.com'),
+    ) as Llamada;
+    const body = JSON.parse(brevoCall[1].body) as Cuerpo;
+    expect(body.htmlContent).toContain('cid:logo-cafe-una');
+    expect(body.htmlContent).not.toContain('logo.webp');
+    expect(body.attachment).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          name: 'logo-cafe-una.png',
+          contentId: 'logo-cafe-una',
+        }),
+      ]),
+    );
+  });
+
+  it('si el WebP no se puede convertir, usa texto de respaldo', async () => {
+    fetchMock.mockImplementation(async (url: string) => {
+      if (String(url).includes('logo.webp')) {
+        return { ok: false, status: 404, arrayBuffer: async () => new ArrayBuffer(0) };
+      }
+      return {
+        ok: true,
+        status: 201,
+        text: () => Promise.resolve('{"messageId":"<1@x>"}'),
+      };
+    });
+    const svc = crearServicio(
+      { ...envBase, BREVO_API_KEY: API_KEY },
+      'https://cdn.test/logo.webp',
+    );
+    await svc.enviar('a@b.com', 's', `<img src="${LOGO_PLACEHOLDER}" />`);
+    const brevoCall = fetchMock.mock.calls.find(
+      (call) => String(call[0]).includes('api.brevo.com'),
+    ) as Llamada;
+    const body = JSON.parse(brevoCall[1].body) as Cuerpo;
     expect(body.htmlContent).toContain('Café UNA');
     expect(body.htmlContent).not.toContain('logo.webp');
+    expect(body.attachment).toBeUndefined();
   });
 
   it('sin logo configurado usa el texto de respaldo', async () => {

@@ -816,7 +816,7 @@ export class InventarioService {
     const stockPorClave = new Map(
       balances.map((balance) => [
         `${balance.ProductoId}:${Number(balance.UbicacionId)}`,
-        Number(balance.Stock) || 0,
+        calcularStockDisponible(balance.Stock, balance.StockReservado),
       ]),
     );
 

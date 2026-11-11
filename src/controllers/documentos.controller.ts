@@ -128,7 +128,7 @@ export class DocumentosController {
       },
     }),
   )
-  solicitarAcceso(
+  async solicitarAcceso(
     @UploadedFile() file: Express.Multer.File | undefined,
     @Body()
     body: {
@@ -145,8 +145,29 @@ export class DocumentosController {
       palabrasClave?: string;
       esPrivado?: string | boolean;
     },
+    @Headers('authorization') authHeader?: string,
   ) {
-    return this.documentosService.solicitarAcceso(body, file);
+    let usuarioId: number | null = null;
+    const token = authHeader?.startsWith('Bearer ')
+      ? authHeader.substring(7)
+      : undefined;
+    if (token) {
+      try {
+        const payload = await this.jwtService.verifyAsync<{
+          sub?: string | number;
+        }>(token);
+        const parsed = Number.parseInt(String(payload?.sub ?? ''), 10);
+        if (Number.isFinite(parsed) && parsed > 0) {
+          usuarioId = parsed;
+        }
+      } catch {
+        usuarioId = null;
+      }
+    }
+    return this.documentosService.solicitarAcceso(
+      { ...body, usuarioId },
+      file,
+    );
   }
 
   /**

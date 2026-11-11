@@ -667,6 +667,64 @@ export class DocumentosService {
   /**
    * Registra una solicitud de acceso o propuesta de archivo enviada por un usuario (REP-P03-T2)
    */
+  /**
+   * Solicitudes de documentación del usuario (por UsuarioId o correo legado).
+   */
+  async listarPropias(
+    usuarioId: number,
+    correo?: string | null,
+  ): Promise<SolicitudDocumento[]> {
+    const id = Number(usuarioId);
+    if (!Number.isFinite(id) || id <= 0) return [];
+    const correoNorm = String(correo || '')
+      .trim()
+      .toLowerCase();
+
+    const qb = this.solicitudRepo
+      .createQueryBuilder('s')
+      .where('s.UsuarioId = :usuarioId', { usuarioId: id });
+
+    if (correoNorm) {
+      qb.orWhere(
+        '(s.UsuarioId IS NULL AND LOWER(s.CorreoSolicitante) = :correo)',
+        { correo: correoNorm },
+      );
+    }
+
+    return qb.orderBy('s.CreatedAt', 'DESC').getMany();
+  }
+
+  async obtenerPropia(
+    usuarioId: number,
+    idRaw: string,
+    correo?: string | null,
+  ): Promise<SolicitudDocumento> {
+    const id = String(idRaw || '').trim();
+    if (!id) {
+      throw new NotFoundException('No se encontró esa solicitud de documentación.');
+    }
+    const fila = await this.solicitudRepo.findOne({ where: { Id: id } });
+    if (!fila) {
+      throw new NotFoundException('No se encontró esa solicitud de documentación.');
+    }
+    const uid = Number(usuarioId);
+    const correoNorm = String(correo || '')
+      .trim()
+      .toLowerCase();
+    const propiaPorUsuario =
+      fila.UsuarioId != null && Number(fila.UsuarioId) === uid;
+    const propiaPorCorreo =
+      fila.UsuarioId == null &&
+      correoNorm.length > 0 &&
+      String(fila.CorreoSolicitante || '')
+        .trim()
+        .toLowerCase() === correoNorm;
+    if (!propiaPorUsuario && !propiaPorCorreo) {
+      throw new NotFoundException('No se encontró esa solicitud de documentación.');
+    }
+    return fila;
+  }
+
   async solicitarAcceso(
     data: {
       documentoId?: string;
@@ -681,6 +739,7 @@ export class DocumentosService {
       version?: string;
       palabrasClave?: string;
       esPrivado?: string | boolean;
+      usuarioId?: number | null;
     },
     file?: Express.Multer.File,
   ): Promise<SolicitudDocumento> {
@@ -728,8 +787,13 @@ export class DocumentosService {
     const version = String(data.version || '1.0').trim();
     const palabrasClave = String(data.palabrasClave || '').trim();
 
+    const usuarioIdRaw = Number(data.usuarioId);
+    const usuarioId =
+      Number.isFinite(usuarioIdRaw) && usuarioIdRaw > 0 ? usuarioIdRaw : null;
+
     const solicitud = this.solicitudRepo.create({
       DocumentoId: doc ? doc.Id : null,
+      UsuarioId: usuarioId,
       DocumentoTitulo: docTitulo,
       NombreSolicitante: nombre,
       CorreoSolicitante: correo,

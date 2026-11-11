@@ -45,5 +45,6 @@ import { UsuariosModule } from './usuarios.module';
     PropuestaImagenStorage,
     SupabaseStorageService,
   ],
+  exports: [PropuestasProductoresService],
 })
 export class PropuestasProductoresModule {}

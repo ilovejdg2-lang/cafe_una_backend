@@ -672,16 +672,37 @@ export class EmailService {
     }
   }
 
-  /** Brevo no documenta imágenes cid: el logo viaja por su URL pública, sin adjunto. */
-  private async aplicarLogoUrl(html: string): Promise<string> {
-    if (!html.includes(LOGO_PLACEHOLDER)) return html;
+  /**
+   * Brevo: PNG/JPG públicos van por URL. WebP (u otros formatos que fallen en clientes)
+   * se convierte a PNG con sharp y viaja inline con contentId.
+   */
+  private async aplicarLogoBrevo(html: string): Promise<{
+    html: string;
+    logoAdjunto: { name: string; content: string; contentId: string } | null;
+  }> {
+    if (!html.includes(LOGO_PLACEHOLDER)) return { html, logoAdjunto: null };
     const url = await this.logoCorreoUrl();
-    // Un logo WebP usa texto porque los clientes de correo no lo muestran bien; publicar un PNG recupera la imagen.
-    if (url && !/\.webp(\?|$)/i.test(url)) return html.replaceAll(LOGO_PLACEHOLDER, url);
-    return html.replace(
-      /<img[^>]*\{\{logoUrl\}\}[^>]*>/g,
-      '<p style="margin:0;font-size:22px;font-weight:700;color:#C41E3A;">Café UNA</p>',
-    );
+    if (url && !/\.webp(\?|$)/i.test(url)) {
+      return { html: html.replaceAll(LOGO_PLACEHOLDER, url), logoAdjunto: null };
+    }
+    const png = await this.logoCorreoPng();
+    if (png) {
+      return {
+        html: html.replaceAll(LOGO_PLACEHOLDER, `cid:${LOGO_CID}`),
+        logoAdjunto: {
+          name: 'logo-cafe-una.png',
+          content: png.toString('base64'),
+          contentId: LOGO_CID,
+        },
+      };
+    }
+    return {
+      html: html.replace(
+        /<img[^>]*\{\{logoUrl\}\}[^>]*>/g,
+        '<p style="margin:0;font-size:22px;font-weight:700;color:#C41E3A;">Café UNA</p>',
+      ),
+      logoAdjunto: null,
+    };
   }
 
   private async enviarPorBrevo(
@@ -699,12 +720,14 @@ export class EmailService {
     }>,
   ): Promise<boolean> {
     try {
+      const conLogo = await this.aplicarLogoBrevo(htmlBody);
       const attachment = await Promise.all(
         (attachments ?? []).map(async (a) => {
           const data = a.content ?? (a.path ? await fs.readFile(a.path) : Buffer.alloc(0));
           return { name: a.filename, content: Buffer.from(data).toString('base64') };
         }),
       );
+      if (conLogo.logoAdjunto) attachment.push(conLogo.logoAdjunto);
       const respuesta = await fetch('https://api.brevo.com/v3/smtp/email', {
         method: 'POST',
         headers: { 'api-key': apiKey, 'content-type': 'application/json' },
@@ -712,7 +735,7 @@ export class EmailService {
           sender: { name: remitente.fromName, email: remitente.fromEmail },
           to: [{ email: destinatario.trim() }],
           subject,
-          htmlContent: await this.aplicarLogoUrl(htmlBody),
+          htmlContent: conLogo.html,
           textContent: textBody || undefined,
           attachment: attachment.length > 0 ? attachment : undefined,
         }),
