@@ -318,16 +318,19 @@ export class InventarioService {
 
       if (previousStock !== validatedStock) {
         await queryRunner.manager.save(balance);
-        await queryRunner.manager.insert(Auditoria, {
-          Accion: 'AJUSTE_STOCK',
-          Tabla: 'inventario_stock_ubicaciones',
-          IdRegistro: balance.Id,
-          Detalle: `Producto ${validatedProductId}; ubicación ${code}; anterior ${previousStock}; nuevo ${validatedStock}; motivo: ${validatedReason}`,
-          DatosAnteriores: { Stock: previousStock },
-          DatosNuevos: { Stock: validatedStock, Motivo: validatedReason },
-          Fecha: new Date(),
-          IdUsuario: getAuditoriaUserId(),
-        });
+        const usuarioAuditoria = getAuditoriaUserId();
+        if (usuarioAuditoria != null) {
+          await queryRunner.manager.insert(Auditoria, {
+            Accion: 'AJUSTE_STOCK',
+            Tabla: 'inventario_stock_ubicaciones',
+            IdRegistro: balance.Id,
+            Detalle: `Producto ${validatedProductId}; ubicación ${code}; anterior ${previousStock}; nuevo ${validatedStock}; motivo: ${validatedReason}`,
+            DatosAnteriores: { Stock: previousStock },
+            DatosNuevos: { Stock: validatedStock, Motivo: validatedReason },
+            Fecha: new Date(),
+            IdUsuario: usuarioAuditoria,
+          });
+        }
       } else if (!balance.Id) {
         await queryRunner.manager.save(balance);
       }
@@ -1352,6 +1355,8 @@ export class InventarioService {
     idRegistro: number,
     detalle: string,
   ) {
+    const usuarioAuditoria = getAuditoriaUserId();
+    if (usuarioAuditoria == null) return;
     try {
       await this.dataSource.getRepository(Auditoria).insert({
         Accion: accion,
@@ -1359,7 +1364,7 @@ export class InventarioService {
         IdRegistro: String(idRegistro),
         Detalle: detalle,
         Fecha: new Date(),
-        IdUsuario: getAuditoriaUserId(),
+        IdUsuario: usuarioAuditoria,
       });
     } catch {
       // La auditoría no debe bloquear el CRUD de ubicaciones.

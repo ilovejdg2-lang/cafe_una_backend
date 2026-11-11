@@ -64,9 +64,13 @@ describe('ProductosController central stock', () => {
     expect(inventoryService.actualizarStockCentral).not.toHaveBeenCalled();
   });
 
-  it('rejects unsafe product image filenames', () => {
-    const controller = new ProductosController({} as never, {} as never);
-    expect(() => controller.servirImagen('../secret.jpg')).toThrow(
+  it('rejects unsafe product image filenames', async () => {
+    const controller = new ProductosController(
+      {} as never,
+      {} as never,
+      {} as never,
+    );
+    await expect(controller.servirImagen('../secret.jpg')).rejects.toThrow(
       'Nombre de imagen inválido.',
     );
   });

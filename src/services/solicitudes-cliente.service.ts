@@ -1,6 +1,7 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DocumentosService } from './documentos.service';
@@ -37,6 +38,8 @@ const TIPOS_VALIDOS: TipoSolicitudCliente[] = [
 
 @Injectable()
 export class SolicitudesClienteService {
+  private readonly logger = new Logger(SolicitudesClienteService.name);
+
   constructor(
     private readonly donaciones: DonacionSolicitudesService,
     private readonly voluntariado: VoluntariadoService,
@@ -61,19 +64,29 @@ export class SolicitudesClienteService {
     const [donaciones, voluntariados, visitas, docs, props] =
       await Promise.all([
         !tipoFiltro || tipoFiltro === 'donacion'
-          ? this.donaciones.listarPropias(usuarioId)
+          ? this.cargarOrigen('donación', () =>
+              this.donaciones.listarPropias(usuarioId),
+            )
           : Promise.resolve([]),
         !tipoFiltro || tipoFiltro === 'voluntariado'
-          ? this.voluntariado.obtenerSolicitudesDeUsuario(userKey)
+          ? this.cargarOrigen('voluntariado', () =>
+              this.voluntariado.obtenerSolicitudesDeUsuario(userKey),
+            )
           : Promise.resolve([]),
         !tipoFiltro || tipoFiltro === 'visita'
-          ? this.visitas.obtenerSolicitudesDeUsuario(userKey)
+          ? this.cargarOrigen('visita', () =>
+              this.visitas.obtenerSolicitudesDeUsuario(userKey),
+            )
           : Promise.resolve([]),
         !tipoFiltro || tipoFiltro === 'documentacion'
-          ? this.documentos.listarPropias(usuarioId, correo)
+          ? this.cargarOrigen('documentación', () =>
+              this.documentos.listarPropias(usuarioId, correo),
+            )
           : Promise.resolve([]),
         !tipoFiltro || tipoFiltro === 'propuesta'
-          ? this.propuestas.listarMias(usuarioId)
+          ? this.cargarOrigen('propuesta', () =>
+              this.propuestas.listarMias(usuarioId),
+            )
           : Promise.resolve([]),
       ]);
 
@@ -179,6 +192,21 @@ export class SolicitudesClienteService {
       resumen: this.mapearPropuesta(row),
       detalle: row as unknown as Record<string, unknown>,
     };
+  }
+
+  private async cargarOrigen<T>(
+    etiqueta: string,
+    cargar: () => Promise<T[]>,
+  ): Promise<T[]> {
+    try {
+      return await cargar();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `No se pudieron listar solicitudes de ${etiqueta}: ${message}`,
+      );
+      return [];
+    }
   }
 
   private async correoUsuario(usuarioId: number): Promise<string | null> {

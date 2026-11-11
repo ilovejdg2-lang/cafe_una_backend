@@ -1,6 +1,7 @@
 import {
   BadRequestException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
 import { DataSource, EntityManager } from 'typeorm';
@@ -8,10 +9,14 @@ import { EmailService } from '../common/email.service';
 import { AsignacionesPuntoVentaService } from './asignaciones-punto-venta.service';
 import { Compra } from '../entities/compra.entity';
 import { CompraItem } from '../entities/compra-item.entity';
+import { Factura } from '../entities/factura.entity';
+import { FacturaItem } from '../entities/factura-item.entity';
+import { Pago } from '../entities/pago.entity';
 import { InventarioStockUbicacion } from '../entities/inventario-stock-ubicacion.entity';
 import { InventarioUbicacion } from '../entities/inventario-ubicacion.entity';
 import { Producto } from '../entities/producto.entity';
 import { Usuario } from '../entities/usuario.entity';
+import { calcularStockDisponible } from '../common/inventario-stock.util';
 import { BODEGA_CENTRAL } from './inventario.service';
 import {
   insertarMovimientoInventario,
@@ -55,11 +60,51 @@ export type VentaPresencialResponse = {
   metodoPago?: string;
   total?: number;
   items?: VentaPresencialItem[];
+  compraId?: number;
+  facturaId?: string;
+  pagoId?: number;
   correoEnviado?: boolean;
+  correoMensaje?: string;
 };
+
+function leerPrecio(valor: unknown): number | null {
+  if (valor === undefined || valor === null || String(valor).trim() === '') {
+    return null;
+  }
+  const numero = Number(valor);
+  return Number.isFinite(numero) ? numero : null;
+}
+
+/** El cobro sale del catálogo. Un precio enviado distinto se rechaza. */
+export function resolverPrecioCatalogo(
+  producto: { Nombre?: string; PrecioConIVA?: unknown; PrecioNormal?: unknown },
+  precioEnviado: unknown,
+): number {
+  const catalogo = leerPrecio(producto.PrecioConIVA) ?? leerPrecio(producto.PrecioNormal);
+  if (catalogo == null || catalogo < 0) {
+    throw new BadRequestException(
+      `El producto ${producto.Nombre || ''} no tiene un precio de catálogo válido.`.trim(),
+    );
+  }
+  if (
+    precioEnviado !== undefined &&
+    precioEnviado !== null &&
+    String(precioEnviado).trim() !== ''
+  ) {
+    const enviado = Number(precioEnviado);
+    if (!Number.isFinite(enviado) || Math.abs(enviado - catalogo) > 0.009) {
+      throw new BadRequestException(
+        `El precio de "${producto.Nombre}" no coincide con el catálogo.`,
+      );
+    }
+  }
+  return catalogo;
+}
 
 @Injectable()
 export class VentasPresencialesService {
+  private readonly logger = new Logger(VentasPresencialesService.name);
+
   constructor(
     private readonly dataSource: DataSource,
     private readonly emailService: EmailService,
@@ -108,8 +153,6 @@ export class VentasPresencialesService {
     const metodoPago = String(
       body.metodoPago ?? body.MetodoPago ?? 'Efectivo',
     ).trim() || 'Efectivo';
-
-    const enviarCorreo = Boolean(body.enviarCorreo ?? body.EnviarCorreo);
 
     // Determinar si es solicitud multi-ítem o unitaria
     const itemsRaw = Array.isArray(body.items) ? (body.items as Array<Record<string, unknown>>) : null;
@@ -185,24 +228,33 @@ export class VentasPresencialesService {
             },
             lock: { mode: 'pessimistic_write' },
           });
-          const disponible = Number(balance?.Stock ?? 0) || 0;
+          const fisico = Number(balance?.Stock ?? 0) || 0;
+          const disponible = calcularStockDisponible(
+            fisico,
+            balance?.StockReservado ?? 0,
+          );
           if (disponible < cant) {
             throw new BadRequestException(
               `Stock insuficiente para "${producto.Nombre}" en este punto. Disponible: ${disponible} unid.`,
             );
           }
 
+          const precioUnitario = resolverPrecioCatalogo(
+            producto,
+            item.precioUnitario ?? item.PrecioUnitario,
+          );
+
           if (!balance) {
             balance = queryRunner.manager.create(InventarioStockUbicacion, {
               ProductoId: String(producto.Id),
               UbicacionId: ubicacion.Id,
-              Stock: disponible,
+              Stock: fisico,
+              StockReservado: 0,
             });
           }
-          balance.Stock = disponible - cant;
+          balance.Stock = fisico - cant;
           await queryRunner.manager.save(balance);
 
-          const precioUnitario = Number(item.precioUnitario ?? producto.PrecioConIVA ?? producto.PrecioNormal) || 0;
           const subtotalItem = Math.round(precioUnitario * cant);
           totalVenta += subtotalItem;
 
@@ -262,24 +314,33 @@ export class VentasPresencialesService {
           },
           lock: { mode: 'pessimistic_write' },
         });
-        const disponible = Number(balance?.Stock ?? 0) || 0;
+        const fisico = Number(balance?.Stock ?? 0) || 0;
+        const disponible = calcularStockDisponible(
+          fisico,
+          balance?.StockReservado ?? 0,
+        );
         if (disponible < cantidad) {
           throw new BadRequestException(
             `Stock disponible en este punto: ${disponible} unidades.`,
           );
         }
 
+        const precioUnitario = resolverPrecioCatalogo(
+          producto,
+          body.precioUnitario ?? body.PrecioUnitario,
+        );
+
         if (!balance) {
           balance = queryRunner.manager.create(InventarioStockUbicacion, {
             ProductoId: String(producto.Id),
             UbicacionId: ubicacion.Id,
-            Stock: disponible,
+            Stock: fisico,
+            StockReservado: 0,
           });
         }
-        balance.Stock = disponible - cantidad;
+        balance.Stock = fisico - cantidad;
         await queryRunner.manager.save(balance);
 
-        const precioUnitario = Number(body.precioUnitario ?? producto.PrecioConIVA ?? producto.PrecioNormal) || 0;
         const subtotalItem = Math.round(precioUnitario * cantidad);
         totalVenta = subtotalItem;
 
@@ -339,12 +400,51 @@ export class VentasPresencialesService {
         ),
       );
 
+      const pago = await queryRunner.manager.save(
+        queryRunner.manager.create(Pago, {
+          CompraId: Number(compra.Id),
+          Monto: totalVenta.toFixed(2),
+          Metodo: (metodoPago || 'Efectivo').slice(0, 50),
+          Estado: 'Pagado',
+        }),
+      );
+
+      const facturaId = `FAC-${numeroTicket}`;
+      const factura = await queryRunner.manager.save(
+        queryRunner.manager.create(Factura, {
+          Id: facturaId,
+          CompraId: Number(compra.Id),
+          UsuarioId: responsableId,
+          NumeroConsecutivo: numeroTicket,
+          Subtotal: totalVenta.toFixed(2),
+          Impuestos: '0.00',
+          Total: totalVenta.toFixed(2),
+          Estado: 'Emitida',
+          FechaEmision: fecha,
+        }),
+      );
+      await queryRunner.manager.save(
+        itemsCalculados.map((item) =>
+          queryRunner.manager.create(FacturaItem, {
+            FacturaId: factura.Id,
+            ProductoId: item.productoId,
+            Descripcion: String(item.productoNombre || 'Producto').slice(0, 250),
+            Cantidad: item.cantidad,
+            PrecioUnitario: item.precioUnitario.toFixed(2),
+            Subtotal: item.subtotal.toFixed(2),
+          }),
+        ),
+      );
+      compra.FacturaId = factura.Id;
+      await queryRunner.manager.save(compra);
+
       await queryRunner.commitTransaction();
 
       let correoEnviado = false;
+      let correoMensaje = '';
 
-      // Envío de correo opcional si el cliente así lo quiere
-      if (enviarCorreo && clienteCorreo && clienteCorreo.includes('@')) {
+      // El correo del comprobante basta para enviarlo. No depende de un check aparte.
+      if (this.correoValido(clienteCorreo)) {
         try {
           correoEnviado = await this.emailService.enviarComprobanteVentaFisica(
             clienteCorreo,
@@ -356,7 +456,7 @@ export class VentasPresencialesService {
               metodoPago,
               fecha: fecha.toISOString(),
               items: itemsCalculados.map((i) => ({
-                nombre: i.productoNombre,
+                nombre: String(i.productoNombre || 'Producto Café UNA'),
                 cantidad: i.cantidad,
                 precioUnitario: i.precioUnitario,
                 subtotal: i.subtotal,
@@ -365,8 +465,19 @@ export class VentasPresencialesService {
               notas,
             },
           );
-        } catch {
+          if (!correoEnviado) {
+            correoMensaje =
+              'No se pudo enviar el comprobante. Podés reintentarlo desde el resumen.';
+          }
+        } catch (error) {
+          this.logger.error(
+            `No se envió el comprobante ${numeroTicket} a ${clienteCorreo}: ${
+              error instanceof Error ? error.message : String(error)
+            }`,
+          );
           correoEnviado = false;
+          correoMensaje =
+            'No se pudo enviar el comprobante. Podés reintentarlo desde el resumen.';
         }
       }
 
@@ -384,6 +495,9 @@ export class VentasPresencialesService {
         fecha: fecha.toISOString(),
         notas,
         stockRestante: primerItem.stockRestante,
+        compraId: Number(compra.Id) || undefined,
+        facturaId: factura.Id,
+        pagoId: Number(pago.Id) || undefined,
         responsableId,
         responsableNombre,
         clienteNombre,
@@ -392,6 +506,7 @@ export class VentasPresencialesService {
         total: totalVenta,
         items: itemsCalculados,
         correoEnviado,
+        correoMensaje,
       };
     } catch (error) {
       await queryRunner.rollbackTransaction();
@@ -451,6 +566,10 @@ export class VentasPresencialesService {
       success: true,
       message: `Comprobante enviado exitosamente a ${destinatario}.`,
     };
+  }
+
+  private correoValido(valor: string): boolean {
+    return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(valor || '').trim());
   }
 
   private esPuntoPresencial(codigo: string): boolean {

@@ -85,6 +85,27 @@ describe('SolicitudesClienteService historial unificado', () => {
     );
   });
 
+  it('sigue listando el resto si un origen falla', async () => {
+    visitas.obtenerSolicitudesDeUsuario.mockRejectedValue(
+      new Error('column DisponibilidadVisitaId does not exist'),
+    );
+    donaciones.listarPropias.mockResolvedValue([
+      {
+        id: 3,
+        estado: 'Pendiente',
+        createdAt: '2026-11-03T08:00:00.000Z',
+        necesidadTitulo: 'Café verde',
+      },
+    ]);
+
+    const result = await service.listarPropias(22);
+
+    expect(result.total).toBe(1);
+    expect(result.data[0]).toEqual(
+      expect.objectContaining({ tipo: 'donacion', identificador: '3' }),
+    );
+  });
+
   it('filtra solo propuestas cuando tipo=propuesta', async () => {
     propuestas.listarMias.mockResolvedValue([
       {
