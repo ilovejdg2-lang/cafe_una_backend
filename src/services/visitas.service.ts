@@ -6,6 +6,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 
+import { hoyIsoEnZona } from '../common/timezone.util';
 import { DisponibilidadVisita } from '../entities/disponibilidad-visita.entity';
 import { VisitaGrupal } from '../entities/visita-grupal.entity';
 
@@ -53,8 +54,7 @@ export class VisitasService {
       );
     }
 
-    const hoy = new Date();
-    const fechaSolicitud = `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
+    const fechaSolicitud = hoyIsoEnZona();
     const disponibilidad = await this.disponibilidadRepo.findOne({
       where: { Id: disponibilidadId },
     });

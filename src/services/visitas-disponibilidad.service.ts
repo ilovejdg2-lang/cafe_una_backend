@@ -7,6 +7,7 @@ import {
 import { InjectRepository } from '@nestjs/typeorm';
 import { LessThan, MoreThan, Not, Repository } from 'typeorm';
 
+import { hoyIsoEnZona } from '../common/timezone.util';
 import { DisponibilidadVisita } from '../entities/disponibilidad-visita.entity';
 import { TurnoVisita } from '../entities/turno-visita.entity';
 import { VisitaGrupal } from '../entities/visita-grupal.entity';
@@ -22,11 +23,6 @@ export function formatearHora12(hora: string): string {
   if (h === 0) h = 12;
   const m = mStr ? mStr.padStart(2, '0') : '00';
   return `${h}:${m} ${ampm}`;
-}
-
-function hoyLocal(): string {
-  const hoy = new Date();
-  return `${hoy.getFullYear()}-${String(hoy.getMonth() + 1).padStart(2, '0')}-${String(hoy.getDate()).padStart(2, '0')}`;
 }
 
 function mapearDisponibilidad(row: DisponibilidadVisita) {
@@ -55,7 +51,8 @@ export class VisitasDisponibilidadService {
 
   async listarPublicas(filtros: FiltrosFecha) {
     const { desde, hasta } = this.validarFiltros(filtros);
-    const fechaMinima = desde && desde > hoyLocal() ? desde : hoyLocal();
+    const hoy = hoyIsoEnZona();
+    const fechaMinima = desde && desde > hoy ? desde : hoy;
     const qb = this.repo.createQueryBuilder('d');
     qb.andWhere('d.Habilitada = true');
     qb.andWhere('d.Fecha >= :desde', { desde: fechaMinima });
@@ -342,7 +339,7 @@ export class VisitasDisponibilidadService {
 
   private validarLimites(fecha: string, inicio: string, fin: string) {
     this.validarFecha(fecha);
-    if (fecha < hoyLocal()) {
+    if (fecha < hoyIsoEnZona()) {
       throw new BadRequestException(
         'La fecha de visita no puede estar en el pasado.',
       );

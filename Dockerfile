@@ -19,5 +19,6 @@ RUN npm ci --omit=dev && npm cache clean --force
 
 COPY --from=builder /app/dist ./dist
 COPY --from=builder /app/Templates ./Templates
+COPY --from=builder /app/assets ./assets
 
 CMD ["node", "dist/main.js"]

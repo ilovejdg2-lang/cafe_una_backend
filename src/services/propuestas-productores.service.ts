@@ -247,7 +247,9 @@ export class PropuestasProductoresService {
       where: { UsuarioId: usuarioId },
       order: { CreadoEn: 'DESC' },
     });
-    return filas.map((fila) => this.vistaPropia(fila));
+    return filas
+      .filter((fila) => fila.Estado !== 'Eliminada')
+      .map((fila) => this.vistaPropia(fila));
   }
 
   async obtenerMia(usuarioId: number, id: string) {
@@ -335,6 +337,9 @@ export class PropuestasProductoresService {
     const estado = String(query.estado || '').trim();
     if (estado && estado.toLowerCase() !== 'todos') {
       qb.andWhere('p.Estado = :estado', { estado });
+    } else {
+      // Las eliminadas no se listan en el panel (soft-delete interno).
+      qb.andWhere('p.Estado <> :excluida', { excluida: 'Eliminada' });
     }
     const q = String(query.q || '').trim().toLowerCase();
     if (q) {

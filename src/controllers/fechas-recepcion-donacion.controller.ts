@@ -20,6 +20,11 @@ export class FechasRecepcionDonacionController {
     private readonly fechasService: FechasRecepcionDonacionService,
   ) {}
 
+  @Get('config')
+  obtenerConfig() {
+    return this.fechasService.obtenerConfigZonaHoraria();
+  }
+
   @Get('disponibles')
   listarDisponibles(
     @Query('desde') desde?: string,
