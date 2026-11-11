@@ -14,6 +14,10 @@ export class SolicitudDocumento {
   @Column({ name: 'DocumentoId', type: 'bigint', nullable: true })
   DocumentoId: string | null;
 
+  /** Usuario logueado que envió la solicitud (null si fue anónima). */
+  @Column({ name: 'UsuarioId', type: 'int', nullable: true })
+  UsuarioId: number | null;
+
   @Column({ name: 'DocumentoTitulo', type: 'varchar', length: 200, default: '' })
   DocumentoTitulo: string;
 

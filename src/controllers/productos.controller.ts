@@ -15,8 +15,8 @@ import {
   UseInterceptors,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { createReadStream, existsSync, mkdirSync } from 'fs';
-import { diskStorage } from 'multer';
+import { createReadStream, existsSync } from 'fs';
+import { memoryStorage } from 'multer';
 import { extname, join, relative, resolve, sep } from 'path';
 import { RequierePermiso } from '../common/requiere-permiso.decorator';
 import { JwtAuthGuard } from '../guards/jwt-auth.guard';
@@ -24,17 +24,13 @@ import { PermisosGuard } from '../guards/permisos.guard';
 import { BODEGA_CENTRAL } from '../services/inventario.service';
 import { InventarioService } from '../services/inventario.service';
 import { ProductosService } from '../services/productos.service';
+import { SupabaseStorageService } from '../services/supabase-storage.service';
 
+const CARPETA_IMAGENES = 'productos';
 const PRODUCTOS_IMAGENES_DIR = join(process.cwd(), 'uploads', 'productos');
 const MAX_IMAGEN_BYTES = 10 * 1024 * 1024;
 const TIPOS_IMAGEN = new Set(['image/jpeg', 'image/png', 'image/webp']);
 const EXTS_IMAGEN = new Set(['.jpg', '.jpeg', '.png', '.webp']);
-
-function asegurarDirectorioImagenes(): void {
-  if (!existsSync(PRODUCTOS_IMAGENES_DIR)) {
-    mkdirSync(PRODUCTOS_IMAGENES_DIR, { recursive: true });
-  }
-}
 
 function esImagenProducto(file: {
   mimetype?: string;
@@ -57,6 +53,7 @@ export class ProductosController {
   constructor(
     private readonly productosService: ProductosService,
     private readonly inventarioService: InventarioService,
+    private readonly storage: SupabaseStorageService,
   ) {}
 
   @Get()
@@ -81,19 +78,7 @@ export class ProductosController {
   @RequierePermiso('crear_productos', 'actualizar_productos')
   @UseInterceptors(
     FileInterceptor('imagen', {
-      storage: diskStorage({
-        destination: (_req, _file, cb) => {
-          asegurarDirectorioImagenes();
-          cb(null, PRODUCTOS_IMAGENES_DIR);
-        },
-        filename: (_req, file, cb) => {
-          const ext = EXTS_IMAGEN.has(extname(file.originalname).toLowerCase())
-            ? extname(file.originalname).toLowerCase()
-            : '.jpg';
-          const unique = `${Date.now()}-${Math.round(Math.random() * 1e9)}`;
-          cb(null, `producto-${unique}${ext}`);
-        },
-      }),
+      storage: memoryStorage(),
       limits: { fileSize: MAX_IMAGEN_BYTES },
       fileFilter: (_req, file, cb) => {
         if (!esImagenProducto(file)) {
@@ -109,18 +94,32 @@ export class ProductosController {
       },
     }),
   )
-  subirImagen(
+  async subirImagen(
     @UploadedFile()
-    file: { filename: string } | undefined,
+    file:
+      | { buffer?: Buffer; originalname?: string; mimetype?: string }
+      | undefined,
   ) {
-    if (!file?.filename) {
+    if (!file?.buffer?.length) {
       throw new BadRequestException('Debés adjuntar una imagen.');
     }
-    return { url: `/api/productos/imagenes/${file.filename}` };
+    const ext = EXTS_IMAGEN.has(extname(file.originalname ?? '').toLowerCase())
+      ? extname(file.originalname ?? '').toLowerCase()
+      : '.jpg';
+    const nombre = `producto-${Date.now()}-${Math.round(Math.random() * 1e9)}${ext}`;
+    const ok = await this.storage.subirArchivo(
+      `${CARPETA_IMAGENES}/${nombre}`,
+      file.buffer,
+      file.mimetype || mimePorNombre(nombre),
+    );
+    if (!ok) {
+      throw new BadRequestException('No se pudo subir la imagen.');
+    }
+    return { url: `/api/productos/imagenes/${nombre}` };
   }
 
   @Get('imagenes/:filename')
-  servirImagen(@Param('filename') filename: string) {
+  async servirImagen(@Param('filename') filename: string) {
     if (!/^[A-Za-z0-9._-]+$/.test(filename)) {
       throw new BadRequestException('Nombre de imagen inválido.');
     }
@@ -130,6 +129,17 @@ export class ProductosController {
     if (!rel || rel.startsWith('..') || rel.includes(`..${sep}`)) {
       throw new BadRequestException('Ruta de imagen inválida.');
     }
+
+    const guardada = await this.storage.descargarBuffer(
+      `${CARPETA_IMAGENES}/${filename}`,
+    );
+    if (guardada) {
+      return new StreamableFile(guardada, {
+        type: mimePorNombre(filename),
+        disposition: `inline; filename="${filename}"`,
+      });
+    }
+
     if (!existsSync(absolute)) {
       throw new NotFoundException('No se encontró la imagen del producto.');
     }

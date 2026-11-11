@@ -1,13 +1,22 @@
 import {
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
 } from '@nestjs/common';
+import { DocumentosService } from './documentos.service';
 import { DonacionSolicitudesService } from './donacion-solicitudes.service';
+import { PropuestasProductoresService } from './propuestas-productores.service';
+import { UsuariosService } from './usuarios.service';
 import { VisitasService } from './visitas.service';
 import { VoluntariadoService } from './voluntariado.service';
 
-export type TipoSolicitudCliente = 'donacion' | 'voluntariado' | 'visita';
+export type TipoSolicitudCliente =
+  | 'donacion'
+  | 'voluntariado'
+  | 'visita'
+  | 'documentacion'
+  | 'propuesta';
 
 export type SolicitudResumen = {
   id: string;
@@ -23,14 +32,21 @@ const TIPOS_VALIDOS: TipoSolicitudCliente[] = [
   'donacion',
   'voluntariado',
   'visita',
+  'documentacion',
+  'propuesta',
 ];
 
 @Injectable()
 export class SolicitudesClienteService {
+  private readonly logger = new Logger(SolicitudesClienteService.name);
+
   constructor(
     private readonly donaciones: DonacionSolicitudesService,
     private readonly voluntariado: VoluntariadoService,
     private readonly visitas: VisitasService,
+    private readonly documentos: DocumentosService,
+    private readonly propuestas: PropuestasProductoresService,
+    private readonly usuarios: UsuariosService,
   ) {}
 
   async listarPropias(
@@ -43,23 +59,43 @@ export class SolicitudesClienteService {
     const estadoFiltro = String(query.estado || '')
       .trim()
       .toLowerCase();
+    const correo = await this.correoUsuario(usuarioId);
 
-    const [donaciones, voluntariados, visitas] = await Promise.all([
-      !tipoFiltro || tipoFiltro === 'donacion'
-        ? this.donaciones.listarPropias(usuarioId)
-        : Promise.resolve([]),
-      !tipoFiltro || tipoFiltro === 'voluntariado'
-        ? this.voluntariado.obtenerSolicitudesDeUsuario(userKey)
-        : Promise.resolve([]),
-      !tipoFiltro || tipoFiltro === 'visita'
-        ? this.visitas.obtenerSolicitudesDeUsuario(userKey)
-        : Promise.resolve([]),
-    ]);
+    const [donaciones, voluntariados, visitas, docs, props] =
+      await Promise.all([
+        !tipoFiltro || tipoFiltro === 'donacion'
+          ? this.cargarOrigen('donación', () =>
+              this.donaciones.listarPropias(usuarioId),
+            )
+          : Promise.resolve([]),
+        !tipoFiltro || tipoFiltro === 'voluntariado'
+          ? this.cargarOrigen('voluntariado', () =>
+              this.voluntariado.obtenerSolicitudesDeUsuario(userKey),
+            )
+          : Promise.resolve([]),
+        !tipoFiltro || tipoFiltro === 'visita'
+          ? this.cargarOrigen('visita', () =>
+              this.visitas.obtenerSolicitudesDeUsuario(userKey),
+            )
+          : Promise.resolve([]),
+        !tipoFiltro || tipoFiltro === 'documentacion'
+          ? this.cargarOrigen('documentación', () =>
+              this.documentos.listarPropias(usuarioId, correo),
+            )
+          : Promise.resolve([]),
+        !tipoFiltro || tipoFiltro === 'propuesta'
+          ? this.cargarOrigen('propuesta', () =>
+              this.propuestas.listarMias(usuarioId),
+            )
+          : Promise.resolve([]),
+      ]);
 
     const items: SolicitudResumen[] = [
       ...donaciones.map((row) => this.mapearDonacion(row)),
       ...voluntariados.map((row) => this.mapearVoluntariado(row)),
       ...visitas.map((row) => this.mapearVisita(row)),
+      ...docs.map((row) => this.mapearDocumentacion(row)),
+      ...props.map((row) => this.mapearPropuesta(row)),
     ];
 
     const filtrados = estadoFiltro
@@ -70,9 +106,7 @@ export class SolicitudesClienteService {
             .normalize('NFD')
             .replace(/[\u0300-\u036f]/g, '')
             .includes(
-              estadoFiltro
-                .normalize('NFD')
-                .replace(/[\u0300-\u036f]/g, ''),
+              estadoFiltro.normalize('NFD').replace(/[\u0300-\u036f]/g, ''),
             ),
         )
       : items;
@@ -105,6 +139,7 @@ export class SolicitudesClienteService {
     }
 
     const userKey = String(usuarioId);
+    const correo = await this.correoUsuario(usuarioId);
 
     if (tipo === 'donacion') {
       const propias = await this.donaciones.listarPropias(usuarioId);
@@ -133,14 +168,53 @@ export class SolicitudesClienteService {
       };
     }
 
-    const row = await this.visitas.obtenerPorId(id);
-    if (!row || String(row.UserId ?? '') !== userKey) {
-      throw new NotFoundException('No se encontró esa solicitud de visita.');
+    if (tipo === 'visita') {
+      const row = await this.visitas.obtenerPorId(id);
+      if (!row || String(row.UserId ?? '') !== userKey) {
+        throw new NotFoundException('No se encontró esa solicitud de visita.');
+      }
+      return {
+        resumen: this.mapearVisita(row),
+        detalle: this.detalleVisita(row),
+      };
     }
+
+    if (tipo === 'documentacion') {
+      const row = await this.documentos.obtenerPropia(usuarioId, id, correo);
+      return {
+        resumen: this.mapearDocumentacion(row),
+        detalle: this.detalleDocumentacion(row),
+      };
+    }
+
+    const row = await this.propuestas.obtenerMia(usuarioId, id);
     return {
-      resumen: this.mapearVisita(row),
-      detalle: this.detalleVisita(row),
+      resumen: this.mapearPropuesta(row),
+      detalle: row as unknown as Record<string, unknown>,
     };
+  }
+
+  private async cargarOrigen<T>(
+    etiqueta: string,
+    cargar: () => Promise<T[]>,
+  ): Promise<T[]> {
+    try {
+      return await cargar();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.warn(
+        `No se pudieron listar solicitudes de ${etiqueta}: ${message}`,
+      );
+      return [];
+    }
+  }
+
+  private async correoUsuario(usuarioId: number): Promise<string | null> {
+    const usuario = await this.usuarios.obtenerPorId(usuarioId);
+    const correo = String(usuario?.Correo || '')
+      .trim()
+      .toLowerCase();
+    return correo || null;
   }
 
   private assertUsuario(usuarioId: number) {
@@ -165,6 +239,21 @@ export class SolicitudesClienteService {
     }
     if (raw === 'visita' || raw === 'visitas' || raw === 'visita_grupal') {
       return 'visita';
+    }
+    if (
+      raw === 'documentacion' ||
+      raw === 'documentación' ||
+      raw === 'documento' ||
+      raw === 'documentos'
+    ) {
+      return 'documentacion';
+    }
+    if (
+      raw === 'propuesta' ||
+      raw === 'propuestas' ||
+      raw === 'propuesta_productor'
+    ) {
+      return 'propuesta';
     }
     if (TIPOS_VALIDOS.includes(raw as TipoSolicitudCliente)) {
       return raw as TipoSolicitudCliente;
@@ -238,6 +327,43 @@ export class SolicitudesClienteService {
         (row.FechaVisita
           ? `Visita ${row.FechaVisita}`
           : 'Solicitud de visita'),
+    };
+  }
+
+  private mapearDocumentacion(row: {
+    Id: string | number;
+    Estado?: string;
+    CreatedAt?: Date | string;
+    DocumentoTitulo?: string;
+    Motivo?: string;
+  }): SolicitudResumen {
+    const identificador = String(row.Id);
+    return {
+      id: `documentacion:${identificador}`,
+      tipo: 'documentacion',
+      tipoEtiqueta: 'Documentación',
+      identificador,
+      fechaEnvio: this.fechaIso(row.CreatedAt),
+      estado: row.Estado || 'Pendiente',
+      titulo: row.DocumentoTitulo || row.Motivo || 'Solicitud de documentación',
+    };
+  }
+
+  private mapearPropuesta(row: {
+    id: string | number;
+    estado?: string;
+    fechaEnvio?: Date | string | null;
+    nombre?: string;
+  }): SolicitudResumen {
+    const identificador = String(row.id);
+    return {
+      id: `propuesta:${identificador}`,
+      tipo: 'propuesta',
+      tipoEtiqueta: 'Propuesta',
+      identificador,
+      fechaEnvio: this.fechaIso(row.fechaEnvio),
+      estado: row.estado || 'Pendiente',
+      titulo: row.nombre || 'Propuesta de productor',
     };
   }
 
@@ -322,6 +448,34 @@ export class SolicitudesClienteService {
       motivoVisita: row.MotivoVisita,
       motivoOtro: row.MotivoOtro,
       observacionesAdmin: row.ObservacionesAdmin,
+    };
+  }
+
+  private detalleDocumentacion(row: {
+    Id: string | number;
+    Estado?: string;
+    CreatedAt?: Date | string;
+    DocumentoTitulo?: string;
+    NombreSolicitante?: string;
+    CorreoSolicitante?: string;
+    Institucion?: string;
+    Motivo?: string;
+    Categoria?: string;
+    Subcategoria?: string;
+    RespuestaAdmin?: string | null;
+  }): Record<string, unknown> {
+    return {
+      id: row.Id,
+      estado: row.Estado,
+      fechaEnvio: this.fechaIso(row.CreatedAt),
+      titulo: row.DocumentoTitulo,
+      nombre: row.NombreSolicitante,
+      email: row.CorreoSolicitante,
+      institucion: row.Institucion,
+      motivo: row.Motivo,
+      categoria: row.Categoria,
+      subcategoria: row.Subcategoria,
+      observacionesAdmin: row.RespuestaAdmin,
     };
   }
 

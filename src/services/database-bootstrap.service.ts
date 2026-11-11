@@ -180,6 +180,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
         CREATE TABLE IF NOT EXISTS solicitudes_documentos (
           "Id" bigserial PRIMARY KEY,
           "DocumentoId" bigint NULL,
+          "UsuarioId" integer NULL,
           "DocumentoTitulo" varchar(200) NOT NULL DEFAULT '',
           "NombreSolicitante" varchar(150) NOT NULL,
           "CorreoSolicitante" varchar(150) NOT NULL,
@@ -198,6 +199,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
           ALTER COLUMN "DocumentoId" DROP NOT NULL;
 
         ALTER TABLE solicitudes_documentos
+          ADD COLUMN IF NOT EXISTS "UsuarioId" integer NULL,
           ADD COLUMN IF NOT EXISTS "NombreArchivo" varchar(255) NULL,
           ADD COLUMN IF NOT EXISTS "NombreOriginal" varchar(255) NULL,
           ADD COLUMN IF NOT EXISTS "MimeType" varchar(100) NULL,
@@ -209,6 +211,9 @@ export class DatabaseBootstrapService implements OnModuleInit {
           ADD COLUMN IF NOT EXISTS "PalabrasClave" varchar(255) NOT NULL DEFAULT '',
           ADD COLUMN IF NOT EXISTS "EsPrivado" boolean NOT NULL DEFAULT true,
           ADD COLUMN IF NOT EXISTS "PublicadoDocumentoId" bigint NULL;
+
+        CREATE INDEX IF NOT EXISTS "IX_solicitudes_documentos_usuario"
+          ON solicitudes_documentos ("UsuarioId");
 
         INSERT INTO categorias ("Nombre", "Descripcion", "Tipo", "Padre")
         SELECT 'Investigaciones', 'Publicaciones científicas y estudios del café', 'documento', ''
@@ -397,7 +402,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
           "Subtotal" numeric(14,2) NOT NULL DEFAULT 0,
           "Impuestos" numeric(14,2) NOT NULL DEFAULT 0,
           "Total" numeric(14,2) NOT NULL DEFAULT 0,
-          "MetodoPago" varchar(50) NOT NULL DEFAULT 'Tarjeta',
+          "MetodoPago" varchar(50) NOT NULL DEFAULT 'Comprobante',
           "Estado" varchar(40) NOT NULL DEFAULT 'Pendiente',
           "FacturaId" varchar(80) NULL
         );
@@ -420,6 +425,18 @@ export class DatabaseBootstrapService implements OnModuleInit {
       await this.dataSource.query(`
         ALTER TABLE compras
         ADD COLUMN IF NOT EXISTS "ComprobanteArchivo" varchar(200) NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE compras
+        ADD COLUMN IF NOT EXISTS "RevisadoPorId" integer NULL;
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE compras
+        ADD COLUMN IF NOT EXISTS "RevisadoPorNombre" varchar(150) NOT NULL DEFAULT '';
+      `);
+      await this.dataSource.query(`
+        ALTER TABLE compras
+        ADD COLUMN IF NOT EXISTS "RevisadoPorCorreo" varchar(150) NOT NULL DEFAULT '';
       `);
       await this.dataSource.query(`
         CREATE INDEX IF NOT EXISTS "IDX_compras_UbicacionId"
@@ -1086,6 +1103,41 @@ export class DatabaseBootstrapService implements OnModuleInit {
     await this.dataSource.query(`
       ALTER TABLE auditoria ADD COLUMN IF NOT EXISTS "DatosNuevos" jsonb NULL;
     `);
+    await this.dataSource.query(`
+      DO $$
+      DECLARE
+        r record;
+      BEGIN
+        IF to_regclass('public.usuarios') IS NULL THEN
+          RETURN;
+        END IF;
+        FOR r IN
+          SELECT c.conname
+          FROM pg_constraint c
+          JOIN pg_attribute a
+            ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+          WHERE c.conrelid = 'auditoria'::regclass
+            AND c.contype = 'f'
+            AND a.attname = 'IdUsuario'
+            AND c.confdeltype <> 'c'
+        LOOP
+          EXECUTE format('ALTER TABLE auditoria DROP CONSTRAINT %I', r.conname);
+        END LOOP;
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint c
+          JOIN pg_attribute a
+            ON a.attrelid = c.conrelid AND a.attnum = ANY (c.conkey)
+          WHERE c.conrelid = 'auditoria'::regclass
+            AND c.contype = 'f'
+            AND a.attname = 'IdUsuario'
+        ) THEN
+          ALTER TABLE auditoria
+            ADD CONSTRAINT "FK_auditoria_usuario"
+            FOREIGN KEY ("IdUsuario") REFERENCES usuarios ("Id") ON DELETE CASCADE;
+        END IF;
+      END $$;
+    `);
   }
 
   private async asegurarTriggersAuditoria(): Promise<void> {
@@ -1111,17 +1163,22 @@ export class DatabaseBootstrapService implements OnModuleInit {
         EXCEPTION WHEN others THEN
           v_uid := NULL;
         END;
-        v_old := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE to_jsonb(OLD) END;
-        v_new := CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE to_jsonb(NEW) END;
-        -- Las columnas *En son traducciones al inglés o marcas de tiempo
-        -- (CreadoEn, ActualizadoEn). Si el sistema (sin usuario) solo toca esas,
-        -- es traducción automática y no va a la bitácora; si lo hace una persona, sí.
-        IF TG_OP = 'UPDATE' AND v_uid IS NULL AND
-          (SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) FROM jsonb_each(v_old) WHERE key !~ 'En$') =
-          (SELECT COALESCE(jsonb_object_agg(key, value), '{}'::jsonb) FROM jsonb_each(v_new) WHERE key !~ 'En$')
-        THEN
+        -- Borrar una persona borra su rastro: lo que hizo y lo que habla de ella.
+        IF TG_TABLE_NAME = 'usuarios' AND TG_OP = 'DELETE' THEN
+          DELETE FROM auditoria
+          WHERE "IdUsuario" = OLD."Id"
+             OR ("Tabla" = 'usuarios' AND "IdRegistro" = OLD."Id"::text);
+          RETURN OLD;
+        END IF;
+        -- Sin persona en contexto lo hizo el sistema. Eso no entra a la bitácora.
+        IF v_uid IS NULL THEN
+          IF TG_OP = 'DELETE' THEN
+            RETURN OLD;
+          END IF;
           RETURN NEW;
         END IF;
+        v_old := CASE WHEN TG_OP = 'INSERT' THEN NULL ELSE to_jsonb(OLD) END;
+        v_new := CASE WHEN TG_OP = 'DELETE' THEN NULL ELSE to_jsonb(NEW) END;
         -- Nunca guardar contraseña en texto plano en la bitácora
         IF v_old IS NOT NULL THEN
           IF v_old ? 'PasswordHash' THEN
@@ -1507,7 +1564,45 @@ export class DatabaseBootstrapService implements OnModuleInit {
     await this.dataSource.query(`
       ALTER TABLE solicitudes_visitas_grupales
         ADD COLUMN IF NOT EXISTS "EncargadoTipoIdentificacion" varchar(20) NULL,
-        ADD COLUMN IF NOT EXISTS "EncargadoNacionalidad" varchar(2) NULL;
+        ADD COLUMN IF NOT EXISTS "EncargadoNacionalidad" varchar(2) NULL,
+        ADD COLUMN IF NOT EXISTS "DisponibilidadVisitaId" bigint NULL;
+    `);
+    await this.dataSource.query(`
+      CREATE TABLE IF NOT EXISTS disponibilidades_visitas (
+        "Id" bigserial PRIMARY KEY,
+        "Fecha" date NOT NULL,
+        "HoraInicio" time NOT NULL,
+        "HoraFin" time NOT NULL,
+        "Habilitada" boolean NOT NULL DEFAULT true,
+        "CapacidadMaxima" integer NOT NULL DEFAULT 30,
+        "Nota" varchar(500) NULL,
+        CONSTRAINT "UQ_disponibilidades_visitas_fecha_horas"
+          UNIQUE ("Fecha", "HoraInicio", "HoraFin"),
+        CONSTRAINT "CK_disponibilidades_visitas_horas"
+          CHECK ("HoraFin" > "HoraInicio")
+      );
+    `);
+    await this.dataSource.query(`
+      CREATE INDEX IF NOT EXISTS "IDX_disponibilidades_visitas_fecha_habilitada"
+        ON disponibilidades_visitas ("Fecha", "Habilitada");
+    `);
+    await this.dataSource.query(`
+      DO $$
+      BEGIN
+        IF NOT EXISTS (
+          SELECT 1
+          FROM pg_constraint
+          WHERE conname = 'FK_visitas_disponibilidad'
+            AND conrelid = 'solicitudes_visitas_grupales'::regclass
+        ) THEN
+          ALTER TABLE solicitudes_visitas_grupales
+            ADD CONSTRAINT "FK_visitas_disponibilidad"
+            FOREIGN KEY ("DisponibilidadVisitaId")
+            REFERENCES disponibilidades_visitas ("Id")
+            ON DELETE SET NULL;
+        END IF;
+      END
+      $$;
     `);
     await this.dataSource.query(`
       CREATE INDEX IF NOT EXISTS "IDX_visitas_UserId"
@@ -1694,7 +1789,7 @@ export class DatabaseBootstrapService implements OnModuleInit {
         'Usado con desgaste',
         'Para reparar',
       ],
-      metodo_pago: ['Efectivo', 'Tarjeta', 'SINPE Móvil', 'Transferencia'],
+      metodo_pago: ['Efectivo', 'SINPE Móvil', 'Transferencia'],
       unidad_presentacion: ['g', 'kg', 'ml', 'L'],
     };
     const pesos = (await this.dataSource.query(`
@@ -1719,6 +1814,13 @@ export class DatabaseBootstrapService implements OnModuleInit {
         );
       }
     }
+
+    // Métodos viejos que no se usan en el flujo real (web = comprobante/SINPE).
+    await this.dataSource.query(`
+      DELETE FROM catalogo_sistema
+      WHERE "Tipo" = 'metodo_pago'
+        AND LOWER(TRIM("Nombre")) IN ('tarjeta', 'tarjeta de débito / crédito', 'tarjeta de debito / credito');
+    `);
   }
 
   private async asegurarRevisionPropuestasProductores(): Promise<void> {
