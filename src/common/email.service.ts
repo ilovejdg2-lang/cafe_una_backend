@@ -458,6 +458,25 @@ export class EmailService {
     );
   }
 
+  /** Teléfono / SINPE del pie de página (mismo que ve el cliente en el sitio). */
+  private async telefonoSinpeFooter(): Promise<string> {
+    try {
+      const filas: Array<{ Telefono: string | null }> | undefined =
+        await this.dataSource?.query(
+          `SELECT "Telefono" FROM informacion_footer
+           WHERE COALESCE("Telefono", '') <> ''
+           ORDER BY "Id" ASC
+           LIMIT 1`,
+        );
+      return String(filas?.[0]?.Telefono ?? '').trim();
+    } catch (error) {
+      this.logger.warn(
+        `No se pudo leer el SINPE del footer: ${error instanceof Error ? error.message : error}`,
+      );
+      return '';
+    }
+  }
+
   async enviarComprobanteVentaFisica(
     destinatario: string,
     datos: {
@@ -477,7 +496,8 @@ export class EmailService {
       notas?: string;
     },
   ): Promise<boolean> {
-    const htmlBody = this.buildComprobanteVentaHtml(datos);
+    const sinpe = await this.telefonoSinpeFooter();
+    const htmlBody = this.buildComprobanteVentaHtml(datos, sinpe);
     return this.enviar(
       destinatario,
       `Comprobante de compra - Café UNA (${datos.numero || 'Venta Física'})`,
@@ -485,22 +505,25 @@ export class EmailService {
     );
   }
 
-  private buildComprobanteVentaHtml(datos: {
-    numero?: string;
-    puntoVenta: string;
-    vendedor: string;
-    clienteNombre?: string;
-    metodoPago: string;
-    fecha?: string;
-    items: Array<{
-      nombre: string;
-      cantidad: number;
-      precioUnitario: number;
-      subtotal: number;
-    }>;
-    total: number;
-    notas?: string;
-  }): string {
+  private buildComprobanteVentaHtml(
+    datos: {
+      numero?: string;
+      puntoVenta: string;
+      vendedor: string;
+      clienteNombre?: string;
+      metodoPago: string;
+      fecha?: string;
+      items: Array<{
+        nombre: string;
+        cantidad: number;
+        precioUnitario: number;
+        subtotal: number;
+      }>;
+      total: number;
+      notas?: string;
+    },
+    sinpe = '',
+  ): string {
     const fmt = (num: number) =>
       `₡${Math.round(Number(num) || 0).toLocaleString('es-CR')}`;
 
@@ -550,7 +573,8 @@ export class EmailService {
             <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Punto de venta:</strong> ${this.escapeHtml(datos.puntoVenta || 'Punto presencial')}</p>
             <p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Atendido por:</strong> ${this.escapeHtml(datos.vendedor || 'Personal Café UNA')}</p>
             ${datos.clienteNombre ? `<p style="margin:0 0 6px;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Cliente:</strong> ${this.escapeHtml(datos.clienteNombre)}</p>` : ''}
-            <p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Método de pago:</strong> ${this.escapeHtml(datos.metodoPago || 'Efectivo')}</p>
+            <p style="margin:0${sinpe ? ' 0 6px' : ''};font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>Método de pago:</strong> ${this.escapeHtml(datos.metodoPago || 'Efectivo')}</p>
+            ${sinpe ? `<p style="margin:0;font-size:14px;line-height:1.6;color:#3a4a6b;"><strong>SINPE Móvil:</strong> ${this.escapeHtml(sinpe)}</p>` : ''}
           </td></tr>
         </table>
         <table role="presentation" width="100%" cellpadding="0" cellspacing="0" border="0" style="border-collapse:collapse;">
@@ -652,7 +676,7 @@ export class EmailService {
   private async aplicarLogoUrl(html: string): Promise<string> {
     if (!html.includes(LOGO_PLACEHOLDER)) return html;
     const url = await this.logoCorreoUrl();
-    // ponytail: un logo WebP usa texto porque los clientes de correo no lo muestran bien; publicar un PNG recupera la imagen.
+    // Un logo WebP usa texto porque los clientes de correo no lo muestran bien; publicar un PNG recupera la imagen.
     if (url && !/\.webp(\?|$)/i.test(url)) return html.replaceAll(LOGO_PLACEHOLDER, url);
     return html.replace(
       /<img[^>]*\{\{logoUrl\}\}[^>]*>/g,

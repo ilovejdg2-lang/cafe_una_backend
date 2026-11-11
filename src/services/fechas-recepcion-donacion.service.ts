@@ -5,6 +5,11 @@ import {
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
+import {
+  fechaHoraIsoEnZona,
+  hoyIsoEnZona,
+  obtenerZonaHoraria,
+} from '../common/timezone.util';
 import { FechaRecepcionDonacion } from '../entities/fecha-recepcion-donacion.entity';
 
 const FECHA_ISO_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -38,14 +43,6 @@ function normalizarHorarios(horarios?: unknown): string[] {
   return [];
 }
 
-function hoyIso(): string {
-  const hoy = new Date();
-  const yyyy = hoy.getFullYear();
-  const mm = String(hoy.getMonth() + 1).padStart(2, '0');
-  const dd = String(hoy.getDate()).padStart(2, '0');
-  return `${yyyy}-${mm}-${dd}`;
-}
-
 @Injectable()
 export class FechasRecepcionDonacionService {
   constructor(
@@ -53,11 +50,26 @@ export class FechasRecepcionDonacionService {
     private readonly repo: Repository<FechaRecepcionDonacion>,
   ) {}
 
+  obtenerConfigZonaHoraria(): {
+    zonaHoraria: string;
+    hoy: string;
+    fechaHoraActual: string;
+  } {
+    const tz = obtenerZonaHoraria();
+    return {
+      zonaHoraria: tz,
+      hoy: hoyIsoEnZona(tz),
+      fechaHoraActual: fechaHoraIsoEnZona(tz),
+    };
+  }
+
   async listarDisponibles(
     desde?: string,
     hasta?: string,
   ): Promise<FechaRecepcionDonacion[]> {
-    const fechaInicio = desde && FECHA_ISO_RE.test(desde) ? desde : hoyIso();
+    const hoy = hoyIsoEnZona();
+    const fechaInicio =
+      desde && FECHA_ISO_RE.test(desde) && desde > hoy ? desde : hoy;
     const qb = this.repo.createQueryBuilder('fr');
 
     qb.where('fr.Habilitada = :habilitada', { habilitada: true }).andWhere(
@@ -94,7 +106,7 @@ export class FechasRecepcionDonacionService {
     observaciones?: string,
   ): Promise<FechaRecepcionDonacion> {
     const f = normalizarFecha(fecha);
-    const hoy = hoyIso();
+    const hoy = hoyIsoEnZona();
 
     if (f < hoy) {
       throw new BadRequestException('No se pueden habilitar fechas pasadas.');
@@ -128,7 +140,7 @@ export class FechasRecepcionDonacionService {
     observaciones?: string,
   ): Promise<FechaRecepcionDonacion> {
     const f = normalizarFecha(fecha);
-    const hoy = hoyIso();
+    const hoy = hoyIsoEnZona();
 
     if (habilitada && f < hoy) {
       throw new BadRequestException('No se pueden habilitar fechas pasadas.');
@@ -157,7 +169,7 @@ export class FechasRecepcionDonacionService {
 
   async toggleFecha(fecha: string): Promise<FechaRecepcionDonacion> {
     const f = normalizarFecha(fecha);
-    const hoy = hoyIso();
+    const hoy = hoyIsoEnZona();
 
     if (f < hoy) {
       throw new BadRequestException('No se pueden modificar fechas pasadas.');
@@ -194,7 +206,7 @@ export class FechasRecepcionDonacionService {
     horario?: string,
   ): Promise<{ valida: boolean; mensajeError?: string }> {
     const f = normalizarFecha(fecha);
-    const hoy = hoyIso();
+    const hoy = hoyIsoEnZona();
 
     if (f < hoy) {
       return {
