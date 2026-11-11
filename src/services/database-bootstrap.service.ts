@@ -418,6 +418,21 @@ export class DatabaseBootstrapService implements OnModuleInit {
           "Subtotal" numeric(14,2) NOT NULL DEFAULT 0
         );
       `);
+      // Las ventas presenciales registran su pago aquí; la migración
+      // PurchaseModelRelations no se aplica en bases creadas por este arranque.
+      await this.dataSource.query(`
+        CREATE TABLE IF NOT EXISTS pagos (
+          "Id" serial PRIMARY KEY,
+          "CompraId" integer NOT NULL REFERENCES compras("Id") ON DELETE CASCADE,
+          "Monto" numeric(14,2) NOT NULL,
+          "Metodo" varchar(50) NOT NULL,
+          "Estado" varchar(40) NOT NULL DEFAULT 'Pendiente',
+          "Fecha" timestamptz NOT NULL DEFAULT NOW()
+        );
+      `);
+      await this.dataSource.query(`
+        CREATE INDEX IF NOT EXISTS "IDX_pagos_CompraId" ON pagos ("CompraId");
+      `);
       await this.dataSource.query(`
         ALTER TABLE compras
         ADD COLUMN IF NOT EXISTS "UbicacionId" integer NULL;
